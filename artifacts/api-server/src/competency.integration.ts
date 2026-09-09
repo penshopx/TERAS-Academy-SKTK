@@ -1,0 +1,167 @@
+import { and, desc, eq } from "drizzle-orm";
+import { readFile } from "node:fs/promises";
+import {
+  adminAuditEventsTable, competencyFrameworksTable, competencyUnitEvidenceRequirementsTable,
+  competencyUnitOutcomesTable, competencyUnitPracticeTasksTable, competencyUnitSafetyRulesTable,
+  competencyUnitSimulationsTable, competencyUnitsTable, db, evidenceRequirementsTable,
+  modulesTable, pathwayCompetencyUnitsTable, pathwaysTable, pool, practiceTasksTable, programsTable,
+} from "@workspace/db";
+import { CreateAdminCompetencyUnitBody, UpdateAdminCompetencyUnitBody } from "@workspace/api-zod";
+import { createIntegrationTestApp } from "./integration-test-app";
+
+function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
+const suffix = crypto.randomUUID();
+const id = (name: string) => `competency-integration-${name}-${suffix}`;
+const ids = {
+  program: id("program"), pathway: id("pathway"), module: id("module"),
+  task: id("task"), evidence: id("evidence"), framework: id("framework"), unit: id("unit"),
+};
+
+let role: "learner" | "admin" = "admin";
+const app = createIntegrationTestApp(() => ({ userId: id("admin"), role }));
+
+async function run() {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("Competency integration migration may only run with NODE_ENV=test");
+  }
+  const migrationUrl = new URL("../../../lib/db/migrations/0016_competency_frameworks.sql", import.meta.url);
+  const migration = await readFile(migrationUrl, "utf8");
+  // Use the application's pool so PGOPTIONS/search_path and DATABASE_URL are
+  // identical for bootstrap, fixtures, route transactions, and assertions.
+  await pool.query(migration);
+
+  await db.insert(programsTable).values({
+    id: ids.program, domain: "integration", name: "Competency test program",
+    description: "Fixture", status: "active", createdBy: `test:${suffix}`,
+  });
+  await db.insert(pathwaysTable).values({
+    id: ids.pathway, programId: ids.program, name: "Competency test pathway",
+    type: "standard", outcome: "Outcome", status: "active", createdBy: `test:${suffix}`,
+  });
+  await db.insert(modulesTable).values({
+    id: ids.module, programId: ids.program, pathwayId: ids.pathway, sequence: 1,
+    code: `M-${suffix.slice(0, 8)}`, name: "Module", capability: "Capability",
+    evidence: "Evidence", learningOutcomes: [], theory: [], createdBy: `test:${suffix}`,
+  });
+  await db.insert(practiceTasksTable).values({
+    id: ids.task, moduleId: ids.module, title: "Practice", description: "Practice",
+    mode: "guided", durationMinutes: 10, output: "Output", createdBy: `test:${suffix}`,
+  });
+  await db.insert(evidenceRequirementsTable).values({
+    id: ids.evidence, moduleId: ids.module, code: `E-${suffix.slice(0, 8)}`,
+    name: "Evidence", description: "Evidence", allowedTypes: ["text"], createdBy: `test:${suffix}`,
+  });
+  await db.insert(competencyFrameworksTable).values({
+    id: ids.framework, code: `F-${suffix.slice(0, 8)}`, name: "Framework",
+    description: "Fixture", domain: "integration", version: "1.0", status: "draft",
+    createdBy: `test:${suffix}`,
+  });
+
+  const server = await new Promise<ReturnType<typeof app.listen>>(resolve => {
+    const listener = app.listen(0, () => resolve(listener));
+  });
+  const address = server.address();
+  assert(address && typeof address !== "string", "test server did not bind");
+  const base = `http://127.0.0.1:${address.port}/api`;
+  const request = (path: string, method = "GET", body?: unknown) => fetch(`${base}${path}`, {
+    method, headers: { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const assertStatus = async (response: Response, expected: number, message: string) => {
+    if (response.status !== expected) {
+      throw new Error(`${message}: received ${response.status}: ${await response.text()}`);
+    }
+    return response;
+  };
+  const safety = (code: string, rule = "Stop if unsafe") => ({
+    code, rule, severity: "critical", verificationEvidence: "Supervisor check", blocking: true,
+  });
+  const simulation = { title: "Simulation", instructions: "Follow the procedure", evidenceRequired: "Record", durationMinutes: 15 };
+  try {
+    role = "learner";
+    assert((await request("/admin/competency-frameworks")).status === 403, "learner must not list");
+    assert((await request("/admin/competency-units", "POST", {
+      id: ids.unit, frameworkId: ids.framework, code: "U-1", title: "Unit",
+      description: "Unit", status: "draft", sequence: 1,
+    })).status === 403, "learner must not create");
+    assert((await request(`/admin/competency-units/${ids.unit}`, "PATCH", { safetyRules: [] })).status === 403, "learner must not update");
+
+    role = "admin";
+    const createBody = {
+      id: ids.unit, frameworkId: ids.framework, code: "U-1", title: "Unit",
+      description: "Unit", status: "draft", sequence: 1,
+      pathwayIds: [ids.pathway],
+      outcomeMappings: [{ learningOutcomeId: null, outcomeCode: "LO-1", description: "Outcome", verificationMethod: "TRAINER_REVIEW" }],
+      practiceTaskIds: [ids.task], evidenceRequirementIds: [ids.evidence],
+      simulations: [simulation], safetyRules: [safety("SAFE-1")],
+    };
+    await assertStatus(await request("/admin/competency-units", "POST", createBody), 201, "fixture unit create failed");
+
+    const partial = await assertStatus(
+      await request(`/admin/competency-units/${ids.unit}`, "PATCH", { title: "Updated unit", safetyRules: [safety("SAFE-2")] }),
+      200, "partial update failed",
+    );
+    const partialBody = await partial.json() as any;
+    assert(partialBody.title === "Updated unit" && partialBody.pathwayIds?.[0] === ids.pathway, "partial PATCH lost pathway mapping");
+    assert(partialBody.outcomeMappings?.length === 1 && partialBody.practiceTaskIds?.[0] === ids.task &&
+      partialBody.evidenceRequirementIds?.[0] === ids.evidence && partialBody.simulations?.length === 1 &&
+      partialBody.safetyRules?.[0]?.code === "SAFE-2", "partial PATCH did not preserve mappings");
+
+    const emptySafety = await assertStatus(
+      await request(`/admin/competency-units/${ids.unit}`, "PATCH", { safetyRules: [] }),
+      200, "empty safety update failed",
+    );
+    const emptyBody = await emptySafety.json() as any;
+    assert(emptyBody.safetyRules?.length === 0 && emptyBody.pathwayIds?.[0] === ids.pathway &&
+      emptyBody.practiceTaskIds?.[0] === ids.task && emptyBody.evidenceRequirementIds?.[0] === ids.evidence &&
+      emptyBody.simulations?.length === 1, "empty safetyRules changed non-safety mappings");
+
+    const beforeAuditCount = (await db.select().from(adminAuditEventsTable).where(eq(adminAuditEventsTable.entityId, ids.unit))).length;
+    const invalid = await request(`/admin/competency-units/${ids.unit}`, "PATCH", { pathwayIds: [id("missing-pathway")] });
+    assert(invalid.status === 409, "invalid FK mapping must be rejected");
+    const [unitAfterRollback] = await db.select().from(competencyUnitsTable).where(eq(competencyUnitsTable.id, ids.unit));
+    const mappingAfterRollback = await db.select().from(pathwayCompetencyUnitsTable).where(eq(pathwayCompetencyUnitsTable.unitId, ids.unit));
+    assert(unitAfterRollback.title === "Updated unit" && mappingAfterRollback.length === 1 && mappingAfterRollback[0].pathwayId === ids.pathway, "failed update was not rolled back");
+    const afterAuditCount = (await db.select().from(adminAuditEventsTable).where(eq(adminAuditEventsTable.entityId, ids.unit))).length;
+    assert(afterAuditCount === beforeAuditCount, "failed update created an audit event");
+
+    await assertStatus(
+      await request(`/admin/competency-units/${ids.unit}`, "PATCH", { title: "Audited unit", safetyRules: [safety("SAFE-3")] }),
+      200, "audited update failed",
+    );
+    const audit = await db.select().from(adminAuditEventsTable)
+      .where(and(eq(adminAuditEventsTable.entityId, ids.unit), eq(adminAuditEventsTable.action, "update")))
+      .orderBy(desc(adminAuditEventsTable.createdAt));
+    const latest = audit.find((event: any) => event.after?.title === "Audited unit") as any;
+    assert(latest?.before?.pathwayAssignments && latest.before.outcomeMappings && latest.before.practiceTaskMappings &&
+      latest.before.evidenceRequirementMappings && latest.before.simulations && latest.before.safetyRules &&
+      latest.after?.pathwayAssignments && latest.after.outcomeMappings && latest.after.practiceTaskMappings &&
+      latest.after.evidenceRequirementMappings && latest.after.simulations && latest.after.safetyRules?.[0]?.code === "SAFE-3",
+      "audit before/after must include all mappings and changed safety");
+
+    const malformed = await request(`/admin/competency-units/${ids.unit}`, "PATCH", { safetyRules: [{ code: "", rule: "bad", severity: "invalid" }] });
+    assert(malformed.status === 400 && !UpdateAdminCompetencyUnitBody.safeParse({ safetyRules: [{ code: "", rule: "bad", severity: "invalid" }] }).success,
+      "malformed nested payload must be rejected at HTTP boundary");
+    assert(!CreateAdminCompetencyUnitBody.safeParse({ ...createBody, safetyRules: [{ code: "", rule: "", severity: "invalid" }] }).success,
+      "malformed create contract must be rejected");
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    await db.delete(adminAuditEventsTable).where(eq(adminAuditEventsTable.entityId, ids.unit));
+    await db.delete(competencyUnitSafetyRulesTable).where(eq(competencyUnitSafetyRulesTable.unitId, ids.unit));
+    await db.delete(competencyUnitSimulationsTable).where(eq(competencyUnitSimulationsTable.unitId, ids.unit));
+    await db.delete(competencyUnitEvidenceRequirementsTable).where(eq(competencyUnitEvidenceRequirementsTable.unitId, ids.unit));
+    await db.delete(competencyUnitPracticeTasksTable).where(eq(competencyUnitPracticeTasksTable.unitId, ids.unit));
+    await db.delete(competencyUnitOutcomesTable).where(eq(competencyUnitOutcomesTable.unitId, ids.unit));
+    await db.delete(pathwayCompetencyUnitsTable).where(eq(pathwayCompetencyUnitsTable.unitId, ids.unit));
+    await db.delete(competencyUnitsTable).where(eq(competencyUnitsTable.id, ids.unit));
+    await db.delete(competencyFrameworksTable).where(eq(competencyFrameworksTable.id, ids.framework));
+    await db.delete(evidenceRequirementsTable).where(eq(evidenceRequirementsTable.id, ids.evidence));
+    await db.delete(practiceTasksTable).where(eq(practiceTasksTable.id, ids.task));
+    await db.delete(modulesTable).where(eq(modulesTable.id, ids.module));
+    await db.delete(pathwaysTable).where(eq(pathwaysTable.id, ids.pathway));
+    await db.delete(programsTable).where(eq(programsTable.id, ids.program));
+  }
+}
+
+await run();
+console.log("Competency database integration checks passed");

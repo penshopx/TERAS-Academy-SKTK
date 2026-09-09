@@ -775,6 +775,51 @@ paths:
                 $ref: "#/components/schemas/AdminAccess"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/competency-frameworks:
+    get:
+      operationId: listAdminCompetencyFrameworks
+      tags: [admin]
+      summary: List configurable competency frameworks and traceability mappings
+      responses:
+        "200": { description: Competency frameworks, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AdminCompetencyFramework" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createAdminCompetencyFramework
+      tags: [admin]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CompetencyFrameworkInput" } } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/AdminCompetencyFramework" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/competency-frameworks/{frameworkId}:
+    patch:
+      operationId: updateAdminCompetencyFramework
+      tags: [admin]
+      parameters: [{ name: frameworkId, in: path, required: true, schema: { type: string, minLength: 1 } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CompetencyFrameworkUpdate" } } } }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/AdminCompetencyFramework" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/competency-units:
+    post:
+      operationId: createAdminCompetencyUnit
+      tags: [admin]
+      summary: Create a competency unit with traceability configuration
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CompetencyUnitInput" } } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/AdminCompetencyUnit" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/competency-units/{unitId}:
+    patch:
+      operationId: updateAdminCompetencyUnit
+      tags: [admin]
+      parameters: [{ name: unitId, in: path, required: true, schema: { type: string, minLength: 1 } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CompetencyUnitUpdate" } } } }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/AdminCompetencyUnit" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
   /admin/users:
     get:
       operationId: listAdminUsers
@@ -2202,6 +2247,104 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    CompetencyFrameworkInput:
+      type: object
+      required: [id, code, name, description, domain, version, status]
+      properties:
+        id: { type: string, minLength: 1 }
+        code: { type: string, minLength: 1 }
+        name: { type: string, minLength: 1 }
+        description: { type: string }
+        domain: { type: string }
+        version: { type: string }
+        status: { type: string, enum: [draft, active, archived] }
+    CompetencyFrameworkUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        description: { type: string }
+        domain: { type: string }
+        version: { type: string }
+        status: { type: string, enum: [draft, active, archived] }
+    AdminCompetencyFramework:
+      allOf:
+        - $ref: "#/components/schemas/CompetencyFrameworkInput"
+        - type: object
+          required: [createdAt, updatedAt, units]
+          properties:
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+            units:
+              type: array
+              items: { $ref: "#/components/schemas/AdminCompetencyUnit" }
+    CompetencyUnitInput:
+      type: object
+      required: [id, frameworkId, code, title, description, status, sequence]
+      properties:
+        id: { type: string, minLength: 1 }
+        frameworkId: { type: string, minLength: 1 }
+        code: { type: string, minLength: 1 }
+        title: { type: string, minLength: 1 }
+        description: { type: string }
+        status: { type: string, enum: [draft, active, archived] }
+        sequence: { type: integer, minimum: 1 }
+        pathwayIds: { type: array, items: { type: string, minLength: 1 } }
+        outcomeMappings: { type: array, items: { $ref: "#/components/schemas/CompetencyOutcomeMapping" } }
+        practiceTaskIds: { type: array, items: { type: string, minLength: 1 } }
+        evidenceRequirementIds: { type: array, items: { type: string, minLength: 1 } }
+        simulations: { type: array, items: { $ref: "#/components/schemas/CompetencySimulation" } }
+        safetyRules: { type: array, items: { $ref: "#/components/schemas/CompetencySafetyRule" } }
+    CompetencyUnitUpdate:
+      type: object
+      properties:
+        frameworkId: { type: string, minLength: 1 }
+        code: { type: string, minLength: 1 }
+        title: { type: string, minLength: 1 }
+        description: { type: string, minLength: 1 }
+        status: { type: string, enum: [draft, active, archived] }
+        sequence: { type: integer, minimum: 1 }
+        pathwayIds: { type: array, items: { type: string, minLength: 1 } }
+        outcomeMappings: { type: array, items: { $ref: "#/components/schemas/CompetencyOutcomeMapping" } }
+        practiceTaskIds: { type: array, items: { type: string, minLength: 1 } }
+        evidenceRequirementIds: { type: array, items: { type: string, minLength: 1 } }
+        simulations: { type: array, items: { $ref: "#/components/schemas/CompetencySimulation" } }
+        safetyRules: { type: array, items: { $ref: "#/components/schemas/CompetencySafetyRule" } }
+    AdminCompetencyUnit:
+      allOf:
+        - $ref: "#/components/schemas/CompetencyUnitInput"
+        - type: object
+          required: [createdAt, updatedAt]
+          properties:
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+    CompetencyOutcomeMapping:
+      type: object
+      additionalProperties: false
+      required: [outcomeCode, description, verificationMethod]
+      properties:
+        learningOutcomeId: { type: ["string", "null"], minLength: 1 }
+        outcomeCode: { type: string, minLength: 1 }
+        description: { type: string, minLength: 1 }
+        verificationMethod: { type: string, enum: [TRAINER_REVIEW, SELF_CHECK, OBSERVATION, EVIDENCE_REVIEW, ASSESSMENT] }
+    CompetencySimulation:
+      type: object
+      additionalProperties: false
+      required: [title, instructions, evidenceRequired, durationMinutes]
+      properties:
+        title: { type: string, minLength: 1 }
+        instructions: { type: string, minLength: 1 }
+        evidenceRequired: { type: string, minLength: 1 }
+        durationMinutes: { type: integer, minimum: 0 }
+    CompetencySafetyRule:
+      type: object
+      additionalProperties: false
+      required: [code, rule, severity, verificationEvidence, blocking]
+      properties:
+        code: { type: string, minLength: 1 }
+        rule: { type: string, minLength: 1 }
+        severity: { type: string, enum: [critical, high, medium, low] }
+        verificationEvidence: { type: string, minLength: 1 }
+        blocking: { type: boolean }
     AdminAccess:
       type: object
       required: [authorized]

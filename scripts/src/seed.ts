@@ -1,4 +1,4 @@
-import { db, programsTable, pathwaysTable, modulesTable, practiceTasksTable, evidenceRequirementsTable, assessmentsTable, assessmentCriteriaTable, enrollmentsTable, evidenceTable, evidenceReviewsTable, assessmentAttemptsTable, criterionObservationsTable, gapsTable, gapEventsTable, remediationPlansTable, remediationActivitiesTable, remediationEventsTable, readinessGatesTable, readinessEventsTable, coursesTable, courseModulesTable, lessonsTable, learningActivitiesTable, contentResourcesTable, learningOutcomesTable } from "@workspace/db";
+import { db, programsTable, pathwaysTable, modulesTable, practiceTasksTable, evidenceRequirementsTable, assessmentsTable, assessmentCriteriaTable, enrollmentsTable, evidenceTable, evidenceReviewsTable, assessmentAttemptsTable, criterionObservationsTable, gapsTable, gapEventsTable, remediationPlansTable, remediationActivitiesTable, remediationEventsTable, readinessGatesTable, readinessEventsTable, coursesTable, courseModulesTable, lessonsTable, learningActivitiesTable, contentResourcesTable, learningOutcomesTable, competencyFrameworksTable, competencyUnitsTable, pathwayCompetencyUnitsTable, competencyUnitOutcomesTable, competencyUnitPracticeTasksTable, competencyUnitEvidenceRequirementsTable, competencyUnitSimulationsTable, competencyUnitSafetyRulesTable } from "@workspace/db";
 import { seedManagedPeople } from "@workspace/db/admin-membership";
 import { allowsDemoFixtures } from "@workspace/db/demo-access";
 import { eq } from "drizzle-orm";
@@ -63,9 +63,57 @@ async function seed(): Promise<void> {
     {id:"resource-m03-isolation",activityId:"activity-m03-safe-isolation",type:"TEXT",title:"Safe isolation learning note",content:"Learning guidance only. Performance must still be practiced, evidenced, reviewed, and reassessed.",sequence:1},
     {id:"resource-b04-protection",activityId:"activity-b04-protection",type:"TEXT",title:"Protection design learning note",content:"Learning guidance only. Design capability still requires traceable practice and evidence.",sequence:1},
   ]);
+  await insert(courseModulesTable, [{id:"course-module-m07",courseId:"course-solar-installation",moduleId:"m07",programId:"solar-pv-tech",pathwayId:"path-a",sequence:2}]);
+  await insert(lessonsTable, [{id:"lesson-m07-commissioning",courseModuleId:"course-module-m07",programId:"solar-pv-tech",pathwayId:"path-a",title:"Commissioning preparation",description:"Prepare for supervised commissioning practice.",sequence:1,status:"PUBLISHED",estimatedDurationMinutes:25}]);
+  await insert(learningActivitiesTable, [{id:"activity-m07-commissioning",lessonId:"lesson-m07-commissioning",programId:"solar-pv-tech",pathwayId:"path-a",type:"READING",title:"Commissioning test sequence",description:"Study the commissioning sequence before supervised practice.",sequence:1,required:true,estimatedDurationMinutes:20,status:"PUBLISHED"}]);
   await insert(learningOutcomesTable, [
     {id:"outcome-m03-sequence",activityId:"activity-m03-safe-isolation",capabilityModuleId:"m03",description:"Explain the safe isolation and proving sequence.",verificationMethod:"TRAINER_REVIEW",required:true},
     {id:"outcome-b04-protection",activityId:"activity-b04-protection",capabilityModuleId:"b04",description:"Explain and justify protection selection.",verificationMethod:"TRAINER_REVIEW",required:true},
+    {id:"outcome-m07-commissioning",activityId:"activity-m07-commissioning",capabilityModuleId:"m07",description:"Apply the inverter commissioning sequence and record test results.",verificationMethod:"TRAINER_REVIEW",required:true},
+  ]);
+  // These catalogue rows are prerequisites for the traceability foreign keys.
+  // The later idempotent inserts retain the historical seed ordering.
+  await insert(practiceTasksTable, [...modules, ...pathBModules].map(([id, pathwayId, code, name], i) => ({id:`task-${id}`,moduleId:id,title:`${name} ${pathwayId === "path-b" ? "design exercise" : "practical"}`,description:`Complete the ${name.toLowerCase()} supervised exercise.`,mode:i===2 || pathwayId === "path-b" ? "Workshop":"Guided practice",durationMinutes:pathwayId === "path-b" ? 60 : 45,output:pathwayId === "path-b" ? "Traceable design work record":"Supervisor-ready work record",safetyNote:id==="m03"?"Safe isolation procedure is mandatory.":null})));
+  await insert(evidenceRequirementsTable, [...modules, ...pathBModules].map(([id, pathwayId, code, name]) => ({id:`req-${id}`,moduleId:id,code:`EV-${code}`,name:`${name} evidence`,description:`Traceable evidence for ${name}.`,allowedTypes:pathwayId === "path-b" ? ["Design brief","Calculation","Drawing","Report"] : ["Photo","Checklist","Report"]})));
+  // Reusable SKTTK framework: these IDs deliberately point at the existing
+  // Solar PV catalogue records so the configuration remains idempotent and
+  // traceable after repeated seed runs.
+  await insert(competencyFrameworksTable, [{ id:"framework-skttk-solar-pv", code:"SKTTK-SPV", name:"SKTTK Solar PV", description:"Unit kompetensi reusable untuk kesiapan teknisi dan desain Solar PV.", domain:"renewable-energy", version:"1.0", status:"active" }]);
+  const competencyUnits = [
+    { id:"skttk-u-safe-isolation", frameworkId:"framework-skttk-solar-pv", code:"SKTTK-SPV-01", title:"Keselamatan dan isolasi listrik", description:"Menerapkan isolasi aman, pembuktian bebas tegangan, dan kontrol risiko.", sequence:1, status:"active" },
+    { id:"skttk-u-installation", frameworkId:"framework-skttk-solar-pv", code:"SKTTK-SPV-02", title:"Instalasi dan commissioning PV", description:"Menyiapkan instalasi, pengujian, dan commissioning sistem PV.", sequence:2, status:"active" },
+    { id:"skttk-u-design", frameworkId:"framework-skttk-solar-pv", code:"SKTTK-SPV-03", title:"Perancangan sistem PV", description:"Menghasilkan desain PV yang dapat ditelusuri dari brief hingga pack.", sequence:3, status:"active" },
+  ];
+  await insert(competencyUnitsTable, competencyUnits);
+  await insert(pathwayCompetencyUnitsTable, [
+    { id:"skttk-map-path-a-safe", pathwayId:"path-a", unitId:"skttk-u-safe-isolation", sequence:1 },
+    { id:"skttk-map-path-a-install", pathwayId:"path-a", unitId:"skttk-u-installation", sequence:2 },
+    { id:"skttk-map-path-b-design", pathwayId:"path-b", unitId:"skttk-u-design", sequence:1 },
+  ]);
+  await insert(competencyUnitOutcomesTable, [
+    { id:"skttk-outcome-safe", unitId:"skttk-u-safe-isolation", learningOutcomeId:"outcome-m03-sequence", outcomeCode:"LO-SPV-01", description:"Explain the safe isolation and proving sequence.", verificationMethod:"TRAINER_REVIEW" },
+    { id:"skttk-outcome-install", unitId:"skttk-u-installation", learningOutcomeId:"outcome-m07-commissioning", outcomeCode:"LO-SPV-02", description:"Apply inverter commissioning procedures and record test results.", verificationMethod:"TRAINER_REVIEW" },
+    { id:"skttk-outcome-design", unitId:"skttk-u-design", learningOutcomeId:"outcome-b04-protection", outcomeCode:"LO-SPV-03", description:"Explain and justify protection selection.", verificationMethod:"TRAINER_REVIEW" },
+  ]);
+  await insert(competencyUnitPracticeTasksTable, [
+    { id:"skttk-task-safe", unitId:"skttk-u-safe-isolation", taskId:"task-m03" },
+    { id:"skttk-task-install", unitId:"skttk-u-installation", taskId:"task-m07" },
+    { id:"skttk-task-design", unitId:"skttk-u-design", taskId:"task-b04" },
+  ]);
+  await insert(competencyUnitEvidenceRequirementsTable, [
+    { id:"skttk-evidence-safe", unitId:"skttk-u-safe-isolation", requirementId:"req-m03" },
+    { id:"skttk-evidence-install", unitId:"skttk-u-installation", requirementId:"req-m07" },
+    { id:"skttk-evidence-design", unitId:"skttk-u-design", requirementId:"req-b04" },
+  ]);
+  await insert(competencyUnitSimulationsTable, [
+    { id:"skttk-sim-safe", unitId:"skttk-u-safe-isolation", title:"Simulasi internal isolasi aman", instructions:"Latihan terbimbing pembuktian bebas tegangan sebelum praktik.", evidenceRequired:"Checklist latihan dan umpan balik trainer", durationMinutes:30 },
+    { id:"skttk-sim-install", unitId:"skttk-u-installation", title:"Simulasi internal commissioning", instructions:"Latihan membaca hasil uji dan menyusun catatan commissioning.", evidenceRequired:"Catatan hasil uji latihan", durationMinutes:45 },
+    { id:"skttk-sim-design", unitId:"skttk-u-design", title:"Persiapan internal desain proteksi", instructions:"Latihan menyusun alasan pemilihan proteksi pada skenario desain.", evidenceRequired:"Rationale desain latihan", durationMinutes:40 },
+  ]);
+  await insert(competencyUnitSafetyRulesTable, [
+    { id:"skttk-safety-safe-isolation", unitId:"skttk-u-safe-isolation", code:"SAFE-01", rule:"Isolasi sumber dan prove-dead wajib sebelum menyentuh konduktor.", severity:"critical", verificationEvidence:"Checklist isolasi ditinjau trainer", blocking:true },
+    { id:"skttk-safety-installation", unitId:"skttk-u-installation", code:"SAFE-02", rule:"Gunakan APD dan prosedur kerja aman selama instalasi serta commissioning.", severity:"critical", verificationEvidence:"Observasi trainer dan catatan toolbox talk", blocking:true },
+    { id:"skttk-safety-design", unitId:"skttk-u-design", code:"SAFE-03", rule:"Desain harus mengidentifikasi risiko listrik, struktur, dan akses pemeliharaan.", severity:"high", verificationEvidence:"Review risiko pada design pack", blocking:true },
   ]);
   await insert(practiceTasksTable, [...modules, ...pathBModules].map(([id, pathwayId, code, name], i) => ({id:`task-${id}`,moduleId:id,title:`${name} ${pathwayId === "path-b" ? "design exercise" : "practical"}`,description:`Complete the ${name.toLowerCase()} supervised exercise.`,mode:i===2 || pathwayId === "path-b" ? "Workshop":"Guided practice",durationMinutes:pathwayId === "path-b" ? 60 : 45,output:pathwayId === "path-b" ? "Traceable design work record":"Supervisor-ready work record",safetyNote:id==="m03"?"Safe isolation procedure is mandatory.":null})));
   await insert(evidenceRequirementsTable, [...modules, ...pathBModules].map(([id, pathwayId, code, name]) => ({id:`req-${id}`,moduleId:id,code:`EV-${code}`,name:`${name} evidence`,description:`Traceable evidence for ${name}.`,allowedTypes:pathwayId === "path-b" ? ["Design brief","Calculation","Drawing","Report"] : ["Photo","Checklist","Report"]})));

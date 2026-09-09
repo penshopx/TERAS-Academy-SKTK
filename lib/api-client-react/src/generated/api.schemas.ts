@@ -5,6 +5,178 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+export type CompetencyFrameworkInputStatus = typeof CompetencyFrameworkInputStatus[keyof typeof CompetencyFrameworkInputStatus];
+
+
+export const CompetencyFrameworkInputStatus = {
+  draft: 'draft',
+  active: 'active',
+  archived: 'archived',
+} as const;
+
+export interface CompetencyFrameworkInput {
+  /** @minLength 1 */
+  id: string;
+  /** @minLength 1 */
+  code: string;
+  /** @minLength 1 */
+  name: string;
+  description: string;
+  domain: string;
+  version: string;
+  status: CompetencyFrameworkInputStatus;
+}
+
+export type CompetencyFrameworkUpdateStatus = typeof CompetencyFrameworkUpdateStatus[keyof typeof CompetencyFrameworkUpdateStatus];
+
+
+export const CompetencyFrameworkUpdateStatus = {
+  draft: 'draft',
+  active: 'active',
+  archived: 'archived',
+} as const;
+
+export interface CompetencyFrameworkUpdate {
+  /** @minLength 1 */
+  name?: string;
+  description?: string;
+  domain?: string;
+  version?: string;
+  status?: CompetencyFrameworkUpdateStatus;
+}
+
+export type CompetencyUnitInputStatus = typeof CompetencyUnitInputStatus[keyof typeof CompetencyUnitInputStatus];
+
+
+export const CompetencyUnitInputStatus = {
+  draft: 'draft',
+  active: 'active',
+  archived: 'archived',
+} as const;
+
+export type CompetencyOutcomeMappingVerificationMethod = typeof CompetencyOutcomeMappingVerificationMethod[keyof typeof CompetencyOutcomeMappingVerificationMethod];
+
+
+export const CompetencyOutcomeMappingVerificationMethod = {
+  TRAINER_REVIEW: 'TRAINER_REVIEW',
+  SELF_CHECK: 'SELF_CHECK',
+  OBSERVATION: 'OBSERVATION',
+  EVIDENCE_REVIEW: 'EVIDENCE_REVIEW',
+  ASSESSMENT: 'ASSESSMENT',
+} as const;
+
+export interface CompetencyOutcomeMapping {
+  /**
+     * @minLength 1
+     * @nullable
+     */
+  learningOutcomeId?: string | null;
+  /** @minLength 1 */
+  outcomeCode: string;
+  /** @minLength 1 */
+  description: string;
+  verificationMethod: CompetencyOutcomeMappingVerificationMethod;
+}
+
+export interface CompetencySimulation {
+  /** @minLength 1 */
+  title: string;
+  /** @minLength 1 */
+  instructions: string;
+  /** @minLength 1 */
+  evidenceRequired: string;
+  /** @minimum 0 */
+  durationMinutes: number;
+}
+
+export type CompetencySafetyRuleSeverity = typeof CompetencySafetyRuleSeverity[keyof typeof CompetencySafetyRuleSeverity];
+
+
+export const CompetencySafetyRuleSeverity = {
+  critical: 'critical',
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export interface CompetencySafetyRule {
+  /** @minLength 1 */
+  code: string;
+  /** @minLength 1 */
+  rule: string;
+  severity: CompetencySafetyRuleSeverity;
+  /** @minLength 1 */
+  verificationEvidence: string;
+  blocking: boolean;
+}
+
+export interface CompetencyUnitInput {
+  /** @minLength 1 */
+  id: string;
+  /** @minLength 1 */
+  frameworkId: string;
+  /** @minLength 1 */
+  code: string;
+  /** @minLength 1 */
+  title: string;
+  description: string;
+  status: CompetencyUnitInputStatus;
+  /** @minimum 1 */
+  sequence: number;
+  /** @items.minLength 1 */
+  pathwayIds?: string[];
+  outcomeMappings?: CompetencyOutcomeMapping[];
+  /** @items.minLength 1 */
+  practiceTaskIds?: string[];
+  /** @items.minLength 1 */
+  evidenceRequirementIds?: string[];
+  simulations?: CompetencySimulation[];
+  safetyRules?: CompetencySafetyRule[];
+}
+
+export type AdminCompetencyUnit = CompetencyUnitInput & {
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminCompetencyFramework = CompetencyFrameworkInput & {
+  createdAt: string;
+  updatedAt: string;
+  units: AdminCompetencyUnit[];
+};
+
+export type CompetencyUnitUpdateStatus = typeof CompetencyUnitUpdateStatus[keyof typeof CompetencyUnitUpdateStatus];
+
+
+export const CompetencyUnitUpdateStatus = {
+  draft: 'draft',
+  active: 'active',
+  archived: 'archived',
+} as const;
+
+export interface CompetencyUnitUpdate {
+  /** @minLength 1 */
+  frameworkId?: string;
+  /** @minLength 1 */
+  code?: string;
+  /** @minLength 1 */
+  title?: string;
+  /** @minLength 1 */
+  description?: string;
+  status?: CompetencyUnitUpdateStatus;
+  /** @minimum 1 */
+  sequence?: number;
+  /** @items.minLength 1 */
+  pathwayIds?: string[];
+  outcomeMappings?: CompetencyOutcomeMapping[];
+  /** @items.minLength 1 */
+  practiceTaskIds?: string[];
+  /** @items.minLength 1 */
+  evidenceRequirementIds?: string[];
+  simulations?: CompetencySimulation[];
+  safetyRules?: CompetencySafetyRule[];
+}
+
 export const AdminAccessValue = {
   authorized: true,
 } as const;

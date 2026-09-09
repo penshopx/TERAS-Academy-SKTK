@@ -13,11 +13,16 @@ import {
   UpdateAdminEnrollmentParams, UpdateAdminEnrollmentResponse, UpdateAdminPathwayBody, UpdateAdminPathwayParams,
   UpdateAdminPathwayResponse, UpdateAdminProgramBody, UpdateAdminProgramParams, UpdateAdminProgramResponse,
   UpdateAdminUserBody, UpdateAdminUserParams, UpdateAdminUserResponse,
+  ListAdminCompetencyFrameworksResponse, CreateAdminCompetencyFrameworkBody, CreateAdminCompetencyFrameworkResponse,
+  UpdateAdminCompetencyFrameworkBody, UpdateAdminCompetencyFrameworkParams, UpdateAdminCompetencyFrameworkResponse,
+  CreateAdminCompetencyUnitBody, CreateAdminCompetencyUnitResponse, UpdateAdminCompetencyUnitBody, UpdateAdminCompetencyUnitParams, UpdateAdminCompetencyUnitResponse,
 } from "@workspace/api-zod";
 import {
   adminAccessRequestsTable, adminAuditEventsTable, assessmentAttemptsTable, cohortsTable, db, enrollmentsTable, evidenceReviewsTable,
   evidenceTable, gapsTable, pathwaysTable, peopleTable, personRolesTable, programsTable, reassessmentLinksTable,
   remediationActivitiesTable, remediationEventsTable, remediationPlansTable,
+  competencyFrameworksTable, competencyUnitsTable, pathwayCompetencyUnitsTable, competencyUnitOutcomesTable,
+  competencyUnitPracticeTasksTable, competencyUnitEvidenceRequirementsTable, competencyUnitSimulationsTable, competencyUnitSafetyRulesTable,
 } from "@workspace/db";
 import { authorizeAdmin, authorizeLocalUser, authorizeSuperAdmin, type AdminActor } from "../lib/authorization";
 import { supabaseEmailIsVerified, supabaseIdentity } from "../lib/supabase-auth";
@@ -286,4 +291,124 @@ router.get("/admin/enrollments", async (req, res): Promise<void> => { if (!await
 router.post("/admin/enrollments", async (req, res): Promise<void> => { const actor = await authorizeAdmin(req, res); const input = parsed(CreateAdminEnrollmentBody, req.body, res); if (!actor || !input) return; const error = await enrollmentValid(input); if (error) { res.status(409).json({ error }); return; } try { const value = await db.transaction(async tx => { const [record] = await tx.insert(enrollmentsTable).values({ ...input, createdBy: `supabase:${actor.authSubject}` }).returning(); await audit(tx as typeof db, actor, "create", "enrollment", record.id, null, record); return record; }); res.status(201).json(CreateAdminEnrollmentResponse.parse(value)); } catch { res.status(409).json({ error: "Enrollment conflicts with existing lifecycle data" }); } });
 router.patch("/admin/enrollments/:enrollmentId", async (req, res): Promise<void> => { const actor = await authorizeAdmin(req, res); const params = parsed(UpdateAdminEnrollmentParams, req.params, res); const input = parsed(UpdateAdminEnrollmentBody, req.body, res); if (!actor || !params || !input) return; const [before] = await db.select().from(enrollmentsTable).where(eq(enrollmentsTable.id, params.enrollmentId)); if (!before) { res.status(404).json({ error: "Enrollment not found" }); return; } const candidate = { ...before, ...input }; const error = await enrollmentValid(candidate); if (error) { res.status(409).json({ error }); return; } try { const value = await db.transaction(async tx => { const [record] = await tx.update(enrollmentsTable).set(input).where(eq(enrollmentsTable.id, params.enrollmentId)).returning(); await audit(tx as typeof db, actor, "update", "enrollment", record.id, before, record); return record; }); res.json(UpdateAdminEnrollmentResponse.parse(value)); } catch { res.status(409).json({ error: "Enrollment conflicts with existing lifecycle data" }); } });
 router.get("/admin/audit", async (req, res): Promise<void> => { if (!await authorizeAdmin(req, res)) return; res.json(ListAdminAuditEventsResponse.parse(await db.select().from(adminAuditEventsTable).orderBy(desc(adminAuditEventsTable.createdAt)))); });
+
+async function competencyView(framework: any, executor: any = db) {
+  const units = await executor.select().from(competencyUnitsTable).where(eq(competencyUnitsTable.frameworkId, framework.id));
+  const result = await Promise.all(units.map(async (unit: any) => {
+    const [pathways, outcomes, tasks, evidence, simulations, safetyRules] = await Promise.all([
+      executor.select().from(pathwayCompetencyUnitsTable).where(eq(pathwayCompetencyUnitsTable.unitId, unit.id)),
+      executor.select().from(competencyUnitOutcomesTable).where(eq(competencyUnitOutcomesTable.unitId, unit.id)),
+      executor.select().from(competencyUnitPracticeTasksTable).where(eq(competencyUnitPracticeTasksTable.unitId, unit.id)),
+      executor.select().from(competencyUnitEvidenceRequirementsTable).where(eq(competencyUnitEvidenceRequirementsTable.unitId, unit.id)),
+      executor.select().from(competencyUnitSimulationsTable).where(eq(competencyUnitSimulationsTable.unitId, unit.id)),
+      executor.select().from(competencyUnitSafetyRulesTable).where(eq(competencyUnitSafetyRulesTable.unitId, unit.id)),
+    ]);
+    return { ...unit, pathwayIds: pathways.map((row: any) => row.pathwayId), outcomeMappings: outcomes, practiceTaskIds: tasks.map((row: any) => row.taskId), evidenceRequirementIds: evidence.map((row: any) => row.requirementId), simulations, safetyRules };
+  }));
+  return { ...framework, units: result };
+}
+async function competencyAggregate(unitId: string, executor: any = db) {
+  const [unit] = await executor.select().from(competencyUnitsTable).where(eq(competencyUnitsTable.id, unitId));
+  if (!unit) return null;
+  const [pathways, outcomes, tasks, evidence, simulations, safetyRules] = await Promise.all([
+    executor.select().from(pathwayCompetencyUnitsTable).where(eq(pathwayCompetencyUnitsTable.unitId, unitId)),
+    executor.select().from(competencyUnitOutcomesTable).where(eq(competencyUnitOutcomesTable.unitId, unitId)),
+    executor.select().from(competencyUnitPracticeTasksTable).where(eq(competencyUnitPracticeTasksTable.unitId, unitId)),
+    executor.select().from(competencyUnitEvidenceRequirementsTable).where(eq(competencyUnitEvidenceRequirementsTable.unitId, unitId)),
+    executor.select().from(competencyUnitSimulationsTable).where(eq(competencyUnitSimulationsTable.unitId, unitId)),
+    executor.select().from(competencyUnitSafetyRulesTable).where(eq(competencyUnitSafetyRulesTable.unitId, unitId)),
+  ]);
+  return { ...unit, pathwayAssignments: pathways, outcomeMappings: outcomes, practiceTaskMappings: tasks, evidenceRequirementMappings: evidence, simulations, safetyRules };
+}
+router.get("/admin/competency-frameworks", async (req, res): Promise<void> => {
+  if (!await authorizeAdmin(req, res)) return;
+  const frameworks = await db.select().from(competencyFrameworksTable);
+  res.json(ListAdminCompetencyFrameworksResponse.parse(await Promise.all(frameworks.map(item => competencyView(item)))));
+});
+router.post("/admin/competency-frameworks", async (req, res): Promise<void> => {
+  const actor = await authorizeAdmin(req, res); if (!actor) return;
+  const input = parsed(CreateAdminCompetencyFrameworkBody, req.body, res); if (!input) return;
+  try {
+    const value = await db.transaction(async tx => {
+      const [record] = await tx.insert(competencyFrameworksTable).values({ ...input, createdBy: `supabase:${actor.authSubject}` }).returning();
+      await audit(tx as typeof db, actor, "create", "competency_framework", record.id, null, record);
+      return competencyView(record, tx);
+    });
+    res.status(201).json(CreateAdminCompetencyFrameworkResponse.parse(await value));
+  } catch { res.status(409).json({ error: "Competency framework code and version already exist" }); }
+});
+router.patch("/admin/competency-frameworks/:frameworkId", async (req, res): Promise<void> => {
+  const actor = await authorizeAdmin(req, res); const params = parsed(UpdateAdminCompetencyFrameworkParams, req.params, res); const input = parsed(UpdateAdminCompetencyFrameworkBody, req.body, res);
+  if (!actor || !params || !input) return;
+  const [before] = await db.select().from(competencyFrameworksTable).where(eq(competencyFrameworksTable.id, params.frameworkId));
+  if (!before) { res.status(404).json({ error: "Competency framework not found" }); return; }
+  try {
+    const value = await db.transaction(async tx => { const [record] = await tx.update(competencyFrameworksTable).set(input).where(eq(competencyFrameworksTable.id, params.frameworkId)).returning(); await audit(tx as typeof db, actor, "update", "competency_framework", record.id, before, record); return competencyView(record, tx); });
+    res.json(UpdateAdminCompetencyFrameworkResponse.parse(await value));
+  } catch { res.status(409).json({ error: "Competency framework update conflicts with existing version" }); }
+});
+router.post("/admin/competency-units", async (req, res): Promise<void> => {
+  const actor = await authorizeAdmin(req, res); if (!actor) return;
+  const input = parsed(CreateAdminCompetencyUnitBody, req.body, res); if (!input) return;
+  try {
+    const value = await db.transaction(async tx => {
+      const { pathwayIds = [], outcomeMappings = [], practiceTaskIds = [], evidenceRequirementIds = [], simulations = [], safetyRules = [], ...unit } = input as any;
+      const [record] = await tx.insert(competencyUnitsTable).values({ ...unit, createdBy: `supabase:${actor.authSubject}` }).returning();
+      if (pathwayIds.length) await tx.insert(pathwayCompetencyUnitsTable).values(pathwayIds.map((pathwayId: string, i: number) => ({ id: crypto.randomUUID(), pathwayId, unitId: record.id, sequence: i + 1, createdBy: `supabase:${actor.authSubject}` })));
+      if (outcomeMappings.length) await tx.insert(competencyUnitOutcomesTable).values(outcomeMappings.map((row: any) => ({ ...row, id: crypto.randomUUID(), unitId: record.id, createdBy: `supabase:${actor.authSubject}` })));
+      if (practiceTaskIds.length) await tx.insert(competencyUnitPracticeTasksTable).values(practiceTaskIds.map((taskId: string) => ({ id: crypto.randomUUID(), unitId: record.id, taskId, createdBy: `supabase:${actor.authSubject}` })));
+      if (evidenceRequirementIds.length) await tx.insert(competencyUnitEvidenceRequirementsTable).values(evidenceRequirementIds.map((requirementId: string) => ({ id: crypto.randomUUID(), unitId: record.id, requirementId, createdBy: `supabase:${actor.authSubject}` })));
+      if (simulations.length) await tx.insert(competencyUnitSimulationsTable).values(simulations.map((row: any) => ({ ...row, id: crypto.randomUUID(), unitId: record.id, createdBy: `supabase:${actor.authSubject}` })));
+      if (safetyRules.length) await tx.insert(competencyUnitSafetyRulesTable).values(safetyRules.map((row: any) => ({ ...row, id: crypto.randomUUID(), unitId: record.id, createdBy: `supabase:${actor.authSubject}` })));
+      await audit(tx as typeof db, actor, "create", "competency_unit", record.id, null, await competencyAggregate(record.id, tx));
+      return competencyView(await tx.select().from(competencyFrameworksTable).where(eq(competencyFrameworksTable.id, record.frameworkId)).then((rows: any[]) => rows[0]), tx);
+    });
+    const framework = await value; const unit = framework.units.find((row: any) => row.id === input.id);
+    res.status(201).json(CreateAdminCompetencyUnitResponse.parse(unit));
+  } catch { res.status(409).json({ error: "Competency unit or mapping conflicts with existing records" }); }
+});
+router.patch("/admin/competency-units/:unitId", async (req, res): Promise<void> => {
+  const actor = await authorizeAdmin(req, res); const params = parsed(UpdateAdminCompetencyUnitParams, req.params, res); const input = parsed(UpdateAdminCompetencyUnitBody, req.body, res);
+  if (!actor || !params || !input) return;
+  try {
+    const value = await db.transaction(async tx => {
+      const [before] = await (tx.select().from(competencyUnitsTable).where(eq(competencyUnitsTable.id, params.unitId)) as any).for("update");
+      if (!before) throw Object.assign(new Error("Competency unit not found"), { code: "NOT_FOUND" });
+      const beforeAggregate = await competencyAggregate(params.unitId, tx);
+      const { pathwayIds, outcomeMappings, practiceTaskIds, evidenceRequirementIds, simulations, safetyRules, ...unit } = input as any;
+      const record = Object.keys(unit).length
+        ? (await tx.update(competencyUnitsTable).set(unit).where(eq(competencyUnitsTable.id, params.unitId)).returning())[0]
+        : before;
+      const createdBy = `supabase:${actor.authSubject}`;
+      if (Object.prototype.hasOwnProperty.call(input, "pathwayIds")) {
+        await tx.delete(pathwayCompetencyUnitsTable).where(eq(pathwayCompetencyUnitsTable.unitId, record.id));
+        if (pathwayIds?.length) await tx.insert(pathwayCompetencyUnitsTable).values(pathwayIds.map((pathwayId: string, i: number) => ({ id: crypto.randomUUID(), pathwayId, unitId: record.id, sequence: i + 1, createdBy })));
+      }
+      if (Object.prototype.hasOwnProperty.call(input, "outcomeMappings")) {
+        await tx.delete(competencyUnitOutcomesTable).where(eq(competencyUnitOutcomesTable.unitId, record.id));
+        if (outcomeMappings?.length) await tx.insert(competencyUnitOutcomesTable).values(outcomeMappings.map((row: any) => ({ ...row, id: crypto.randomUUID(), unitId: record.id, createdBy })));
+      }
+      if (Object.prototype.hasOwnProperty.call(input, "practiceTaskIds")) {
+        await tx.delete(competencyUnitPracticeTasksTable).where(eq(competencyUnitPracticeTasksTable.unitId, record.id));
+        if (practiceTaskIds?.length) await tx.insert(competencyUnitPracticeTasksTable).values(practiceTaskIds.map((taskId: string) => ({ id: crypto.randomUUID(), unitId: record.id, taskId, createdBy })));
+      }
+      if (Object.prototype.hasOwnProperty.call(input, "evidenceRequirementIds")) {
+        await tx.delete(competencyUnitEvidenceRequirementsTable).where(eq(competencyUnitEvidenceRequirementsTable.unitId, record.id));
+        if (evidenceRequirementIds?.length) await tx.insert(competencyUnitEvidenceRequirementsTable).values(evidenceRequirementIds.map((requirementId: string) => ({ id: crypto.randomUUID(), unitId: record.id, requirementId, createdBy })));
+      }
+      if (Object.prototype.hasOwnProperty.call(input, "simulations")) {
+        await tx.delete(competencyUnitSimulationsTable).where(eq(competencyUnitSimulationsTable.unitId, record.id));
+        if (simulations?.length) await tx.insert(competencyUnitSimulationsTable).values(simulations.map((row: any) => ({ ...row, id: crypto.randomUUID(), unitId: record.id, createdBy })));
+      }
+      if (Object.prototype.hasOwnProperty.call(input, "safetyRules")) {
+        await tx.delete(competencyUnitSafetyRulesTable).where(eq(competencyUnitSafetyRulesTable.unitId, record.id));
+        if (safetyRules?.length) await tx.insert(competencyUnitSafetyRulesTable).values(safetyRules.map((row: any) => ({ ...row, id: crypto.randomUUID(), unitId: record.id, createdBy })));
+      }
+      await audit(tx as typeof db, actor, "update", "competency_unit", record.id, beforeAggregate, await competencyAggregate(record.id, tx)); return record;
+    });
+    const framework = await db.select().from(competencyFrameworksTable).where(eq(competencyFrameworksTable.id, value.frameworkId)).then(rows => rows[0]);
+    const refreshed = await competencyView(framework);
+    res.json(UpdateAdminCompetencyUnitResponse.parse(refreshed.units.find((unit: any) => unit.id === value.id)));
+  } catch (error) { if ((error as any).code === "NOT_FOUND") { res.status(404).json({ error: "Competency unit not found" }); return; } res.status(409).json({ error: "Competency unit update conflicts with existing records" }); }
+});
 export default router;

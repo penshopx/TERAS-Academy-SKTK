@@ -28,6 +28,8 @@ import type {
   AdminCohort,
   AdminCohortInput,
   AdminCohortUpdate,
+  AdminCompetencyFramework,
+  AdminCompetencyUnit,
   AdminEnrollment,
   AdminEnrollmentInput,
   AdminEnrollmentUpdate,
@@ -47,6 +49,10 @@ import type {
   AssessorDashboard,
   BadRequestResponse,
   CapabilityPassport,
+  CompetencyFrameworkInput,
+  CompetencyFrameworkUpdate,
+  CompetencyUnitInput,
+  CompetencyUnitUpdate,
   CompleteRemediation409,
   ConflictResponse,
   CourseAuthoringAuditEvent,
@@ -3362,6 +3368,351 @@ export function useGetAdminAccess<TData = Awaited<ReturnType<typeof getAdminAcce
 
 
 
+
+export const getListAdminCompetencyFrameworksUrl = () => {
+
+
+
+
+  return `/api/admin/competency-frameworks`
+}
+
+/**
+ * @summary List configurable competency frameworks and traceability mappings
+ */
+export const listAdminCompetencyFrameworks = async ( options?: Parameters<typeof customFetch>[1]): Promise<AdminCompetencyFramework[]> => {
+
+  return customFetch<AdminCompetencyFramework[]>(getListAdminCompetencyFrameworksUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAdminCompetencyFrameworksQueryKey = () => {
+    return [
+    `/api/admin/competency-frameworks`
+    ] as const;
+    }
+
+
+export const getListAdminCompetencyFrameworksQueryOptions = <TData = Awaited<ReturnType<typeof listAdminCompetencyFrameworks>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminCompetencyFrameworks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAdminCompetencyFrameworksQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminCompetencyFrameworks>>> = ({ signal }) => listAdminCompetencyFrameworks({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAdminCompetencyFrameworks>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAdminCompetencyFrameworksQueryResult = NonNullable<Awaited<ReturnType<typeof listAdminCompetencyFrameworks>>>
+export type ListAdminCompetencyFrameworksQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse>
+
+
+/**
+ * @summary List configurable competency frameworks and traceability mappings
+ */
+
+export function useListAdminCompetencyFrameworks<TData = Awaited<ReturnType<typeof listAdminCompetencyFrameworks>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminCompetencyFrameworks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAdminCompetencyFrameworksQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateAdminCompetencyFrameworkUrl = () => {
+
+
+
+
+  return `/api/admin/competency-frameworks`
+}
+
+export const createAdminCompetencyFramework = async (competencyFrameworkInput: CompetencyFrameworkInput, options?: Parameters<typeof customFetch>[1]): Promise<AdminCompetencyFramework> => {
+
+  return customFetch<AdminCompetencyFramework>(getCreateAdminCompetencyFrameworkUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(competencyFrameworkInput)
+  }
+);}
+
+
+
+
+
+export const getCreateAdminCompetencyFrameworkMutationOptions = <TError = ErrorType<BadRequestResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAdminCompetencyFramework>>, TError,{data: BodyType<CompetencyFrameworkInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAdminCompetencyFramework>>, TError,{data: BodyType<CompetencyFrameworkInput>}, TContext> => {
+
+const mutationKey = ['createAdminCompetencyFramework'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAdminCompetencyFramework>>, {data: BodyType<CompetencyFrameworkInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAdminCompetencyFramework(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAdminCompetencyFrameworkMutationResult = NonNullable<Awaited<ReturnType<typeof createAdminCompetencyFramework>>>
+    export type CreateAdminCompetencyFrameworkMutationBody = BodyType<CompetencyFrameworkInput>
+    export type CreateAdminCompetencyFrameworkMutationError = ErrorType<BadRequestResponse | ForbiddenResponse>
+
+    export const useCreateAdminCompetencyFramework = <TError = ErrorType<BadRequestResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAdminCompetencyFramework>>, TError,{data: BodyType<CompetencyFrameworkInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAdminCompetencyFramework>>,
+        TError,
+        {data: BodyType<CompetencyFrameworkInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAdminCompetencyFrameworkMutationOptions(options));
+    }
+
+export const getUpdateAdminCompetencyFrameworkUrl = (frameworkId: string,) => {
+
+
+
+
+  return `/api/admin/competency-frameworks/${frameworkId}`
+}
+
+export const updateAdminCompetencyFramework = async (frameworkId: string,
+    competencyFrameworkUpdate: CompetencyFrameworkUpdate, options?: Parameters<typeof customFetch>[1]): Promise<AdminCompetencyFramework> => {
+
+  return customFetch<AdminCompetencyFramework>(getUpdateAdminCompetencyFrameworkUrl(frameworkId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(competencyFrameworkUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateAdminCompetencyFrameworkMutationOptions = <TError = ErrorType<NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAdminCompetencyFramework>>, TError,{frameworkId: string;data: BodyType<CompetencyFrameworkUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAdminCompetencyFramework>>, TError,{frameworkId: string;data: BodyType<CompetencyFrameworkUpdate>}, TContext> => {
+
+const mutationKey = ['updateAdminCompetencyFramework'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAdminCompetencyFramework>>, {frameworkId: string;data: BodyType<CompetencyFrameworkUpdate>}> = (props) => {
+          const {frameworkId,data} = props ?? {};
+
+          return  updateAdminCompetencyFramework(frameworkId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAdminCompetencyFrameworkMutationResult = NonNullable<Awaited<ReturnType<typeof updateAdminCompetencyFramework>>>
+    export type UpdateAdminCompetencyFrameworkMutationBody = BodyType<CompetencyFrameworkUpdate>
+    export type UpdateAdminCompetencyFrameworkMutationError = ErrorType<NotFoundResponse>
+
+    export const useUpdateAdminCompetencyFramework = <TError = ErrorType<NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAdminCompetencyFramework>>, TError,{frameworkId: string;data: BodyType<CompetencyFrameworkUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAdminCompetencyFramework>>,
+        TError,
+        {frameworkId: string;data: BodyType<CompetencyFrameworkUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateAdminCompetencyFrameworkMutationOptions(options));
+    }
+
+export const getCreateAdminCompetencyUnitUrl = () => {
+
+
+
+
+  return `/api/admin/competency-units`
+}
+
+/**
+ * @summary Create a competency unit with traceability configuration
+ */
+export const createAdminCompetencyUnit = async (competencyUnitInput: CompetencyUnitInput, options?: Parameters<typeof customFetch>[1]): Promise<AdminCompetencyUnit> => {
+
+  return customFetch<AdminCompetencyUnit>(getCreateAdminCompetencyUnitUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(competencyUnitInput)
+  }
+);}
+
+
+
+
+
+export const getCreateAdminCompetencyUnitMutationOptions = <TError = ErrorType<BadRequestResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAdminCompetencyUnit>>, TError,{data: BodyType<CompetencyUnitInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAdminCompetencyUnit>>, TError,{data: BodyType<CompetencyUnitInput>}, TContext> => {
+
+const mutationKey = ['createAdminCompetencyUnit'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAdminCompetencyUnit>>, {data: BodyType<CompetencyUnitInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAdminCompetencyUnit(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAdminCompetencyUnitMutationResult = NonNullable<Awaited<ReturnType<typeof createAdminCompetencyUnit>>>
+    export type CreateAdminCompetencyUnitMutationBody = BodyType<CompetencyUnitInput>
+    export type CreateAdminCompetencyUnitMutationError = ErrorType<BadRequestResponse | ForbiddenResponse>
+
+    /**
+ * @summary Create a competency unit with traceability configuration
+ */
+export const useCreateAdminCompetencyUnit = <TError = ErrorType<BadRequestResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAdminCompetencyUnit>>, TError,{data: BodyType<CompetencyUnitInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAdminCompetencyUnit>>,
+        TError,
+        {data: BodyType<CompetencyUnitInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAdminCompetencyUnitMutationOptions(options));
+    }
+
+export const getUpdateAdminCompetencyUnitUrl = (unitId: string,) => {
+
+
+
+
+  return `/api/admin/competency-units/${unitId}`
+}
+
+export const updateAdminCompetencyUnit = async (unitId: string,
+    competencyUnitUpdate: CompetencyUnitUpdate, options?: Parameters<typeof customFetch>[1]): Promise<AdminCompetencyUnit> => {
+
+  return customFetch<AdminCompetencyUnit>(getUpdateAdminCompetencyUnitUrl(unitId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(competencyUnitUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateAdminCompetencyUnitMutationOptions = <TError = ErrorType<NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAdminCompetencyUnit>>, TError,{unitId: string;data: BodyType<CompetencyUnitUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAdminCompetencyUnit>>, TError,{unitId: string;data: BodyType<CompetencyUnitUpdate>}, TContext> => {
+
+const mutationKey = ['updateAdminCompetencyUnit'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAdminCompetencyUnit>>, {unitId: string;data: BodyType<CompetencyUnitUpdate>}> = (props) => {
+          const {unitId,data} = props ?? {};
+
+          return  updateAdminCompetencyUnit(unitId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAdminCompetencyUnitMutationResult = NonNullable<Awaited<ReturnType<typeof updateAdminCompetencyUnit>>>
+    export type UpdateAdminCompetencyUnitMutationBody = BodyType<CompetencyUnitUpdate>
+    export type UpdateAdminCompetencyUnitMutationError = ErrorType<NotFoundResponse>
+
+    export const useUpdateAdminCompetencyUnit = <TError = ErrorType<NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAdminCompetencyUnit>>, TError,{unitId: string;data: BodyType<CompetencyUnitUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAdminCompetencyUnit>>,
+        TError,
+        {unitId: string;data: BodyType<CompetencyUnitUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateAdminCompetencyUnitMutationOptions(options));
+    }
 
 export const getListAdminUsersUrl = () => {
 
