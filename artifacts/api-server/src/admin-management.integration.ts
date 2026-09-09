@@ -1,5 +1,5 @@
 import { createIntegrationTestApp } from "./integration-test-app";
-import { adminAccessRequestsTable, adminAuditEventsTable, cohortsTable, db, enrollmentsTable, pathwaysTable, peopleTable, personRolesTable, programsTable } from "@workspace/db";
+import { adminAccessRequestsTable, adminAuditEventsTable, cohortsTable, db, enrollmentsTable, pathwaysTable, peopleTable, personRolesTable, programsTable, readinessGatesTable } from "@workspace/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { updateManagedUser } from "@workspace/db/admin-membership";
 import type { TestAuthorizationIdentity } from "./lib/authorization";
@@ -14,6 +14,8 @@ const ids = {
   cohort: `admin-cohort-${suffix}`, otherCohort: `admin-other-cohort-${suffix}`,
   enrollment: `admin-enrollment-${suffix}`,
 };
+const readinessCode = `CONCURRENT-${suffix}`;
+const readinessAdminSubjects = [`readiness-admin-a-${suffix}`, `readiness-admin-b-${suffix}`] as const;
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 async function run() {
   const schema = await db.execute(sql`select to_regclass('public.teras_admin_audit_events') as audit_table`);
@@ -23,13 +25,25 @@ async function run() {
   let activeIdentity: TestAuthorizationIdentity = { userId: `admin-${suffix}`, role: "super_admin" };
   let promotionRequestId: string | null = null;
   const app = createIntegrationTestApp(
-    () => activeIdentity,
+    request => {
+      const readinessAdminSubject = request.get("x-test-readiness-admin");
+      return readinessAdminSubject
+        ? { userId: readinessAdminSubject, role: "admin" }
+        : activeIdentity;
+    },
     { activeAdminFixtureIds: [ids.administrator, ids.controlAdministrator] },
   );
   const server = await new Promise<ReturnType<typeof app.listen>>(resolve => { const listener = app.listen(0, () => resolve(listener)); });
   const address = server.address(); assert(address && typeof address !== "string", "Test server did not bind");
   const base = `http://127.0.0.1:${address.port}/api`;
-  const request = async (path: string, body?: unknown, method = "POST") => fetch(`${base}${path}`, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const request = async (path: string, body?: unknown, method = "POST", readinessAdminSubject?: string) => fetch(`${base}${path}`, {
+    method,
+    headers: {
+      "content-type": "application/json",
+      ...(readinessAdminSubject ? { "x-test-readiness-admin": readinessAdminSubject } : {}),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
   try {
     for (const [id, name, roles] of [[ids.learner, "Managed Learner", ["learner"]], [ids.trainer, "Managed Trainer", ["trainer"]]] as const) {
       const response = await request("/admin/users", { id, name, initials: name.slice(0, 2), email: `${id}@example.test`, organization: null, clerkUserId: null, status: "active", roles });
@@ -104,6 +118,57 @@ async function run() {
       response = await request("/admin/pathways", { id, programId, name: "Managed Pathway", type: "Standard", outcome: "Safe completion", status: "active" });
       assert(response.status === 201, `Pathway create failed: ${await response.text()}`);
     }
+    const readinessRule = {
+      programId: ids.program,
+      pathwayId: ids.pathway,
+      sequence: 1,
+      code: readinessCode,
+      name: "Concurrent readiness rule",
+      requirement: "Publish without a conflicting active version",
+      assessmentMode: "Mapped",
+      evidenceMode: "Mapped",
+      competencyUnitId: null,
+      threshold: 80,
+      hardGate: false,
+    };
+    const readinessResponses = await Promise.all(readinessAdminSubjects.map((subject, index) =>
+      request(
+        "/admin/readiness-rules",
+        { ...readinessRule, name: `${readinessRule.name} ${index + 1}`, threshold: 80 + index },
+        "POST",
+        subject,
+      ),
+    ));
+    const readinessResponseBodies = await Promise.all(readinessResponses.map(async item => ({
+      status: item.status,
+      body: await item.text(),
+    })));
+    assert(
+      readinessResponseBodies.every(item => item.status === 201),
+      `Both concurrent readiness publications must succeed: ${JSON.stringify(readinessResponseBodies)}`,
+    );
+    const readinessVersions = await db.select().from(readinessGatesTable)
+      .where(and(eq(readinessGatesTable.pathwayId, ids.pathway), eq(readinessGatesTable.code, readinessCode)));
+    const orderedVersions = readinessVersions.map(item => item.ruleVersion).sort((a, b) => a - b);
+    assert(orderedVersions.join(",") === "1,2", `Concurrent readiness versions must be unique and sequential, received ${orderedVersions.join(",")}`);
+    const activeReadinessVersions = readinessVersions.filter(item => item.active);
+    assert(
+      activeReadinessVersions.length === 1 && activeReadinessVersions[0].ruleVersion === 2,
+      "Only the latest concurrent readiness rule version must remain active",
+    );
+    const readinessRuleIds = readinessVersions.map(item => item.id);
+    const readinessAudits = await db.select().from(adminAuditEventsTable)
+      .where(and(
+        inArray(adminAuditEventsTable.entityId, readinessRuleIds),
+        eq(adminAuditEventsTable.action, "publish_rule_version"),
+      ));
+    assert(readinessAudits.length === 2, `Both readiness publications must be audited, received ${readinessAudits.length}`);
+    assert(
+      readinessAdminSubjects.every(subject => readinessAudits.some(event =>
+        event.actorAuthSubject === subject
+        && (event.after as { ruleVersion?: number } | null)?.ruleVersion === readinessVersions.find(rule => rule.id === event.entityId)?.ruleVersion)),
+      "Readiness publication audits must preserve both admin actors and their resulting versions",
+    );
     for (const [id, programId] of [[ids.cohort, ids.program], [ids.otherCohort, ids.otherProgram]] as const) {
       response = await request("/admin/cohorts", { id, programId, name: `Cohort ${id}`, status: "active", startsOn: null, endsOn: null });
       assert(response.status === 201, `Cohort create failed: ${await response.text()}`);
@@ -132,6 +197,8 @@ async function run() {
     }
     await db.delete(adminAuditEventsTable).where(inArray(adminAuditEventsTable.entityId, Object.values(ids)));
     await db.delete(adminAuditEventsTable).where(inArray(adminAuditEventsTable.actorPersonId, [ids.learner, ids.trainer, ids.administrator, ids.controlAdministrator]));
+    await db.delete(adminAuditEventsTable).where(inArray(adminAuditEventsTable.actorAuthSubject, [...readinessAdminSubjects]));
+    await db.delete(readinessGatesTable).where(and(eq(readinessGatesTable.pathwayId, ids.pathway), eq(readinessGatesTable.code, readinessCode)));
     await db.delete(enrollmentsTable).where(eq(enrollmentsTable.id, ids.enrollment));
     await db.delete(cohortsTable).where(inArray(cohortsTable.id, [ids.cohort, ids.otherCohort]));
     await db.delete(pathwaysTable).where(inArray(pathwaysTable.id, [ids.pathway, ids.otherPathway]));
