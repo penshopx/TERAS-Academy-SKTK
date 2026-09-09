@@ -202,7 +202,10 @@ async function seed(): Promise<void> {
     await tx.update(readinessGatesTable).set({ assessmentMode:"All", evidenceMode:"All" }).where(eq(readinessGatesTable.id, id));
   }
   if (includeDemoFixtures) {
-    await insert(readinessEventsTable, [{id:"ready-demo-g1",enrollmentId:"enrol-demo",pathwayId:"path-a",gateId:"gate-g1",status:"Passed",score:55,blockers:[],createdAt:now},{id:"ready-demo-g2",enrollmentId:"enrol-demo",pathwayId:"path-a",gateId:"gate-g2",status:"In progress",score:55,blockers:["Commissioning evidence review pending"],createdAt:now}]);
+    await insert(readinessEventsTable, [
+      { id: "ready-demo-g1", enrollmentId: "enrol-demo", pathwayId: "path-a", gateId: "gate-g1", status: "Ready for Official Assessment", score: 55, blockers: [], decisionReason: "Demo fixture meets the published internal readiness rule.", createdAt: now },
+      { id: "ready-demo-g2", enrollmentId: "enrol-demo", pathwayId: "path-a", gateId: "gate-g2", status: "Developing", score: 55, blockers: ["Commissioning evidence review pending"], decisionReason: "Demo fixture still requires commissioning evidence review.", createdAt: now },
+    ]);
   }
   });
 }
