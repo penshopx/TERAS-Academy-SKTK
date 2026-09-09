@@ -29,3 +29,4 @@
 - [Diagnostic projection integrity](diagnostic-projection-integrity.md) — diagnostic completion is an immutable, atomic projection; keep safety unit-scoped and readiness independent.
 - [Auditable readiness decisions](auditable-readiness-decisions.md) — publish immutable rule versions and snapshot every decision; critical safety is globally non-compensable.
 - [Operational recommendation follow-ups](operational-recommendation-follow-ups.md) — keep trainer action history append-only and separate from diagnostic and readiness decisions.
+- [Integration governance](integration-governance.md) — inspect and map to canonical systems before additive work; verify each merge in isolation before locking it.
