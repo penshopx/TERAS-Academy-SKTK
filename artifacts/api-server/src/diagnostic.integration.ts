@@ -8,15 +8,18 @@ import {
   enrollmentsTable, peopleTable, programsTable, pathwaysTable, competencyFrameworksTable,
   competencyUnitsTable, pathwayCompetencyUnitsTable, diagnosticTemplatesTable,
   diagnosticQuestionsTable,
+  readinessEventsTable,
 } from "@workspace/db";
 import { createIntegrationTestApp } from "./integration-test-app";
 
 const suffix = crypto.randomUUID();
 const learnerA = `diagnostic-a-${suffix}`;
 const learnerB = `diagnostic-b-${suffix}`;
+const learnerC = `diagnostic-c-${suffix}`;
 const enrollmentA = `diagnostic-enrol-a-${suffix}`;
 const enrollmentB = `diagnostic-enrol-b-${suffix}`;
-const ids = [learnerA, learnerB];
+const enrollmentC = `diagnostic-enrol-c-${suffix}`;
+const ids = [learnerA, learnerB, learnerC];
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 
 async function cleanup() {
@@ -36,15 +39,19 @@ async function cleanup() {
     await db.delete(diagnosticResponsesTable).where(inArray(diagnosticResponsesTable.sessionId, sessionIds));
     await db.delete(diagnosticSessionsTable).where(inArray(diagnosticSessionsTable.id, sessionIds));
   }
-  await db.delete(enrollmentsTable).where(inArray(enrollmentsTable.id, [enrollmentA, enrollmentB]));
+  await db.delete(readinessEventsTable).where(inArray(readinessEventsTable.enrollmentId, [enrollmentA, enrollmentB, enrollmentC]));
+  await db.delete(enrollmentsTable).where(inArray(enrollmentsTable.id, [enrollmentA, enrollmentB, enrollmentC]));
   await db.delete(peopleTable).where(inArray(peopleTable.id, ids));
 }
 
 async function run() {
+  const previousDemoAccess = process.env.TERAS_ENABLE_DEMO_ACCESS;
+  delete process.env.TERAS_ENABLE_DEMO_ACCESS;
   const migration = await readFile(new URL("../../../lib/db/migrations/0017_diagnostic.sql", import.meta.url), "utf8");
   await pool.query(migration);
   await db.insert(programsTable).values({ id: "solar-pv-tech", domain: "renewable", name: "Solar PV", description: "Fixture", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
   await db.insert(pathwaysTable).values({ id: "path-a", programId: "solar-pv-tech", name: "Path A", type: "standard", outcome: "Technician", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
+  await db.insert(pathwaysTable).values({ id: "path-b", programId: "solar-pv-tech", name: "Path B", type: "standard", outcome: "Designer", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
   await db.insert(competencyFrameworksTable).values({ id: "framework-skttk-solar-pv", code: "SKTTK", name: "SKTTK", description: "Fixture", domain: "solar", version: "1.0", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
   await db.insert(competencyUnitsTable).values([
     { id: "skttk-u-safe-isolation", frameworkId: "framework-skttk-solar-pv", code: "SAFE", title: "Safety", description: "Safety", sequence: 1, status: "active", createdBy: "diagnostic-test" },
@@ -74,32 +81,49 @@ async function run() {
   await db.insert(peopleTable).values([
     { id: learnerA, name: "Diagnostic A", initials: "DA", email: `${learnerA}@test`, role: "learner", organization: "test", createdBy: learnerA },
     { id: learnerB, name: "Diagnostic B", initials: "DB", email: `${learnerB}@test`, role: "learner", organization: "test", createdBy: learnerB },
+    { id: learnerC, name: "Diagnostic C", initials: "DC", email: `${learnerC}@test`, role: "learner", organization: "test", createdBy: learnerC },
   ]);
   await db.insert(enrollmentsTable).values([
     { id: enrollmentA, learnerId: learnerA, programId: "solar-pv-tech", pathwayId: "path-a", trainerId: null, assessorId: null, createdBy: learnerA },
     { id: enrollmentB, learnerId: learnerB, programId: "solar-pv-tech", pathwayId: "path-a", trainerId: null, assessorId: null, createdBy: learnerB },
+    { id: enrollmentC, learnerId: learnerC, programId: "solar-pv-tech", pathwayId: "path-b", trainerId: null, assessorId: null, createdBy: learnerC },
   ]);
   const app = createIntegrationTestApp(req => {
-    const id = req.get("x-diagnostic-learner");
-    return { userId: id === "b" ? learnerB : learnerA, role: "learner", learnerId: id === "b" ? learnerB : learnerA };
+    const identity = req.get("x-diagnostic-learner");
+    if (identity === "a") return { userId: learnerA, role: "learner", learnerId: learnerA };
+    if (identity === "b") return { userId: learnerB, role: "learner", learnerId: learnerB };
+    if (identity === "c") return { userId: learnerC, role: "learner", learnerId: learnerC };
+    return { userId: null, role: null };
   });
   const server = app.listen(0);
   await new Promise<void>(resolve => server.once("listening", resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
-  const request = async <T>(path: string, options: RequestInit = {}, expected = 200, who = "a"): Promise<T> => {
-    const response = await fetch(`${base}${path}`, { ...options, headers: { "content-type": "application/json", "x-diagnostic-learner": who, ...options.headers } });
+  const request = async <T>(path: string, options: RequestInit = {}, expected = 200, who?: "a" | "b" | "c"): Promise<T> => {
+    const response = await fetch(`${base}${path}`, { ...options, headers: { "content-type": "application/json", ...(who ? { "x-diagnostic-learner": who } : {}), ...options.headers } });
     if (response.status !== expected) throw new Error(`${options.method ?? "GET"} ${path}: expected ${expected}, got ${response.status}: ${await response.text()}`);
     return response.json() as Promise<T>;
   };
-  const put = (path: string, body: unknown, expected = 200, who = "a") => request<any>(path, { method: "PUT", body: JSON.stringify(body) }, expected, who);
+  const put = (path: string, body: unknown, expected = 200, who: "a" | "b" | "c" | undefined = "a") => request<any>(path, { method: "PUT", body: JSON.stringify(body) }, expected, who);
   try {
-    const [beforeA, beforeB] = await Promise.all([request<any>("/diagnostic"), request<any>("/diagnostic", {}, 200, "b")]);
+    const [beforeA, beforeB] = await Promise.all([request<any>("/diagnostic", {}, 200, "a"), request<any>("/diagnostic", {}, 200, "b")]);
     assert(beforeA.template.id === "diag-skttk-spv-v1" && beforeA.session === null && beforeA.questions.length === 6, "diagnostic template output was not validated");
     assert(beforeB.session === null && beforeB.responses?.length === 0, "diagnostic state leaked between learners");
+    await request("/diagnostic", {}, 404, "c");
     const safety = beforeA.questions.find((q: any) => q.id === "diag-q-safety");
-    const sessionA = await request<any>("/diagnostic/sessions", { method: "POST", body: "{}" }, 201);
+    const sessionA = await request<any>("/diagnostic/sessions", { method: "POST", body: "{}" }, 201, "a");
     const sessionB = await request<any>("/diagnostic/sessions", { method: "POST", body: "{}" }, 201, "b");
     assert(sessionA.id !== sessionB.id, "sessions were not isolated");
+    const crossSaveBody = { progress: 25, responses: [{ questionId: safety.id, optionId: "diag-o-safe" }] };
+    const beforeCrossSessions = await db.select().from(diagnosticSessionsTable).where(inArray(diagnosticSessionsTable.id, [sessionA.id, sessionB.id]));
+    const beforeCrossResponses = await db.select().from(diagnosticResponsesTable).where(inArray(diagnosticResponsesTable.sessionId, [sessionA.id, sessionB.id]));
+    await put(`/diagnostic/sessions/${sessionA.id}/responses`, crossSaveBody, 404, "b");
+    await put(`/diagnostic/sessions/${sessionB.id}/responses`, crossSaveBody, 404, "a");
+    await request(`/diagnostic/sessions/${sessionA.id}/complete`, { method: "POST", body: "{}" }, 404, "b");
+    await request(`/diagnostic/sessions/${sessionB.id}/complete`, { method: "POST", body: "{}" }, 404, "a");
+    const afterCrossSessions = await db.select().from(diagnosticSessionsTable).where(inArray(diagnosticSessionsTable.id, [sessionA.id, sessionB.id]));
+    const afterCrossResponses = await db.select().from(diagnosticResponsesTable).where(inArray(diagnosticResponsesTable.sessionId, [sessionA.id, sessionB.id]));
+    assert(JSON.stringify(afterCrossSessions) === JSON.stringify(beforeCrossSessions), "cross-account access changed another learner's diagnostic attempt");
+    assert(JSON.stringify(afterCrossResponses) === JSON.stringify(beforeCrossResponses), "cross-account access changed another learner's diagnostic answers");
     const invalid = await put(`/diagnostic/sessions/${sessionA.id}/responses`, { progress: 10, responses: [{ questionId: safety.id, optionId: "wrong-option" }] }, 400);
     assert(invalid.error === "INVALID_DIAGNOSTIC_QUESTION_OR_OPTION", "invalid question/option was not rejected with a useful error");
     const options = await db.select().from(diagnosticOptionsTable);
@@ -108,7 +132,7 @@ async function run() {
     const incomplete = await put(`/diagnostic/sessions/${sessionA.id}/responses`, { progress: 100, responses: [{ questionId: "diag-q-safety", optionId: option("diag-q-safety", "SAFE_SEQUENCE") }] }, 400);
     assert(incomplete.error === "REQUIRED_DIAGNOSTIC_ANSWERS_MISSING", "completion did not reject missing required answers");
     await put(`/diagnostic/sessions/${sessionA.id}/responses`, { progress: 50, responses: low.slice(0, 2) });
-    const resumed = await request<any>("/diagnostic", {});
+    const resumed = await request<any>("/diagnostic", {}, 200, "a");
     assert(resumed.session.id === sessionA.id && resumed.responses.length === 2, "saved responses did not resume through GET");
     const completeBody = { progress: 100, responses: [
       { questionId: "diag-q-safety", optionId: option("diag-q-safety", "CRITICAL_FAILURE") },
@@ -119,33 +143,51 @@ async function run() {
       { questionId: "diag-q-readiness", optionId: option("diag-q-readiness", "DEVELOPING") },
     ] };
     await put(`/diagnostic/sessions/${sessionA.id}/responses`, completeBody);
-    const readinessBefore = await request<any>("/readiness");
+    const readinessBefore = await request<any>("/readiness", {}, 200, "a");
     const [completed1, completed2] = await Promise.all([
-      request<any>(`/diagnostic/sessions/${sessionA.id}/complete`, { method: "POST", body: "{}" }),
-      request<any>(`/diagnostic/sessions/${sessionA.id}/complete`, { method: "POST", body: "{}" }),
+      request<any>(`/diagnostic/sessions/${sessionA.id}/complete`, { method: "POST", body: "{}" }, 200, "a"),
+      request<any>(`/diagnostic/sessions/${sessionA.id}/complete`, { method: "POST", body: "{}" }, 200, "a"),
     ]);
     assert(completed1.id === completed2.id && completed1.safetyOverride === true, "concurrent completion was not idempotent");
     assert(completed1.pathwayId === "path-a" && Object.values(completed1.dimensionSummaries).some((score: any) => score > 0 && score <= 100), "profile dimensions were not normalized from answered options");
     assert(completed1.items.every((item: any) => Number.isInteger(item.score) && item.score >= 0 && item.score <= 100), "profile item scores were not normalized to 0-100");
-    const profile = await request<any>("/competency-profile");
-    const map = await request<any>("/readiness-map");
+    const profile = await request<any>("/competency-profile", {}, 200, "a");
+    const map = await request<any>("/readiness-map", {}, 200, "a");
     assert(profile.id === completed1.id && map.profile.id === profile.id, "profile/readiness-map output failed validation");
     assert(map.profile.gaps.filter((g: any) => g.severity === "CRITICAL").every((g: any) => g.competencyUnitId === "skttk-u-safe-isolation"), "safety remediation was not scoped to the linked unit");
     assert(map.profile.recommendations.filter((r: any) => r.priority === "URGENT").every((r: any) => r.competencyUnitId === "skttk-u-safe-isolation"), "highest-priority safety remediation leaked to another unit");
     assert(map.profile.recommendations.some((r: any) => r.competencyUnitId === "skttk-u-installation" && r.priority === "HIGH"), "low practice/evidence did not produce mapped recommendations");
-    assert((await request<any>("/diagnostic", {})).responses.length === 6, "completed responses were not returned");
+    assert((await request<any>("/diagnostic", {}, 200, "a")).responses.length === 6, "completed responses were not returned");
     const audits = await db.select({ action: diagnosticAuditEventsTable.action, details: diagnosticAuditEventsTable.details }).from(diagnosticAuditEventsTable).where(eq(diagnosticAuditEventsTable.sessionId, sessionA.id));
     assert(["diagnostic_started", "responses_saved", "profile_generated", "gap_generated", "recommendation_generated", "diagnostic_completed"].every(action => audits.some(a => a.action === action)), "audit event names were incomplete");
     assert(audits.every(a => !JSON.stringify(a.details).includes("I would work live")), "audit stored response content");
-    const readinessAfter = await request<any>("/readiness");
-    assert(JSON.stringify(readinessBefore) === JSON.stringify(readinessAfter), "canonical readiness changed after diagnostic completion");
+    const readinessAfter = await request<any>("/readiness", {}, 200, "a");
+    const stableReadiness = ({ evaluatedAt: _evaluatedAt, ...value }: Record<string, unknown>) => value;
+    assert(JSON.stringify(stableReadiness(readinessBefore)) === JSON.stringify(stableReadiness(readinessAfter)), "canonical readiness changed after diagnostic completion");
     const bStillOwnsSession = await request<any>("/diagnostic", {}, 200, "b");
     assert(bStillOwnsSession.session.id === sessionB.id && bStillOwnsSession.session.status === "in_progress", "learner A completion leaked into learner B");
+    const [dashboardA, dashboardB, journeyA, journeyB] = await Promise.all([
+      request<any>("/learner/dashboard", {}, 200, "a"),
+      request<any>("/learner/dashboard", {}, 200, "b"),
+      request<any[]>("/learner/journey", {}, 200, "a"),
+      request<any[]>("/learner/journey", {}, 200, "b"),
+    ]);
+    assert(dashboardA.learner.id === learnerA && dashboardA.diagnostic.status === "completed", "learner A dashboard did not use learner A diagnostic");
+    assert(dashboardB.learner.id === learnerB && dashboardB.diagnostic.status === "in_progress", "learner B dashboard did not use learner B diagnostic");
+    assert(journeyA.find(step => step.id === "journey-diagnostic")?.status === "Complete", "learner A journey did not use learner A result");
+    assert(journeyB.find(step => step.id === "journey-diagnostic")?.status === "Active", "learner B journey leaked learner A completion");
+    for (const path of ["/diagnostic", "/diagnostic/sessions", "/competency-profile", "/readiness-map", "/learner/dashboard", "/learner/journey"]) {
+      await request(path, path === "/diagnostic/sessions" ? { method: "POST", body: "{}" } : {}, 401);
+    }
+    await request(`/diagnostic/sessions/${sessionA.id}/responses`, { method: "PUT", body: JSON.stringify(crossSaveBody) }, 401);
+    await request(`/diagnostic/sessions/${sessionA.id}/complete`, { method: "POST", body: "{}" }, 401);
     const stored = await db.select().from(diagnosticResponsesTable).where(eq(diagnosticResponsesTable.sessionId, sessionA.id));
     assert(stored.length === 6, "response upsert did not preserve one row per question");
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     await cleanup();
+    if (previousDemoAccess === undefined) delete process.env.TERAS_ENABLE_DEMO_ACCESS;
+    else process.env.TERAS_ENABLE_DEMO_ACCESS = previousDemoAccess;
   }
 }
-run().then(() => process.stdout.write("Diagnostic integration check passed\n")).catch(error => { process.stderr.write(`${error}\n`); process.exitCode = 1; });
+run().then(() => process.stdout.write("Diagnostic integration check passed\n")).catch(error => { console.error(error); process.exitCode = 1; });
