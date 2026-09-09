@@ -1,0 +1,131 @@
+Baik. Dengan keputusan tersebut, **baseline arsitektur dan urutan implementasi TERAS SKTTK sudah cukup matang untuk dijadikan development governance**.
+
+Saya akan mempertahankan urutan ini sebagai acuan pembahasan berikutnya:
+
+```text
+PHASE 1
+Foundation
+LOCKED
+   │
+   ▼
+TASK #2
+SKTTK Competency Framework
+IN PROGRESS
+   │
+   ▼
+INTEGRATION REVIEW
+Framework
+    ↕
+Diagnostic
+    ↕
+Existing LMS
+   │
+   ▼
+TASK #1
+Personal Diagnostic
+    │
+    ├── Current Competency State
+    ├── Competency Gaps
+    ├── Personal Competency Profile
+    └── Personal Readiness Map
+   │
+   ▼
+INTEGRATION STABILIZATION
+   │
+   ▼
+TASK #3
+Configurable Readiness Rules
+   │
+   ├── Competency thresholds
+   ├── Required evidence
+   ├── Simulation requirements
+   ├── Mandatory conditions
+   └── Critical Safety Hard Gate
+   │
+   ▼
+READINESS ENGINE
+```
+
+### Satu prinsip arsitektur yang harus dijaga
+
+Jangan sampai terjadi:
+
+> **Diagnostic → skor → rekomendasi**
+
+tetapi harus menjadi:
+
+> **Diagnostic → kondisi aktual → mapping kompetensi → gap → learning/practice/evidence action**
+
+Sehingga nantinya data TERAS mempunyai hubungan kausal yang jelas:
+
+```text
+SKTTK Target
+     ↓
+Competency Unit
+     ↓
+Element
+     ↓
+KUK
+     ↓
+Current State
+     ↓
+Gap
+     ↓
+Learning
+     ↓
+Practice
+     ↓
+Preparation Evidence
+     ↓
+Simulation
+     ↓
+Safety
+     ↓
+Readiness
+```
+
+Dengan struktur ini, **LMS bukan berdiri sendiri**. LMS menjadi mesin intervensi untuk menutup gap kompetensi yang ditemukan Diagnostic.
+
+Dan **Readiness bukan sekadar hasil nilai LMS**. Readiness menjadi hasil dari perjalanan capability yang dapat ditelusuri kembali ke kompetensi, praktik, evidence, simulation, dan safety.
+
+### Governance untuk Replit Agent
+
+Untuk setiap task berikutnya, gunakan aturan sederhana:
+
+**DO NOT REBUILD → INSPECT → MAP → EXTEND → TEST**
+
+Artinya Agent wajib:
+
+1. membaca arsitektur yang sudah ada;
+2. mencari entity/service/component yang sudah tersedia;
+3. menggunakan kembali yang kompatibel;
+4. menambahkan hanya yang benar-benar diperlukan;
+5. menjaga route dan kontrak existing;
+6. menjalankan regression test;
+7. memastikan state antar-modul tetap konsisten.
+
+Dengan demikian kita tidak akan berakhir dengan **tiga sistem yang masing-masing mempunyai definisi competency, evidence, progress, dan readiness sendiri-sendiri**.
+
+Target akhirnya harus satu **TERAS Core Engine** dengan SKTTK sebagai domain competency pertama.
+
+```text
+                 TERAS CORE
+                     │
+       ┌─────────────┼─────────────┐
+       │             │             │
+    Learning      Practice      Evidence
+       │             │             │
+       └─────────────┼─────────────┘
+                     │
+                 Simulation
+                     │
+              Safety Gate
+                     │
+                Readiness
+                     │
+             Capability Passport
+                     │
+              Gustafta Handoff
+```
+
+**Jadi untuk sekarang tidak perlu ada perubahan kode tambahan. Biarkan Task #2 berjalan sampai selesai. Setelah itu, langkah paling bernilai adalah melakukan Integration Review sebelum Task #1 dieksekusi.**

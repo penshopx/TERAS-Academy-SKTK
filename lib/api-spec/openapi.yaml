@@ -403,6 +403,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReadinessSummary"
+  /diagnostic:
+    get:
+      operationId: getDiagnostic
+      tags: [learner]
+      summary: Get the active personal diagnostic template and progress
+      responses:
+        "200":
+          description: Diagnostic template and current session
+          content: { application/json: { schema: { $ref: "#/components/schemas/Diagnostic" } } }
+  /diagnostic/sessions:
+    post:
+      operationId: startDiagnosticSession
+      tags: [learner]
+      summary: Start or resume the active diagnostic session
+      requestBody:
+        required: false
+        content: { application/json: { schema: { $ref: "#/components/schemas/DiagnosticSessionInput" } } }
+      responses:
+        "200": { description: Existing session, content: { application/json: { schema: { $ref: "#/components/schemas/DiagnosticSession" } } } }
+        "201": { description: New session, content: { application/json: { schema: { $ref: "#/components/schemas/DiagnosticSession" } } } }
+  /diagnostic/sessions/{sessionId}/responses:
+    put:
+      operationId: saveDiagnosticResponses
+      tags: [learner]
+      parameters: [{ $ref: "#/components/parameters/DiagnosticSessionId" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/DiagnosticResponsesInput" } } }
+      responses:
+        "200": { description: Saved progress, content: { application/json: { schema: { $ref: "#/components/schemas/DiagnosticSession" } } } }
+  /diagnostic/sessions/{sessionId}/complete:
+    post:
+      operationId: completeDiagnosticSession
+      tags: [learner]
+      parameters: [{ $ref: "#/components/parameters/DiagnosticSessionId" }]
+      responses:
+        "200": { description: Completed profile, content: { application/json: { schema: { $ref: "#/components/schemas/CompetencyProfile" } } } }
+  /competency-profile:
+    get:
+      operationId: getCompetencyProfile
+      tags: [learner]
+      responses:
+        "200": { description: Latest personal profile, content: { application/json: { schema: { $ref: "#/components/schemas/CompetencyProfile" } } } }
+  /readiness-map:
+    get:
+      operationId: getReadinessMap
+      tags: [learner]
+      responses:
+        "200": { description: Personal readiness map, content: { application/json: { schema: { $ref: "#/components/schemas/ReadinessMap" } } } }
   /passport:
     get:
       operationId: getCapabilityPassport
@@ -2198,6 +2247,11 @@ components:
       required: true
       schema:
         type: string
+    DiagnosticSessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
     RemediationId:
       name: remediationId
       in: path
@@ -2247,6 +2301,135 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    DiagnosticSessionInput:
+      type: object
+      properties: {}
+    DiagnosticResponseInput:
+      type: object
+      required: [questionId, optionId]
+      properties:
+        questionId: { type: string }
+        optionId: { type: string }
+    DiagnosticResponsesInput:
+      type: object
+      required: [responses, progress]
+      properties:
+        responses:
+          type: array
+          items: { $ref: "#/components/schemas/DiagnosticResponseInput" }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+    DiagnosticOption:
+      type: object
+      required: [id, code, label, score]
+      properties:
+        id: { type: string }
+        code: { type: string }
+        label: { type: string }
+        score: { type: integer }
+        safetyOutcome: { type: ["string", "null"] }
+    DiagnosticTemplate:
+      type: object
+      required: [id, frameworkId, pathwayId, version, name, description, status, dimensions]
+      properties:
+        id: { type: string }
+        frameworkId: { type: string }
+        pathwayId: { type: string }
+        version: { type: string }
+        name: { type: string }
+        description: { type: string }
+        status: { type: string }
+        dimensions: { type: array, items: { type: string } }
+    DiagnosticResponse:
+      type: object
+      required: [questionId, optionId]
+      properties:
+        questionId: { type: string }
+        optionId: { type: string }
+    DiagnosticQuestion:
+      type: object
+      required: [id, dimension, questionType, prompt, explanation, difficulty, sequence, required, competencyUnitId, options]
+      properties:
+        id: { type: string }
+        dimension: { type: string }
+        questionType: { type: string, enum: [single_choice, rating, experience, evidence, scenario] }
+        prompt: { type: string }
+        explanation: { type: ["string", "null"] }
+        difficulty: { type: string }
+        sequence: { type: integer }
+        required: { type: boolean }
+        competencyUnitId: { type: ["string", "null"] }
+        options: { type: array, items: { $ref: "#/components/schemas/DiagnosticOption" } }
+    DiagnosticSession:
+      type: object
+      required: [id, status, progress, pathwayId, templateId]
+      properties:
+        id: { type: string }
+        status: { type: string }
+        progress: { type: integer }
+        pathwayId: { type: string }
+        templateId: { type: string }
+        completedAt: { type: ["string", "null"], format: date-time }
+    Diagnostic:
+      type: object
+      required: [template, session, questions]
+      properties:
+        template: { $ref: "#/components/schemas/DiagnosticTemplate" }
+        session: { anyOf: [{ $ref: "#/components/schemas/DiagnosticSession" }, { type: "null" }] }
+        questions: { type: array, items: { $ref: "#/components/schemas/DiagnosticQuestion" } }
+        responses: { type: array, items: { $ref: "#/components/schemas/DiagnosticResponse" } }
+    CompetencyProfileItem:
+      type: object
+      required: [competencyUnitId, unitCode, unitTitle, state, score, evidenceLevel]
+      properties:
+        competencyUnitId: { type: string }
+        unitCode: { type: string }
+        unitTitle: { type: string }
+        state: { type: string }
+        score: { type: integer, minimum: 0, maximum: 100 }
+        evidenceLevel: { type: string }
+    DiagnosticGap:
+      type: object
+      required: [id, competencyUnitId, diagnosis, severity]
+      properties:
+        id: { type: string }
+        competencyUnitId: { type: string }
+        unitCode: { type: string }
+        unitTitle: { type: string }
+        diagnosis: { type: string }
+        severity: { type: string }
+    DiagnosticRecommendation:
+      type: object
+      required: [id, competencyUnitId, kind, title, rationale, priority, href]
+      properties:
+        id: { type: string }
+        competencyUnitId: { type: ["string", "null"] }
+        unitCode: { type: string }
+        unitTitle: { type: string }
+        kind: { type: string }
+        title: { type: string }
+        rationale: { type: string }
+        priority: { type: string }
+        href: { type: ["string", "null"] }
+    CompetencyProfile:
+      type: object
+      required: [id, frameworkId, frameworkVersion, pathwayId, currentState, safetyOverride, dimensionSummaries, items, gaps, recommendations]
+      properties:
+        id: { type: string }
+        frameworkId: { type: string }
+        frameworkVersion: { type: string }
+        pathwayId: { type: string }
+        currentState: { type: string }
+        safetyOverride: { type: boolean }
+        dimensionSummaries: { type: object, additionalProperties: { type: number } }
+        items: { type: array, items: { $ref: "#/components/schemas/CompetencyProfileItem" } }
+        gaps: { type: array, items: { $ref: "#/components/schemas/DiagnosticGap" } }
+        recommendations: { type: array, items: { $ref: "#/components/schemas/DiagnosticRecommendation" } }
+    ReadinessMap:
+      type: object
+      required: [profile, readiness]
+      properties:
+        profile: { $ref: "#/components/schemas/CompetencyProfile" }
+        readiness: { $ref: "#/components/schemas/ReadinessSummary" }
     CompetencyFrameworkInput:
       type: object
       required: [id, code, name, description, domain, version, status]

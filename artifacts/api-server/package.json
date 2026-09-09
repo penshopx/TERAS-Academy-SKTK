@@ -17,6 +17,7 @@
     "test:learner-provisioning": "NODE_ENV=test tsx ./src/learner-provisioning.integration.ts",
     "test:learner-isolation": "NODE_ENV=test tsx ./src/learner-isolation.integration.ts",
     "test:readiness-dashboard-isolation": "NODE_ENV=test tsx ./src/readiness-dashboard-isolation.integration.ts",
+    "test:diagnostic": "NODE_ENV=test tsx ./src/diagnostic.integration.ts",
     "test:admin-authorization": "NODE_ENV=test tsx ./src/admin-authorization.integration.ts",
     "test:competency": "NODE_ENV=test tsx ./src/competency.integration.ts",
     "test:super-admin-mfa-policy": "tsx --test ./src/lib/super-admin-mfa-policy.test.ts",

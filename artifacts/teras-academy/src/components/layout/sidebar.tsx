@@ -4,13 +4,16 @@ import { getGetCurrentSessionQueryKey, useGetCurrentSession } from "@workspace/a
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
-  Activity, BookOpen, CheckCircle, Target, ListTodo, Map, Award, UserSquare2, Layers, Briefcase, FileSignature, ShieldAlert, Settings, LogOut
+  Activity, BookOpen, CheckCircle, Target, ListTodo, Map, Award, UserSquare2, Layers, Briefcase, FileSignature, ShieldAlert, Settings, LogOut, Compass, Network, Fingerprint
 } from "lucide-react";
 import { useSupabaseAuth } from "@/lib/supabase-auth";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: Activity },
-  { href: "/journey", label: "Journey", icon: Map },
+  { href: "/diagnostic", label: "Diagnostic", icon: Fingerprint },
+  { href: "/competency-profile", label: "Competency Profile", icon: UserSquare2 },
+  { href: "/readiness-map", label: "Readiness Map", icon: Network },
+  { href: "/journey", label: "Journey", icon: Compass },
   { href: "/learning-plan", label: "Learning Plan", icon: ListTodo },
   { href: "/learning", label: "Learning", icon: BookOpen },
   { href: "/programs", label: "Programs", icon: Layers },

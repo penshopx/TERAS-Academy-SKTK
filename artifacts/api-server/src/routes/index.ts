@@ -9,6 +9,7 @@ import adminRouter from "./admin";
 import courseAuthoringRouter from "./course-authoring";
 import storageRouter from "./storage";
 import knowledgeRouter from "./knowledge";
+import diagnosticRouter from "./diagnostic";
 import sessionRouter from "./session";
 
 const router: IRouter = Router();
@@ -24,5 +25,6 @@ router.use(storageRouter);
 router.use(learningRouter);
 router.use(adminRouter);
 router.use(knowledgeRouter);
+router.use(diagnosticRouter);
 
 export default router;

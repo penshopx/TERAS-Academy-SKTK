@@ -26,3 +26,4 @@
 - [Assistant runtime grounding](assistant-runtime-grounding.md) — keep canonical TERAS context available when Production has no published Knowledge rows; never fall through to ungrounded chat.
 - [TERAS SKTTK phase sequencing](teras-skttk-phase-sequencing.md) — finish the competency framework and integration review before building diagnostic and readiness rules.
 - [Nested aggregate mutation audits](nested-aggregate-mutation-audits.md) — PATCH preserves omitted child collections; audit locked before/after aggregates inside the write transaction.
+- [Diagnostic projection integrity](diagnostic-projection-integrity.md) — diagnostic completion is an immutable, atomic projection; keep safety unit-scoped and readiness independent.

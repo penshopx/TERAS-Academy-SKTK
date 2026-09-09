@@ -35,6 +35,9 @@ import Assessments from '@/pages/assessments';
 import AssessmentDetail from '@/pages/assessment-detail';
 import GapsAndRemediation from '@/pages/gaps';
 import Readiness from '@/pages/readiness';
+import ReadinessMap from '@/pages/readiness-map';
+import Diagnostic from '@/pages/diagnostic';
+import CompetencyProfile from '@/pages/competency-profile';
 import Passport from '@/pages/passport';
 import TrainerDesk from '@/pages/trainer';
 import AssessorDesk from '@/pages/assessor';
@@ -669,6 +672,9 @@ function WorkspaceRoutes() {
             <Route path="/remediation" component={GapsAndRemediation} />
             <Route path="/readiness" component={Readiness} />
             <Route path="/passport" component={Passport} />
+            <Route path="/diagnostic" component={Diagnostic} />
+            <Route path="/competency-profile" component={CompetencyProfile} />
+            <Route path="/readiness-map" component={ReadinessMap} />
             <Route path="/trainer" component={TrainerDesk} />
             <Route path="/assessor" component={AssessorDesk} />
             <Route path="/admin" component={Admin} />
@@ -831,6 +837,9 @@ function IntegrationTestApp() {
                 <Route path="/practice" component={Practice} />
                 <Route path="/evidence" component={Evidence} />
                 <Route path="/dashboard" component={Dashboard} />
+                <Route path="/diagnostic" component={Diagnostic} />
+                <Route path="/competency-profile" component={CompetencyProfile} />
+                <Route path="/readiness-map" component={ReadinessMap} />
                 <Route path="/trainer" component={TrainerDesk} />
                 <Route path="/assessor" component={AssessorDesk} />
                 <Route path="/admin" component={Admin} />

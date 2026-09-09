@@ -726,6 +726,284 @@ export const GetLearnerReadinessResponse = zod.object({
 
 
 /**
+ * @summary Get the active personal diagnostic template and progress
+ */
+export const GetDiagnosticResponse = zod.object({
+  "template": zod.object({
+  "id": zod.string(),
+  "frameworkId": zod.string(),
+  "pathwayId": zod.string(),
+  "version": zod.string(),
+  "name": zod.string(),
+  "description": zod.string(),
+  "status": zod.string(),
+  "dimensions": zod.array(zod.string())
+}),
+  "session": zod.union([zod.object({
+  "id": zod.string(),
+  "status": zod.string(),
+  "progress": zod.int(),
+  "pathwayId": zod.string(),
+  "templateId": zod.string(),
+  "completedAt": zod.coerce.date().nullish()
+}),zod.null()]),
+  "questions": zod.array(zod.object({
+  "id": zod.string(),
+  "dimension": zod.string(),
+  "questionType": zod.enum(['single_choice', 'rating', 'experience', 'evidence', 'scenario']),
+  "prompt": zod.string(),
+  "explanation": zod.string().nullable(),
+  "difficulty": zod.string(),
+  "sequence": zod.int(),
+  "required": zod.boolean(),
+  "competencyUnitId": zod.string().nullable(),
+  "options": zod.array(zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "label": zod.string(),
+  "score": zod.int(),
+  "safetyOutcome": zod.string().nullish()
+}))
+})),
+  "responses": zod.array(zod.object({
+  "questionId": zod.string(),
+  "optionId": zod.string()
+})).optional()
+})
+
+
+/**
+ * @summary Start or resume the active diagnostic session
+ */
+export const StartDiagnosticSessionBody = zod.looseObject({
+
+})
+
+export const StartDiagnosticSessionResponse = zod.object({
+  "id": zod.string(),
+  "status": zod.string(),
+  "progress": zod.int(),
+  "pathwayId": zod.string(),
+  "templateId": zod.string(),
+  "completedAt": zod.coerce.date().nullish()
+})
+
+
+
+
+
+export const SaveDiagnosticResponsesParams = zod.object({
+  "sessionId": zod.coerce.string().min(1)
+})
+
+export const saveDiagnosticResponsesBodyProgressMin = 0;
+export const saveDiagnosticResponsesBodyProgressMax = 100;
+
+
+
+export const SaveDiagnosticResponsesBody = zod.object({
+  "responses": zod.array(zod.object({
+  "questionId": zod.string(),
+  "optionId": zod.string()
+})),
+  "progress": zod.int().min(saveDiagnosticResponsesBodyProgressMin).max(saveDiagnosticResponsesBodyProgressMax)
+})
+
+export const SaveDiagnosticResponsesResponse = zod.object({
+  "id": zod.string(),
+  "status": zod.string(),
+  "progress": zod.int(),
+  "pathwayId": zod.string(),
+  "templateId": zod.string(),
+  "completedAt": zod.coerce.date().nullish()
+})
+
+
+
+
+
+export const CompleteDiagnosticSessionParams = zod.object({
+  "sessionId": zod.coerce.string().min(1)
+})
+
+export const completeDiagnosticSessionResponseItemsItemScoreMin = 0;
+export const completeDiagnosticSessionResponseItemsItemScoreMax = 100;
+
+
+
+export const CompleteDiagnosticSessionResponse = zod.object({
+  "id": zod.string(),
+  "frameworkId": zod.string(),
+  "frameworkVersion": zod.string(),
+  "pathwayId": zod.string(),
+  "currentState": zod.string(),
+  "safetyOverride": zod.boolean(),
+  "dimensionSummaries": zod.record(zod.string(), zod.number()),
+  "items": zod.array(zod.object({
+  "competencyUnitId": zod.string(),
+  "unitCode": zod.string(),
+  "unitTitle": zod.string(),
+  "state": zod.string(),
+  "score": zod.int().min(completeDiagnosticSessionResponseItemsItemScoreMin).max(completeDiagnosticSessionResponseItemsItemScoreMax),
+  "evidenceLevel": zod.string()
+})),
+  "gaps": zod.array(zod.object({
+  "id": zod.string(),
+  "competencyUnitId": zod.string(),
+  "unitCode": zod.string().optional(),
+  "unitTitle": zod.string().optional(),
+  "diagnosis": zod.string(),
+  "severity": zod.string()
+})),
+  "recommendations": zod.array(zod.object({
+  "id": zod.string(),
+  "competencyUnitId": zod.string().nullable(),
+  "unitCode": zod.string().optional(),
+  "unitTitle": zod.string().optional(),
+  "kind": zod.string(),
+  "title": zod.string(),
+  "rationale": zod.string(),
+  "priority": zod.string(),
+  "href": zod.string().nullable()
+}))
+})
+
+
+export const getCompetencyProfileResponseItemsItemScoreMin = 0;
+export const getCompetencyProfileResponseItemsItemScoreMax = 100;
+
+
+
+export const GetCompetencyProfileResponse = zod.object({
+  "id": zod.string(),
+  "frameworkId": zod.string(),
+  "frameworkVersion": zod.string(),
+  "pathwayId": zod.string(),
+  "currentState": zod.string(),
+  "safetyOverride": zod.boolean(),
+  "dimensionSummaries": zod.record(zod.string(), zod.number()),
+  "items": zod.array(zod.object({
+  "competencyUnitId": zod.string(),
+  "unitCode": zod.string(),
+  "unitTitle": zod.string(),
+  "state": zod.string(),
+  "score": zod.int().min(getCompetencyProfileResponseItemsItemScoreMin).max(getCompetencyProfileResponseItemsItemScoreMax),
+  "evidenceLevel": zod.string()
+})),
+  "gaps": zod.array(zod.object({
+  "id": zod.string(),
+  "competencyUnitId": zod.string(),
+  "unitCode": zod.string().optional(),
+  "unitTitle": zod.string().optional(),
+  "diagnosis": zod.string(),
+  "severity": zod.string()
+})),
+  "recommendations": zod.array(zod.object({
+  "id": zod.string(),
+  "competencyUnitId": zod.string().nullable(),
+  "unitCode": zod.string().optional(),
+  "unitTitle": zod.string().optional(),
+  "kind": zod.string(),
+  "title": zod.string(),
+  "rationale": zod.string(),
+  "priority": zod.string(),
+  "href": zod.string().nullable()
+}))
+})
+
+
+export const getReadinessMapResponseProfileItemsItemScoreMin = 0;
+export const getReadinessMapResponseProfileItemsItemScoreMax = 100;
+
+export const getReadinessMapResponseReadinessScoreMin = 0;
+export const getReadinessMapResponseReadinessScoreMax = 100;
+
+
+
+export const GetReadinessMapResponse = zod.object({
+  "profile": zod.object({
+  "id": zod.string(),
+  "frameworkId": zod.string(),
+  "frameworkVersion": zod.string(),
+  "pathwayId": zod.string(),
+  "currentState": zod.string(),
+  "safetyOverride": zod.boolean(),
+  "dimensionSummaries": zod.record(zod.string(), zod.number()),
+  "items": zod.array(zod.object({
+  "competencyUnitId": zod.string(),
+  "unitCode": zod.string(),
+  "unitTitle": zod.string(),
+  "state": zod.string(),
+  "score": zod.int().min(getReadinessMapResponseProfileItemsItemScoreMin).max(getReadinessMapResponseProfileItemsItemScoreMax),
+  "evidenceLevel": zod.string()
+})),
+  "gaps": zod.array(zod.object({
+  "id": zod.string(),
+  "competencyUnitId": zod.string(),
+  "unitCode": zod.string().optional(),
+  "unitTitle": zod.string().optional(),
+  "diagnosis": zod.string(),
+  "severity": zod.string()
+})),
+  "recommendations": zod.array(zod.object({
+  "id": zod.string(),
+  "competencyUnitId": zod.string().nullable(),
+  "unitCode": zod.string().optional(),
+  "unitTitle": zod.string().optional(),
+  "kind": zod.string(),
+  "title": zod.string(),
+  "rationale": zod.string(),
+  "priority": zod.string(),
+  "href": zod.string().nullable()
+}))
+}),
+  "readiness": zod.object({
+  "pathway": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "outcome": zod.string(),
+  "moduleCount": zod.int(),
+  "gateCount": zod.int(),
+  "gates": zod.array(zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "sequence": zod.int(),
+  "requirement": zod.string()
+}))
+}),
+  "status": zod.string(),
+  "score": zod.int().min(getReadinessMapResponseReadinessScoreMin).max(getReadinessMapResponseReadinessScoreMax),
+  "currentGate": zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "status": zod.string(),
+  "requirement": zod.string()
+}),
+  "nextGate": zod.union([zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "status": zod.string(),
+  "requirement": zod.string()
+}),zod.null()]),
+  "gates": zod.array(zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "status": zod.string(),
+  "requirement": zod.string()
+})),
+  "blockers": zod.array(zod.string()),
+  "outstandingGapCount": zod.int(),
+  "missingEvidenceCount": zod.int()
+})
+})
+
+
+/**
  * @summary Get the longitudinal capability passport
  */
 export const getCapabilityPassportResponseReadinessScoreMin = 0;

@@ -48,6 +48,10 @@ if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_people') IS
   # its normalized tables on existing installations.
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0016_competency_frameworks.sql
+  # Preserve diagnostic templates, sessions, and learner readiness projections
+  # when upgrading an existing installation.
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0017_diagnostic.sql
 fi
 if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_content_resources') IS NOT NULL")" = "t" ]; then
   TERAS_MIGRATION_ACTOR=post-merge-upgrade \
@@ -77,6 +81,8 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0014_knowledge_not_found_topics.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0016_competency_frameworks.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0017_diagnostic.sql
 if [ "$(pnpm --silent --filter @workspace/scripts run demo:fixtures-enabled)" = "1" ]; then
   pnpm --filter @workspace/scripts run seed:demo
 else

@@ -5,6 +5,188 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+export interface DiagnosticSessionInput { [key: string]: unknown }
+
+export interface DiagnosticResponseInput {
+  questionId: string;
+  optionId: string;
+}
+
+export interface DiagnosticResponsesInput {
+  responses: DiagnosticResponseInput[];
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progress: number;
+}
+
+export interface DiagnosticOption {
+  id: string;
+  code: string;
+  label: string;
+  score: number;
+  /** @nullable */
+  safetyOutcome?: string | null;
+}
+
+export interface DiagnosticTemplate {
+  id: string;
+  frameworkId: string;
+  pathwayId: string;
+  version: string;
+  name: string;
+  description: string;
+  status: string;
+  dimensions: string[];
+}
+
+export interface DiagnosticResponse {
+  questionId: string;
+  optionId: string;
+}
+
+export type DiagnosticQuestionQuestionType = typeof DiagnosticQuestionQuestionType[keyof typeof DiagnosticQuestionQuestionType];
+
+
+export const DiagnosticQuestionQuestionType = {
+  single_choice: 'single_choice',
+  rating: 'rating',
+  experience: 'experience',
+  evidence: 'evidence',
+  scenario: 'scenario',
+} as const;
+
+export interface DiagnosticQuestion {
+  id: string;
+  dimension: string;
+  questionType: DiagnosticQuestionQuestionType;
+  prompt: string;
+  /** @nullable */
+  explanation: string | null;
+  difficulty: string;
+  sequence: number;
+  required: boolean;
+  /** @nullable */
+  competencyUnitId: string | null;
+  options: DiagnosticOption[];
+}
+
+export interface DiagnosticSession {
+  id: string;
+  status: string;
+  progress: number;
+  pathwayId: string;
+  templateId: string;
+  /** @nullable */
+  completedAt?: string | null;
+}
+
+export interface Diagnostic {
+  template: DiagnosticTemplate;
+  session: DiagnosticSession | null;
+  questions: DiagnosticQuestion[];
+  responses?: DiagnosticResponse[];
+}
+
+export interface CompetencyProfileItem {
+  competencyUnitId: string;
+  unitCode: string;
+  unitTitle: string;
+  state: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  score: number;
+  evidenceLevel: string;
+}
+
+export interface DiagnosticGap {
+  id: string;
+  competencyUnitId: string;
+  unitCode?: string;
+  unitTitle?: string;
+  diagnosis: string;
+  severity: string;
+}
+
+export interface DiagnosticRecommendation {
+  id: string;
+  /** @nullable */
+  competencyUnitId: string | null;
+  unitCode?: string;
+  unitTitle?: string;
+  kind: string;
+  title: string;
+  rationale: string;
+  priority: string;
+  /** @nullable */
+  href: string | null;
+}
+
+export type CompetencyProfileDimensionSummaries = {[key: string]: number};
+
+export interface CompetencyProfile {
+  id: string;
+  frameworkId: string;
+  frameworkVersion: string;
+  pathwayId: string;
+  currentState: string;
+  safetyOverride: boolean;
+  dimensionSummaries: CompetencyProfileDimensionSummaries;
+  items: CompetencyProfileItem[];
+  gaps: DiagnosticGap[];
+  recommendations: DiagnosticRecommendation[];
+}
+
+export interface ReadinessGateSummary {
+  id: string;
+  code: string;
+  name: string;
+  sequence: number;
+  requirement: string;
+}
+
+export interface PathwaySummary {
+  id: string;
+  name: string;
+  type: string;
+  outcome: string;
+  moduleCount: number;
+  gateCount: number;
+  gates: ReadinessGateSummary[];
+}
+
+export interface GateProgress {
+  id: string;
+  code: string;
+  name: string;
+  status: string;
+  requirement: string;
+}
+
+export interface ReadinessSummary {
+  pathway: PathwaySummary;
+  status: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  score: number;
+  currentGate: GateProgress;
+  nextGate: GateProgress | null;
+  gates: GateProgress[];
+  blockers: string[];
+  outstandingGapCount: number;
+  missingEvidenceCount: number;
+}
+
+export interface ReadinessMap {
+  profile: CompetencyProfile;
+  readiness: ReadinessSummary;
+}
+
 export type CompetencyFrameworkInputStatus = typeof CompetencyFrameworkInputStatus[keyof typeof CompetencyFrameworkInputStatus];
 
 
@@ -1307,24 +1489,6 @@ export interface ProgramSummary {
   status: string;
 }
 
-export interface ReadinessGateSummary {
-  id: string;
-  code: string;
-  name: string;
-  sequence: number;
-  requirement: string;
-}
-
-export interface PathwaySummary {
-  id: string;
-  name: string;
-  type: string;
-  outcome: string;
-  moduleCount: number;
-  gateCount: number;
-  gates: ReadinessGateSummary[];
-}
-
 export interface ModuleSummary {
   id: string;
   code: string;
@@ -1376,30 +1540,6 @@ export interface LearnerProfile {
   role: string;
   /** @nullable */
   organization: string | null;
-}
-
-export interface GateProgress {
-  id: string;
-  code: string;
-  name: string;
-  status: string;
-  requirement: string;
-}
-
-export interface ReadinessSummary {
-  pathway: PathwaySummary;
-  status: string;
-  /**
-     * @minimum 0
-     * @maximum 100
-     */
-  score: number;
-  currentGate: GateProgress;
-  nextGate: GateProgress | null;
-  gates: GateProgress[];
-  blockers: string[];
-  outstandingGapCount: number;
-  missingEvidenceCount: number;
 }
 
 export interface PracticeTask {

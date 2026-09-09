@@ -1,9 +1,9 @@
-import { getGetAdminLearnerDashboardProjectionQueryKey, getGetCurrentSessionQueryKey, getGetLearnerDashboardQueryKey, useGetAdminLearnerDashboardProjection, useGetCurrentSession, useGetLearnerDashboard } from "@workspace/api-client-react";
+import { getGetAdminLearnerDashboardProjectionQueryKey, getGetCurrentSessionQueryKey, getGetLearnerDashboardQueryKey, getGetDiagnosticQueryKey, useGetAdminLearnerDashboardProjection, useGetCurrentSession, useGetLearnerDashboard, useGetDiagnostic } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Activity, AlertTriangle, ArrowRight, Briefcase, FileSignature, Target, Zap } from "lucide-react";
+import { Activity, AlertTriangle, ArrowRight, Briefcase, FileSignature, Target, Zap, Fingerprint } from "lucide-react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import { LearnerCondition } from "@/components/learner-condition";
@@ -15,6 +15,9 @@ export default function Dashboard() {
   const adminReadOnly = roles.has("admin") && !roles.has("learner");
   const learnerDashboard = useGetLearnerDashboard({ query: { queryKey: getGetLearnerDashboardQueryKey(), enabled: !adminReadOnly && !session.isLoading } });
   const adminProjection = useGetAdminLearnerDashboardProjection({ query: { queryKey: getGetAdminLearnerDashboardProjectionQueryKey(), enabled: adminReadOnly } });
+
+  const diagnostic = useGetDiagnostic({ query: { queryKey: getGetDiagnosticQueryKey(), enabled: !adminReadOnly && !session.isLoading } });
+
   const dashboard = learnerDashboard.data;
   const isLoading = session.isLoading || (adminReadOnly ? adminProjection.isLoading : learnerDashboard.isLoading);
   const error = adminReadOnly ? adminProjection.error : learnerDashboard.error;
@@ -59,6 +62,29 @@ export default function Dashboard() {
       </div>
 
       <LearnerCondition owner="Learner" />
+
+      {diagnostic.data && diagnostic.data.session?.status !== "completed" && (
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/20">
+                <Fingerprint className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-bold text-lg">Diagnostik Personal Aktif</h3>
+                <p className="text-sm text-muted-foreground mt-1 max-w-xl">
+                  {diagnostic.data.session ? `Anda memiliki sesi diagnostik aktif (${diagnostic.data.session.progress}% selesai).` : "Mulai diagnostik personal Anda untuk menghasilkan peta kesiapan dan mengidentifikasi kesenjangan."}
+                </p>
+              </div>
+            </div>
+            <Link href="/diagnostic" className="shrink-0 w-full sm:w-auto">
+              <Button className="w-full font-mono uppercase tracking-wide">
+                {diagnostic.data.session ? "Lanjutkan Diagnostik" : "Mulai Diagnostik"} <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="cockpit-panel border-primary/20 lg:col-span-2">

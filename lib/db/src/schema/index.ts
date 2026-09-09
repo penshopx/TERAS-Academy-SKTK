@@ -20,3 +20,4 @@
 export * from "./teras";
 export * from "./lms";
 export * from "./competency";
+export * from "./diagnostic";
