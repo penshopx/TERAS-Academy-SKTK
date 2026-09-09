@@ -201,29 +201,10 @@ export const readinessEventsTable = pgTable("teras_readiness_events", {
   pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id), gateId: text("gate_id").notNull().references(() => readinessGatesTable.id), status: text("status").notNull(),
   score: integer("score").notNull(), blockers: text("blockers").array().notNull().default([]), ...audit,
 });
-/** Preparation-only baseline diagnostics. These records never participate in readiness gate calculations. */
-export const diagnosticQuestionsTable = pgTable("teras_diagnostic_questions", {
-  id: text("id").primaryKey(), pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id),
-  competencyUnitId: text("competency_unit_id"), dimension: text("dimension").notNull(),
-  prompt: text("prompt").notNull(), options: jsonb("options").$type<Array<{ value: string; label: string; score: number }>>().notNull(),
-  criticalSafety: boolean("critical_safety").notNull().default(false), sequence: integer("sequence").notNull(), ...audit,
-});
-export const diagnosticAttemptsTable = pgTable("teras_diagnostic_attempts", {
-  id: text("id").primaryKey(), learnerId: text("learner_id").notNull().references(() => peopleTable.id),
-  enrollmentId: text("enrollment_id").notNull().references(() => enrollmentsTable.id), pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id),
-  status: text("status").notNull().default("in_progress"), startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
-  completedAt: timestamp("completed_at", { withTimezone: true }), result: jsonb("result"), ...audit,
-}, table => [unique("teras_diagnostic_attempts_learner_pathway_unique").on(table.learnerId, table.pathwayId)]);
-export const diagnosticAnswersTable = pgTable("teras_diagnostic_answers", {
-  id: text("id").primaryKey(), attemptId: text("attempt_id").notNull().references(() => diagnosticAttemptsTable.id, { onDelete: "cascade" }),
-  questionId: text("question_id").notNull().references(() => diagnosticQuestionsTable.id), answer: text("answer").notNull(),
-  score: integer("score").notNull(), criticalFailure: boolean("critical_failure").notNull().default(false), ...audit,
-}, table => [unique("teras_diagnostic_answers_attempt_question_unique").on(table.attemptId, table.questionId)]);
-
 export const programRelations = relations(programsTable, ({ many }) => ({ modules: many(modulesTable), pathways: many(pathwaysTable) }));
 export const moduleRelations = relations(modulesTable, ({ many }) => ({ tasks: many(practiceTasksTable), assessments: many(assessmentsTable) }));
 
-const tables = { peopleTable, personRolesTable, adminAccessRequestsTable, programsTable, pathwaysTable, cohortsTable, modulesTable, practiceTasksTable, evidenceRequirementsTable, assessmentsTable, assessmentCriteriaTable, enrollmentsTable, adminAuditEventsTable, knowledgeArticlesTable, knowledgeNotFoundTopicsTable, enrollmentPathwayEventsTable, practiceAttemptsTable, practiceReviewsTable, evidenceTable, evidenceReviewsTable, assessmentAttemptsTable, criterionObservationsTable, gapsTable, gapEventsTable, remediationPlansTable, remediationActivitiesTable, remediationEventsTable, readinessGatesTable, readinessEventsTable, diagnosticQuestionsTable, diagnosticAttemptsTable, diagnosticAnswersTable };
+const tables = { peopleTable, personRolesTable, adminAccessRequestsTable, programsTable, pathwaysTable, cohortsTable, modulesTable, practiceTasksTable, evidenceRequirementsTable, assessmentsTable, assessmentCriteriaTable, enrollmentsTable, adminAuditEventsTable, knowledgeArticlesTable, knowledgeNotFoundTopicsTable, enrollmentPathwayEventsTable, practiceAttemptsTable, practiceReviewsTable, evidenceTable, evidenceReviewsTable, assessmentAttemptsTable, criterionObservationsTable, gapsTable, gapEventsTable, remediationPlansTable, remediationActivitiesTable, remediationEventsTable, readinessGatesTable, readinessEventsTable };
 export const insertSchemas = Object.fromEntries(Object.entries(tables).map(([name, table]) => [name, createInsertSchema(table).omit({ createdAt: true })]));
 export type Person = typeof peopleTable.$inferSelect;
 export type Program = typeof programsTable.$inferSelect;

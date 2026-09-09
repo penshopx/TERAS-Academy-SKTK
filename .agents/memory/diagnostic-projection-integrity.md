@@ -7,4 +7,4 @@ Complete a diagnostic into one immutable profile projection in a single locked d
 
 **Why:** Partial profile writes, global safety blocking, raw option scores, or generic recommendations make the Personal Readiness Map misleading and break the causal chain from competency unit to intervention.
 
-**How to apply:** Any new diagnostic dimension, framework mapping, or completion behavior must preserve concurrent idempotency, learner/pathway isolation, content-free audit details, and the separation between diagnostic state and canonical TERAS readiness.
+**How to apply:** Any new diagnostic dimension, framework mapping, or completion behavior must preserve concurrent idempotency, learner/pathway isolation, content-free audit details, and the separation between diagnostic state and canonical TERAS readiness. Reconcile task merges into the canonical diagnostic schema and routes; reject parallel legacy tables or `/learner/diagnostic` endpoints that duplicate the same domain.

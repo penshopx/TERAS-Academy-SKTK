@@ -656,8 +656,6 @@ function WorkspaceRoutes() {
         <RoutedErrorBoundary>
           <Switch>
             <Route path="/dashboard" component={Dashboard} />
-            <Route path="/diagnostic" component={Diagnostic} />
-            <Route path="/diagnostic/result" component={Diagnostic} />
             <Route path="/journey" component={Journey} />
             <Route path="/learning-plan" component={LearningPlan} />
             <Route path="/learning" component={LearningList} />
