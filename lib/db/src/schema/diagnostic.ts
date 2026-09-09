@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { boolean, check, integer, jsonb, pgTable, text, timestamp, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { boolean, check, foreignKey, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { peopleTable, pathwaysTable, enrollmentsTable, modulesTable, practiceTasksTable, evidenceRequirementsTable } from "./teras";
@@ -38,6 +38,7 @@ export const diagnosticSessionsTable = pgTable("teras_diagnostic_sessions", {
   templateId: text("template_id").notNull().references(() => diagnosticTemplatesTable.id), frameworkId: text("framework_id").notNull().references(() => competencyFrameworksTable.id),
   status: text("status").notNull().default("in_progress"), progress: integer("progress").notNull().default(0), completedAt: timestamp("completed_at", { withTimezone: true }), ...audit,
 }, table => [
+  unique("teras_diagnostic_sessions_id_learner_unique").on(table.id, table.learnerId),
   index("teras_diagnostic_sessions_learner_pathway_idx").on(table.learnerId, table.pathwayId),
   uniqueIndex("teras_diagnostic_sessions_one_active_unique").on(table.learnerId, table.pathwayId).where(sql`${table.status} = 'in_progress'`),
   check("teras_diagnostic_sessions_progress_check", sql`${table.progress} >= 0 AND ${table.progress} <= 100`),
@@ -51,10 +52,18 @@ export const diagnosticResponsesTable = pgTable("teras_diagnostic_responses", {
 }, table => [uniqueIndex("teras_diagnostic_responses_session_question_unique").on(table.sessionId, table.questionId)]);
 
 export const diagnosticProfilesTable = pgTable("teras_diagnostic_profiles", {
-  id: text("id").primaryKey(), sessionId: text("session_id").notNull().references(() => diagnosticSessionsTable.id), learnerId: text("learner_id").notNull().references(() => peopleTable.id, { onDelete: "cascade" }),
+  id: text("id").primaryKey(), sessionId: text("session_id").notNull(), learnerId: text("learner_id").notNull().references(() => peopleTable.id, { onDelete: "cascade" }),
   pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id), frameworkId: text("framework_id").notNull().references(() => competencyFrameworksTable.id), frameworkVersion: text("framework_version").notNull(),
   currentState: text("current_state").notNull(), safetyOverride: boolean("safety_override").notNull().default(false), dimensionSummaries: jsonb("dimension_summaries").$type<Record<string, unknown>>().notNull().default({}), completedAt: timestamp("completed_at", { withTimezone: true }).notNull().defaultNow(), ...audit,
-}, table => [uniqueIndex("teras_diagnostic_profiles_session_unique").on(table.sessionId), index("teras_diagnostic_profiles_learner_pathway_idx").on(table.learnerId, table.pathwayId, table.completedAt)]);
+}, table => [
+  uniqueIndex("teras_diagnostic_profiles_session_unique").on(table.sessionId),
+  index("teras_diagnostic_profiles_learner_pathway_idx").on(table.learnerId, table.pathwayId, table.completedAt),
+  foreignKey({
+    columns: [table.sessionId, table.learnerId],
+    foreignColumns: [diagnosticSessionsTable.id, diagnosticSessionsTable.learnerId],
+    name: "teras_diagnostic_profiles_session_learner_fk",
+  }),
+]);
 
 export const diagnosticProfileItemsTable = pgTable("teras_diagnostic_profile_items", {
   id: text("id").primaryKey(), profileId: text("profile_id").notNull().references(() => diagnosticProfilesTable.id, { onDelete: "cascade" }), competencyUnitId: text("competency_unit_id").notNull().references(() => competencyUnitsTable.id),

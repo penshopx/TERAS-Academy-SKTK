@@ -60,6 +60,8 @@ async function run() {
   const followUpMigration = await readFile(new URL("../../../lib/db/migrations/0019_diagnostic_recommendation_follow_ups.sql", import.meta.url), "utf8");
   await pool.query(followUpMigration);
   const singleActiveSessionMigration = await readFile(new URL("../../../lib/db/migrations/0020_diagnostic_single_active_session.sql", import.meta.url), "utf8");
+  const profileOwnershipMigration = await readFile(new URL("../../../lib/db/migrations/0021_diagnostic_profile_session_learner.sql", import.meta.url), "utf8");
+  await pool.query(profileOwnershipMigration);
   await db.insert(programsTable).values({ id: "solar-pv-tech", domain: "renewable", name: "Solar PV", description: "Fixture", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
   await db.insert(pathwaysTable).values({ id: "path-a", programId: "solar-pv-tech", name: "Path A", type: "standard", outcome: "Technician", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
   await db.insert(pathwaysTable).values({ id: "path-b", programId: "solar-pv-tech", name: "Path B", type: "standard", outcome: "Designer", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
@@ -182,6 +184,31 @@ async function run() {
     assert(activeSessionsA.length === 1 && activeSessionsA[0]?.id === sessionA.id, "concurrent diagnostic starts created more than one active row");
     const sessionB = await request<any>("/diagnostic/sessions", { method: "POST", body: "{}" }, 201, "b");
     assert(sessionA.id !== sessionB.id, "sessions were not isolated");
+    const ownershipProfileId = `diagnostic-profile-ownership-${suffix}`;
+    const ownershipProfile = {
+      id: ownershipProfileId,
+      sessionId: sessionB.id,
+      learnerId: learnerB,
+      pathwayId: "path-a",
+      frameworkId: "framework-skttk-solar-pv",
+      frameworkVersion: "1.0",
+      currentState: "OWNERSHIP_CONSTRAINT_TEST",
+      createdBy: learnerB,
+    };
+    await db.insert(diagnosticProfilesTable).values(ownershipProfile);
+    await db.delete(diagnosticProfilesTable).where(eq(diagnosticProfilesTable.id, ownershipProfileId));
+    let crossLearnerProfileRejected = false;
+    try {
+      await db.insert(diagnosticProfilesTable).values({
+        ...ownershipProfile,
+        learnerId: learnerA,
+        createdBy: learnerA,
+      });
+    } catch (error) {
+      crossLearnerProfileRejected = (error as { cause?: { code?: string }; code?: string }).cause?.code === "23503"
+        || (error as { code?: string }).code === "23503";
+    }
+    assert(crossLearnerProfileRejected, "database accepted a diagnostic profile owned by a different learner than its session");
     const crossSaveBody = { progress: 25, responses: [{ questionId: safety.id, optionId: "diag-o-safe" }] };
     const beforeCrossSessions = await db.select().from(diagnosticSessionsTable).where(inArray(diagnosticSessionsTable.id, [sessionA.id, sessionB.id]));
     const beforeCrossResponses = await db.select().from(diagnosticResponsesTable).where(inArray(diagnosticResponsesTable.sessionId, [sessionA.id, sessionB.id]));
