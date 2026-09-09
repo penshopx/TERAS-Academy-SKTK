@@ -67,6 +67,8 @@ import type {
   CourseVersion,
   CurrentSession,
   Diagnostic,
+  DiagnosticRecommendationFollowUp,
+  DiagnosticRecommendationFollowUpInput,
   DiagnosticResponsesInput,
   DiagnosticSession,
   DiagnosticSessionInput,
@@ -2326,6 +2328,78 @@ export function useGetTrainerReviewQueue<TData = Awaited<ReturnType<typeof getTr
 
 
 
+
+export const getRecordDiagnosticRecommendationFollowUpUrl = (recommendationId: string,) => {
+
+
+
+
+  return `/api/trainer/diagnostic-recommendations/${recommendationId}/follow-ups`
+}
+
+/**
+ * @summary Append a trainer follow-up to a diagnostic recommendation
+ */
+export const recordDiagnosticRecommendationFollowUp = async (recommendationId: string,
+    diagnosticRecommendationFollowUpInput: DiagnosticRecommendationFollowUpInput, options?: Parameters<typeof customFetch>[1]): Promise<DiagnosticRecommendationFollowUp> => {
+
+  return customFetch<DiagnosticRecommendationFollowUp>(getRecordDiagnosticRecommendationFollowUpUrl(recommendationId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(diagnosticRecommendationFollowUpInput)
+  }
+);}
+
+
+
+
+
+export const getRecordDiagnosticRecommendationFollowUpMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordDiagnosticRecommendationFollowUp>>, TError,{recommendationId: string;data: BodyType<DiagnosticRecommendationFollowUpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof recordDiagnosticRecommendationFollowUp>>, TError,{recommendationId: string;data: BodyType<DiagnosticRecommendationFollowUpInput>}, TContext> => {
+
+const mutationKey = ['recordDiagnosticRecommendationFollowUp'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof recordDiagnosticRecommendationFollowUp>>, {recommendationId: string;data: BodyType<DiagnosticRecommendationFollowUpInput>}> = (props) => {
+          const {recommendationId,data} = props ?? {};
+
+          return  recordDiagnosticRecommendationFollowUp(recommendationId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RecordDiagnosticRecommendationFollowUpMutationResult = NonNullable<Awaited<ReturnType<typeof recordDiagnosticRecommendationFollowUp>>>
+    export type RecordDiagnosticRecommendationFollowUpMutationBody = BodyType<DiagnosticRecommendationFollowUpInput>
+    export type RecordDiagnosticRecommendationFollowUpMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>
+
+    /**
+ * @summary Append a trainer follow-up to a diagnostic recommendation
+ */
+export const useRecordDiagnosticRecommendationFollowUp = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordDiagnosticRecommendationFollowUp>>, TError,{recommendationId: string;data: BodyType<DiagnosticRecommendationFollowUpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof recordDiagnosticRecommendationFollowUp>>,
+        TError,
+        {recommendationId: string;data: BodyType<DiagnosticRecommendationFollowUpInput>},
+        TContext
+      > => {
+      return useMutation(getRecordDiagnosticRecommendationFollowUpMutationOptions(options));
+    }
 
 export const getReviewEvidenceByTrainerUrl = (evidenceId: string,) => {
 

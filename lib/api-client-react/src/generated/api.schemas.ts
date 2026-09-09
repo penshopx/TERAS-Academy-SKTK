@@ -111,6 +111,27 @@ export interface DiagnosticGap {
   severity: string;
 }
 
+export type DiagnosticRecommendationFollowUpStatus = typeof DiagnosticRecommendationFollowUpStatus[keyof typeof DiagnosticRecommendationFollowUpStatus];
+
+
+export const DiagnosticRecommendationFollowUpStatus = {
+  planned: 'planned',
+  in_progress: 'in_progress',
+  completed: 'completed',
+} as const;
+
+export interface DiagnosticRecommendationFollowUp {
+  id: string;
+  recommendationId: string;
+  trainerId: string;
+  trainerName: string;
+  status: DiagnosticRecommendationFollowUpStatus;
+  /** @nullable */
+  targetAt: string | null;
+  note: string;
+  recordedAt: string;
+}
+
 export interface DiagnosticRecommendation {
   id: string;
   /** @nullable */
@@ -123,6 +144,27 @@ export interface DiagnosticRecommendation {
   priority: string;
   /** @nullable */
   href: string | null;
+  followUps?: DiagnosticRecommendationFollowUp[];
+}
+
+export type DiagnosticRecommendationFollowUpInputStatus = typeof DiagnosticRecommendationFollowUpInputStatus[keyof typeof DiagnosticRecommendationFollowUpInputStatus];
+
+
+export const DiagnosticRecommendationFollowUpInputStatus = {
+  planned: 'planned',
+  in_progress: 'in_progress',
+  completed: 'completed',
+} as const;
+
+export interface DiagnosticRecommendationFollowUpInput {
+  status: DiagnosticRecommendationFollowUpInputStatus;
+  /** @nullable */
+  targetAt?: string | null;
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  note: string;
 }
 
 export type TrainerDiagnosticFollowUpDimensionSummaries = {[key: string]: number};

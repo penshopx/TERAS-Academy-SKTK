@@ -1,8 +1,79 @@
 import { AlertTriangle, ArrowUpRight, ClipboardList, ShieldAlert } from "lucide-react";
-import type { TrainerDiagnosticFollowUp } from "@workspace/api-client-react";
+import { getGetTrainerDashboardQueryKey, type DiagnosticRecommendation, type TrainerDiagnosticFollowUp, useRecordDiagnosticRecommendationFollowUp } from "@workspace/api-client-react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+
+const statusLabels = { planned: "Planned", in_progress: "In progress", completed: "Completed" } as const;
+
+function RecommendationFollowUp({ recommendation }: { recommendation: DiagnosticRecommendation }) {
+  const followUps = recommendation.followUps ?? [];
+  const latest = followUps[0];
+  const [status, setStatus] = useState<keyof typeof statusLabels>(latest?.status ?? "planned");
+  const [targetAt, setTargetAt] = useState(latest?.targetAt ? latest.targetAt.slice(0, 10) : "");
+  const [note, setNote] = useState("");
+  const mutation = useRecordDiagnosticRecommendationFollowUp();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const submit = () => {
+    if (!note.trim()) {
+      toast({ title: "Note required", description: "Add a short operational note before saving.", variant: "destructive" });
+      return;
+    }
+    mutation.mutate({
+      recommendationId: recommendation.id,
+      data: { status, note: note.trim(), targetAt: targetAt ? new Date(`${targetAt}T12:00:00Z`).toISOString() : null },
+    }, {
+      onSuccess: () => {
+        setNote("");
+        queryClient.invalidateQueries({ queryKey: getGetTrainerDashboardQueryKey() });
+        toast({ title: "Follow-up recorded", description: "The recommendation history has been updated." });
+      },
+      onError: () => toast({ title: "Follow-up failed", description: "The update could not be recorded. Please try again.", variant: "destructive" }),
+    });
+  };
+
+  return <div className="mt-3 space-y-3 border-t border-border pt-3">
+    <div className="flex flex-wrap items-center gap-2">
+      <Badge variant={latest?.status === "completed" ? "secondary" : "outline"}>
+        {latest ? statusLabels[latest.status] : "Not planned"}
+      </Badge>
+      {latest?.targetAt && <span className="text-xs text-muted-foreground">Target {new Date(latest.targetAt).toLocaleDateString()}</span>}
+      {latest && <span className="text-xs text-muted-foreground">Updated by {latest.trainerName} · {new Date(latest.recordedAt).toLocaleString()}</span>}
+    </div>
+    {latest && <p className="text-xs text-muted-foreground">{latest.note}</p>}
+    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <Select value={status} onValueChange={(value) => setStatus(value as keyof typeof statusLabels)}>
+        <SelectTrigger aria-label={`Follow-up status for ${recommendation.title}`}><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="planned">Planned</SelectItem>
+          <SelectItem value="in_progress">In progress</SelectItem>
+          <SelectItem value="completed">Completed</SelectItem>
+        </SelectContent>
+      </Select>
+      <Input type="date" value={targetAt} onChange={(event) => setTargetAt(event.target.value)} aria-label={`Target date for ${recommendation.title}`} />
+    </div>
+    <Textarea value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} placeholder="Who will follow up, what happens next, or what was completed…" aria-label={`Follow-up note for ${recommendation.title}`} />
+    <Button size="sm" onClick={submit} disabled={mutation.isPending}>{mutation.isPending ? "Saving…" : "Record follow-up"}</Button>
+    {followUps.length > 1 && <details>
+      <summary className="cursor-pointer text-xs text-muted-foreground">View {followUps.length} recorded changes</summary>
+      <ul className="mt-2 space-y-2">
+        {followUps.map((entry) => <li key={entry.id} className="rounded border border-border p-2 text-xs">
+          <strong>{statusLabels[entry.status]}</strong> · {entry.trainerName} · {new Date(entry.recordedAt).toLocaleString()}
+          {entry.targetAt && <> · Target {new Date(entry.targetAt).toLocaleDateString()}</>}
+          <p className="mt-1 text-muted-foreground">{entry.note}</p>
+        </li>)}
+      </ul>
+    </details>}
+  </div>;
+}
 
 export function DiagnosticFollowUps({ items }: { items: TrainerDiagnosticFollowUp[] }) {
   return (
@@ -46,7 +117,7 @@ export function DiagnosticFollowUps({ items }: { items: TrainerDiagnosticFollowU
                   </div>
                   <div>
                     <h4 className="mb-2 text-sm font-semibold">Recommended next steps</h4>
-                    {item.recommendations.length ? <ul className="space-y-2">{item.recommendations.map((recommendation) => <li key={recommendation.id} className="rounded-md border border-border p-3 text-sm"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{recommendation.kind}</Badge><strong>{recommendation.title}</strong></div><p className="mt-1 text-muted-foreground">{recommendation.rationale}</p>{recommendation.href && <Button asChild size="sm" variant="outline" className="mt-3"><a href={recommendation.href}>Open recommended step <ArrowUpRight className="ml-1 h-3 w-3" /></a></Button>}</li>)}</ul> : <p className="text-sm text-muted-foreground">No recommended steps recorded.</p>}
+                    {item.recommendations.length ? <ul className="space-y-2">{item.recommendations.map((recommendation) => <li key={recommendation.id} className="rounded-md border border-border p-3 text-sm"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{recommendation.kind}</Badge><strong>{recommendation.title}</strong></div><p className="mt-1 text-muted-foreground">{recommendation.rationale}</p>{recommendation.href && <Button asChild size="sm" variant="outline" className="mt-3"><a href={recommendation.href}>Open recommended step <ArrowUpRight className="ml-1 h-3 w-3" /></a></Button>}<RecommendationFollowUp recommendation={recommendation} /></li>)}</ul> : <p className="text-sm text-muted-foreground">No recommended steps recorded.</p>}
                   </div>
                 </div>
               </>

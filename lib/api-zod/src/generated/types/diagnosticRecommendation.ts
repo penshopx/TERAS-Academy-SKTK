@@ -5,6 +5,7 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { DiagnosticRecommendationFollowUp } from './diagnosticRecommendationFollowUp';
 
 export interface DiagnosticRecommendation {
   id: string;
@@ -18,4 +19,5 @@ export interface DiagnosticRecommendation {
   priority: string;
   /** @nullable */
   href: string | null;
+  followUps?: DiagnosticRecommendationFollowUp[];
 }

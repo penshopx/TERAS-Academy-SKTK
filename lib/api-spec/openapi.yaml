@@ -490,6 +490,37 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ReviewQueueItem"
+  /trainer/diagnostic-recommendations/{recommendationId}/follow-ups:
+    post:
+      operationId: recordDiagnosticRecommendationFollowUp
+      tags: [trainer]
+      summary: Append a trainer follow-up to a diagnostic recommendation
+      parameters:
+        - name: recommendationId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiagnosticRecommendationFollowUpInput"
+      responses:
+        "201":
+          description: Recorded follow-up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiagnosticRecommendationFollowUp"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /trainer/evidence/{evidenceId}/review:
     post:
       operationId: reviewEvidenceByTrainer
@@ -2531,6 +2562,29 @@ components:
         rationale: { type: string }
         priority: { type: string }
         href: { type: ["string", "null"] }
+        followUps:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiagnosticRecommendationFollowUp"
+    DiagnosticRecommendationFollowUp:
+      type: object
+      required: [id, recommendationId, trainerId, trainerName, status, targetAt, note, recordedAt]
+      properties:
+        id: { type: string }
+        recommendationId: { type: string }
+        trainerId: { type: string }
+        trainerName: { type: string }
+        status: { type: string, enum: [planned, in_progress, completed] }
+        targetAt: { type: ["string", "null"], format: date-time }
+        note: { type: string }
+        recordedAt: { type: string, format: date-time }
+    DiagnosticRecommendationFollowUpInput:
+      type: object
+      required: [status, note]
+      properties:
+        status: { type: string, enum: [planned, in_progress, completed] }
+        targetAt: { type: ["string", "null"], format: date-time }
+        note: { type: string, minLength: 1, maxLength: 500 }
     TrainerDiagnosticFollowUp:
       type: object
       required: [learnerId, learnerName, pathwayId, pathwayName, baselineScore, currentState, completedAt, dimensionSummaries, gaps, recommendations, safetyFindings]

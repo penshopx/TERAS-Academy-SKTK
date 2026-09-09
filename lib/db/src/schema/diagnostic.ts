@@ -66,6 +66,18 @@ export const diagnosticRecommendationsTable = pgTable("teras_diagnostic_recommen
   frameworkId: text("framework_id").notNull().references(() => competencyFrameworksTable.id), unitCode: text("unit_code").notNull().default(""), unitTitle: text("unit_title").notNull().default(""), moduleId: text("module_id").references(() => modulesTable.id), practiceTaskId: text("practice_task_id").references(() => practiceTasksTable.id), evidenceRequirementId: text("evidence_requirement_id").references(() => evidenceRequirementsTable.id),
   simulationId: text("simulation_id"), safetyRuleId: text("safety_rule_id"), kind: text("kind").notNull(), title: text("title").notNull(), rationale: text("rationale").notNull(), priority: text("priority").notNull(), href: text("href"), ...audit,
 });
+export const diagnosticRecommendationFollowUpsTable = pgTable("teras_diagnostic_recommendation_follow_ups", {
+  id: text("id").primaryKey(),
+  recommendationId: text("recommendation_id").notNull().references(() => diagnosticRecommendationsTable.id, { onDelete: "cascade" }),
+  trainerId: text("trainer_id").notNull().references(() => peopleTable.id),
+  status: text("status").notNull(),
+  targetAt: timestamp("target_at", { withTimezone: true }),
+  note: text("note").notNull(),
+  ...audit,
+}, table => [
+  index("teras_diagnostic_recommendation_follow_ups_recommendation_created_idx").on(table.recommendationId, table.createdAt),
+  check("teras_diagnostic_recommendation_follow_ups_status_check", sql`${table.status} IN ('planned','in_progress','completed')`),
+]);
 export const diagnosticSafetyFlagsTable = pgTable("teras_diagnostic_safety_flags", {
   id: text("id").primaryKey(), profileId: text("profile_id").notNull().references(() => diagnosticProfilesTable.id, { onDelete: "cascade" }), competencyUnitId: text("competency_unit_id").references(() => competencyUnitsTable.id), code: text("code").notNull(), severity: text("severity").notNull(), blocking: boolean("blocking").notNull().default(true), detail: text("detail").notNull(), ...audit,
 });
@@ -73,7 +85,7 @@ export const diagnosticAuditEventsTable = pgTable("teras_diagnostic_audit_events
   id: text("id").primaryKey(), sessionId: text("session_id").notNull().references(() => diagnosticSessionsTable.id, { onDelete: "cascade" }), learnerId: text("learner_id").notNull().references(() => peopleTable.id, { onDelete: "cascade" }), action: text("action").notNull(), details: jsonb("details").$type<Record<string, unknown>>().notNull().default({}), ...audit,
 }, table => [index("teras_diagnostic_audit_session_created_idx").on(table.sessionId, table.createdAt)]);
 
-const tables = { diagnosticTemplatesTable, diagnosticQuestionsTable, diagnosticOptionsTable, diagnosticSessionsTable, diagnosticResponsesTable, diagnosticProfilesTable, diagnosticProfileItemsTable, diagnosticGapsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, diagnosticAuditEventsTable };
+const tables = { diagnosticTemplatesTable, diagnosticQuestionsTable, diagnosticOptionsTable, diagnosticSessionsTable, diagnosticResponsesTable, diagnosticProfilesTable, diagnosticProfileItemsTable, diagnosticGapsTable, diagnosticRecommendationsTable, diagnosticRecommendationFollowUpsTable, diagnosticSafetyFlagsTable, diagnosticAuditEventsTable };
 export const diagnosticInsertSchemas = Object.fromEntries(Object.entries(tables).map(([name, table]) => [name, createInsertSchema(table).omit({ createdAt: true, updatedAt: true })]));
 export type DiagnosticSession = typeof diagnosticSessionsTable.$inferSelect;
 export type DiagnosticProfile = typeof diagnosticProfilesTable.$inferSelect;

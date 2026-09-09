@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { GetTrainerDashboardResponse, GetTrainerReviewQueueResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse } from "@workspace/api-zod";
-import { db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable } from "@workspace/db";
+import { GetTrainerDashboardResponse, GetTrainerReviewQueueResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse } from "@workspace/api-zod";
+import { db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 import { evidenceRecords, gapRecords, remediationRecords, workspaceAssignmentContexts } from "../lib/teras";
 import { authorizeWorkspaceRole } from "../lib/authorization";
@@ -37,6 +37,11 @@ async function queue(trainerId: string) {
 }
 
 async function diagnosticFollowUps(contexts: Awaited<ReturnType<typeof workspaceAssignmentContexts>>) {
+  const [followUps, people] = await Promise.all([
+    db.select().from(diagnosticRecommendationFollowUpsTable),
+    db.select().from(peopleTable),
+  ]);
+  const trainerNames = new Map(people.map((person) => [person.id, person.name]));
   return Promise.all(contexts.map(async (context) => {
     const [profile] = await db.select().from(diagnosticProfilesTable)
       .where(and(
@@ -77,7 +82,24 @@ async function diagnosticFollowUps(contexts: Awaited<ReturnType<typeof workspace
       completedAt: profile.completedAt,
       dimensionSummaries,
       gaps: gaps.sort((a, b) => (a.severity === "Critical" ? -1 : 0) - (b.severity === "Critical" ? -1 : 0)),
-      recommendations: recommendations.sort((a, b) => (a.priority === "Critical" ? -1 : 0) - (b.priority === "Critical" ? -1 : 0)),
+      recommendations: recommendations
+        .sort((a, b) => (a.priority === "Critical" ? -1 : 0) - (b.priority === "Critical" ? -1 : 0))
+        .map((recommendation) => ({
+          ...recommendation,
+          followUps: followUps
+            .filter((followUp) => followUp.recommendationId === recommendation.id)
+            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id))
+            .map((followUp) => ({
+              id: followUp.id,
+              recommendationId: followUp.recommendationId,
+              trainerId: followUp.trainerId,
+              trainerName: trainerNames.get(followUp.trainerId) ?? "Trainer",
+              status: followUp.status,
+              targetAt: followUp.targetAt,
+              note: followUp.note,
+              recordedAt: followUp.createdAt,
+            })),
+        })),
       safetyFindings,
     };
   }));
@@ -112,6 +134,44 @@ router.get("/trainer/dashboard", async (req, res): Promise<void> => {
   ].sort((a, b) => b.recordedAt.getTime() - a.recordedAt.getTime() || b.id.localeCompare(a.id));
   const [bottlenecks, diagnosticFollowUpItems] = await Promise.all([trainerBottlenecks(contexts), diagnosticFollowUps(contexts)]);
   res.json(GetTrainerDashboardResponse.parse({ trainer, assignedLearnerCount: new Set(contexts.map((context) => context.learner.id)).size, pendingFeedbackCount: items.filter((item) => item.kind === "Practice").length, pendingEvidenceCount: scoped.flatMap((item) => item.evidence).filter((item) => item.status === "Under review").length, activeRemediationCount: scoped.flatMap((item) => item.plans).filter((item) => item.status !== "Completed").length, blockedLearnerCount: new Set(contexts.filter((context, index) => scoped[index]!.gaps.some((gap) => gap.severity === "Critical" && gap.status !== "Resolved")).map((context) => context.learner.id)).size, bottlenecks, diagnosticFollowUps: diagnosticFollowUpItems, recentActivity: items, reviewHistory }));
+});
+router.post("/trainer/diagnostic-recommendations/:recommendationId/follow-ups", async (req, res): Promise<void> => {
+  const params = RecordDiagnosticRecommendationFollowUpParams.safeParse(req.params);
+  const body = RecordDiagnosticRecommendationFollowUpBody.safeParse(req.body);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+  if (!body.data.note.trim()) { res.status(400).json({ error: "Follow-up note cannot be blank" }); return; }
+  const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;
+  const [recommendation] = await db.select().from(diagnosticRecommendationsTable).where(eq(diagnosticRecommendationsTable.id, params.data.recommendationId));
+  if (!recommendation) { res.status(404).json({ error: "Diagnostic recommendation not found" }); return; }
+  const [profile] = await db.select().from(diagnosticProfilesTable).where(eq(diagnosticProfilesTable.id, recommendation.profileId));
+  if (!profile) { res.status(404).json({ error: "Diagnostic profile not found" }); return; }
+  const contexts = await workspaceAssignmentContexts(trainerId, "trainer");
+  if (!contexts.some((context) => context.learner.id === profile.learnerId && context.pathway.id === profile.pathwayId)) {
+    res.status(403).json({ error: "Diagnostic recommendation is outside your assigned active pathway" });
+    return;
+  }
+  const [trainer] = await db.select().from(peopleTable).where(eq(peopleTable.id, trainerId));
+  const [followUp] = await db.insert(diagnosticRecommendationFollowUpsTable).values({
+    id: id("diagnostic-follow-up"),
+    recommendationId: recommendation.id,
+    trainerId,
+    status: body.data.status,
+    targetAt: body.data.targetAt ? new Date(body.data.targetAt) : null,
+    note: body.data.note.trim(),
+    createdBy: trainerId,
+  }).returning();
+  if (!followUp) throw new Error("Diagnostic recommendation follow-up was not recorded");
+  res.status(201).json(RecordDiagnosticRecommendationFollowUpResponse.parse({
+    id: followUp.id,
+    recommendationId: followUp.recommendationId,
+    trainerId: followUp.trainerId,
+    trainerName: trainer?.name ?? "Trainer",
+    status: followUp.status,
+    targetAt: followUp.targetAt,
+    note: followUp.note,
+    recordedAt: followUp.createdAt,
+  }));
 });
 router.post("/trainer/practice/:attemptId/review", async (req, res): Promise<void> => {
   const params = ReviewPracticeAttemptParams.safeParse(req.params); const body = ReviewPracticeAttemptBody.safeParse(req.body);

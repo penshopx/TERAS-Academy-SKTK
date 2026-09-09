@@ -4,6 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import {
   db, pool, diagnosticAuditEventsTable, diagnosticGapsTable, diagnosticOptionsTable,
   diagnosticProfileItemsTable, diagnosticProfilesTable, diagnosticRecommendationsTable,
+  diagnosticRecommendationFollowUpsTable,
   diagnosticResponsesTable, diagnosticSafetyFlagsTable, diagnosticSessionsTable,
   enrollmentsTable, peopleTable, programsTable, pathwaysTable, competencyFrameworksTable,
   competencyUnitsTable, pathwayCompetencyUnitsTable, diagnosticTemplatesTable,
@@ -33,6 +34,8 @@ async function cleanup() {
     const profiles = await db.select({ id: diagnosticProfilesTable.id }).from(diagnosticProfilesTable).where(inArray(diagnosticProfilesTable.sessionId, sessionIds));
     const profileIds = profiles.map(x => x.id);
     if (profileIds.length) {
+      const recommendationIds = (await db.select({ id: diagnosticRecommendationsTable.id }).from(diagnosticRecommendationsTable).where(inArray(diagnosticRecommendationsTable.profileId, profileIds))).map(x => x.id);
+      if (recommendationIds.length) await db.delete(diagnosticRecommendationFollowUpsTable).where(inArray(diagnosticRecommendationFollowUpsTable.recommendationId, recommendationIds));
       await db.delete(diagnosticSafetyFlagsTable).where(inArray(diagnosticSafetyFlagsTable.profileId, profileIds));
       await db.delete(diagnosticRecommendationsTable).where(inArray(diagnosticRecommendationsTable.profileId, profileIds));
       await db.delete(diagnosticGapsTable).where(inArray(diagnosticGapsTable.profileId, profileIds));
@@ -54,6 +57,8 @@ async function run() {
   delete process.env.TERAS_ENABLE_DEMO_ACCESS;
   const migration = await readFile(new URL("../../../lib/db/migrations/0017_diagnostic.sql", import.meta.url), "utf8");
   await pool.query(migration);
+  const followUpMigration = await readFile(new URL("../../../lib/db/migrations/0019_diagnostic_recommendation_follow_ups.sql", import.meta.url), "utf8");
+  await pool.query(followUpMigration);
   await db.insert(programsTable).values({ id: "solar-pv-tech", domain: "renewable", name: "Solar PV", description: "Fixture", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
   await db.insert(pathwaysTable).values({ id: "path-a", programId: "solar-pv-tech", name: "Path A", type: "standard", outcome: "Technician", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
   await db.insert(pathwaysTable).values({ id: "path-b", programId: "solar-pv-tech", name: "Path B", type: "standard", outcome: "Designer", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
@@ -214,6 +219,22 @@ async function run() {
     assert(trainerBDashboard.diagnosticFollowUps[0].completedAt === null && trainerBDashboard.diagnosticFollowUps[0].baselineScore === null && trainerBDashboard.diagnosticFollowUps[0].gaps.length === 0 && trainerBDashboard.diagnosticFollowUps[0].recommendations.length === 0 && trainerBDashboard.diagnosticFollowUps[0].safetyFindings.length === 0, "Learner without a completed profile was omitted or populated from another assignment");
     const serializedTrainerDashboards = JSON.stringify([trainerADashboard.diagnosticFollowUps, trainerBDashboard.diagnosticFollowUps]);
     assert(!serializedTrainerDashboards.includes("MUST_NOT_LEAK") && !serializedTrainerDashboards.includes(learnerC), "Historical or inactive diagnostic data leaked into a trainer dashboard");
+    const recommendation = trainerADashboard.diagnosticFollowUps[0].recommendations[0];
+    assert(Array.isArray(recommendation.followUps) && recommendation.followUps.length === 0, "New recommendation unexpectedly had follow-up history");
+    const readinessBeforeFollowUp = await request<any>("/readiness", {}, 200, "a");
+    await request(`/trainer/diagnostic-recommendations/${recommendation.id}/follow-ups`, { method: "POST", body: JSON.stringify({ status: "planned", targetAt: "2026-10-01T12:00:00.000Z", note: "Schedule supervised practice" }) }, 403, "trainer-b");
+    await request(`/trainer/diagnostic-recommendations/diagnostic-recommendation-historical-${suffix}/follow-ups`, { method: "POST", body: JSON.stringify({ status: "planned", note: "Must not be written" }) }, 403, "trainer-a");
+    const firstFollowUp = await request<any>(`/trainer/diagnostic-recommendations/${recommendation.id}/follow-ups`, { method: "POST", body: JSON.stringify({ status: "planned", targetAt: "2026-10-01T12:00:00.000Z", note: "Schedule supervised practice" }) }, 201, "trainer-a");
+    const secondFollowUp = await request<any>(`/trainer/diagnostic-recommendations/${recommendation.id}/follow-ups`, { method: "POST", body: JSON.stringify({ status: "in_progress", targetAt: null, note: "Practice is underway" }) }, 201, "trainer-a");
+    assert(firstFollowUp.trainerId === trainerA && firstFollowUp.trainerName === "Diagnostic Trainer A" && firstFollowUp.status === "planned", "Follow-up did not record trainer identity and status");
+    assert(secondFollowUp.status === "in_progress" && secondFollowUp.note === "Practice is underway", "Follow-up status change was not recorded");
+    const storedFollowUps = await db.select().from(diagnosticRecommendationFollowUpsTable).where(eq(diagnosticRecommendationFollowUpsTable.recommendationId, recommendation.id));
+    assert(storedFollowUps.length === 2, "Follow-up changes were not append-only");
+    const dashboardAfterFollowUp = await request<any>("/trainer/dashboard", {}, 200, "trainer-a");
+    const dashboardRecommendation = dashboardAfterFollowUp.diagnosticFollowUps[0].recommendations.find((item: any) => item.id === recommendation.id);
+    assert(dashboardRecommendation.followUps.length === 2 && dashboardRecommendation.followUps[0].status === "in_progress", "Latest follow-up status was not visible on the learner card");
+    const readinessAfterFollowUp = await request<any>("/readiness", {}, 200, "a");
+    assert(JSON.stringify(stableReadiness(readinessBeforeFollowUp)) === JSON.stringify(stableReadiness(readinessAfterFollowUp)), "Operational follow-up changed learner readiness");
     const [dashboardA, dashboardB, journeyA, journeyB] = await Promise.all([
       request<any>("/learner/dashboard", {}, 200, "a"),
       request<any>("/learner/dashboard", {}, 200, "b"),

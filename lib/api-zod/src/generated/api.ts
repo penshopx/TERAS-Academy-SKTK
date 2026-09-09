@@ -977,7 +977,17 @@ export const CompleteDiagnosticSessionResponse = zod.object({
   "title": zod.string(),
   "rationale": zod.string(),
   "priority": zod.string(),
-  "href": zod.string().nullable()
+  "href": zod.string().nullable(),
+  "followUps": zod.array(zod.object({
+  "id": zod.string(),
+  "recommendationId": zod.string(),
+  "trainerId": zod.string(),
+  "trainerName": zod.string(),
+  "status": zod.enum(['planned', 'in_progress', 'completed']),
+  "targetAt": zod.coerce.date().nullable(),
+  "note": zod.string(),
+  "recordedAt": zod.coerce.date()
+})).optional()
 }))
 })
 
@@ -1020,7 +1030,17 @@ export const GetCompetencyProfileResponse = zod.object({
   "title": zod.string(),
   "rationale": zod.string(),
   "priority": zod.string(),
-  "href": zod.string().nullable()
+  "href": zod.string().nullable(),
+  "followUps": zod.array(zod.object({
+  "id": zod.string(),
+  "recommendationId": zod.string(),
+  "trainerId": zod.string(),
+  "trainerName": zod.string(),
+  "status": zod.enum(['planned', 'in_progress', 'completed']),
+  "targetAt": zod.coerce.date().nullable(),
+  "note": zod.string(),
+  "recordedAt": zod.coerce.date()
+})).optional()
 }))
 })
 
@@ -1089,7 +1109,17 @@ export const GetReadinessMapResponse = zod.object({
   "title": zod.string(),
   "rationale": zod.string(),
   "priority": zod.string(),
-  "href": zod.string().nullable()
+  "href": zod.string().nullable(),
+  "followUps": zod.array(zod.object({
+  "id": zod.string(),
+  "recommendationId": zod.string(),
+  "trainerId": zod.string(),
+  "trainerName": zod.string(),
+  "status": zod.enum(['planned', 'in_progress', 'completed']),
+  "targetAt": zod.coerce.date().nullable(),
+  "note": zod.string(),
+  "recordedAt": zod.coerce.date()
+})).optional()
 }))
 }),
   "readiness": zod.object({
@@ -1369,7 +1399,17 @@ export const GetTrainerDashboardResponse = zod.object({
   "title": zod.string(),
   "rationale": zod.string(),
   "priority": zod.string(),
-  "href": zod.string().nullable()
+  "href": zod.string().nullable(),
+  "followUps": zod.array(zod.object({
+  "id": zod.string(),
+  "recommendationId": zod.string(),
+  "trainerId": zod.string(),
+  "trainerName": zod.string(),
+  "status": zod.enum(['planned', 'in_progress', 'completed']),
+  "targetAt": zod.coerce.date().nullable(),
+  "note": zod.string(),
+  "recordedAt": zod.coerce.date()
+})).optional()
 })),
   "safetyFindings": zod.array(zod.object({
   "id": zod.string(),
@@ -1446,6 +1486,38 @@ export const GetTrainerReviewQueueResponseItem = zod.object({
   "updatedAt": zod.coerce.date()
 })
 export const GetTrainerReviewQueueResponse = zod.array(GetTrainerReviewQueueResponseItem)
+
+
+/**
+ * @summary Append a trainer follow-up to a diagnostic recommendation
+ */
+
+
+
+export const RecordDiagnosticRecommendationFollowUpParams = zod.object({
+  "recommendationId": zod.coerce.string().min(1)
+})
+
+export const recordDiagnosticRecommendationFollowUpBodyNoteMax = 500;
+
+
+
+export const RecordDiagnosticRecommendationFollowUpBody = zod.object({
+  "status": zod.enum(['planned', 'in_progress', 'completed']),
+  "targetAt": zod.coerce.date().nullish(),
+  "note": zod.string().min(1).max(recordDiagnosticRecommendationFollowUpBodyNoteMax)
+})
+
+export const RecordDiagnosticRecommendationFollowUpResponse = zod.object({
+  "id": zod.string(),
+  "recommendationId": zod.string(),
+  "trainerId": zod.string(),
+  "trainerName": zod.string(),
+  "status": zod.enum(['planned', 'in_progress', 'completed']),
+  "targetAt": zod.coerce.date().nullable(),
+  "note": zod.string(),
+  "recordedAt": zod.coerce.date()
+})
 
 
 /**
