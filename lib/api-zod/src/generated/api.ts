@@ -1325,6 +1325,11 @@ export const GetCapabilityPassportResponse = zod.object({
 /**
  * @summary Get trainer workspace summary
  */
+export const getTrainerDashboardResponseDiagnosticFollowUpsItemBaselineScoreMin = 0;
+export const getTrainerDashboardResponseDiagnosticFollowUpsItemBaselineScoreMax = 100;
+
+
+
 export const GetTrainerDashboardResponse = zod.object({
   "trainer": zod.object({
   "id": zod.string(),
@@ -1338,6 +1343,43 @@ export const GetTrainerDashboardResponse = zod.object({
   "pendingEvidenceCount": zod.int(),
   "activeRemediationCount": zod.int(),
   "blockedLearnerCount": zod.int(),
+  "diagnosticFollowUps": zod.array(zod.object({
+  "learnerId": zod.string(),
+  "learnerName": zod.string(),
+  "pathwayId": zod.string(),
+  "pathwayName": zod.string(),
+  "baselineScore": zod.int().min(getTrainerDashboardResponseDiagnosticFollowUpsItemBaselineScoreMin).max(getTrainerDashboardResponseDiagnosticFollowUpsItemBaselineScoreMax).nullable(),
+  "currentState": zod.string().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "dimensionSummaries": zod.record(zod.string(), zod.number()),
+  "gaps": zod.array(zod.object({
+  "id": zod.string(),
+  "competencyUnitId": zod.string(),
+  "unitCode": zod.string().optional(),
+  "unitTitle": zod.string().optional(),
+  "diagnosis": zod.string(),
+  "severity": zod.string()
+})),
+  "recommendations": zod.array(zod.object({
+  "id": zod.string(),
+  "competencyUnitId": zod.string().nullable(),
+  "unitCode": zod.string().optional(),
+  "unitTitle": zod.string().optional(),
+  "kind": zod.string(),
+  "title": zod.string(),
+  "rationale": zod.string(),
+  "priority": zod.string(),
+  "href": zod.string().nullable()
+})),
+  "safetyFindings": zod.array(zod.object({
+  "id": zod.string(),
+  "competencyUnitId": zod.string().nullable(),
+  "code": zod.string(),
+  "severity": zod.string(),
+  "blocking": zod.boolean(),
+  "detail": zod.string()
+}))
+})),
   "bottlenecks": zod.object({
   "mostStalled": zod.union([zod.literal('Learning'),zod.literal('Practice'),zod.literal('Feedback'),zod.literal('Evidence'),zod.literal('Remediation'),zod.literal('Reassessment'),zod.literal('Readiness'),zod.literal(null)]).nullable(),
   "counts": zod.object({

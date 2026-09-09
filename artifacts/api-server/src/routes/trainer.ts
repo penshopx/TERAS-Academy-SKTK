@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { GetTrainerDashboardResponse, GetTrainerReviewQueueResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse } from "@workspace/api-zod";
-import { db, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable } from "@workspace/db";
+import { and, desc, eq } from "drizzle-orm";
 import { evidenceRecords, gapRecords, remediationRecords, workspaceAssignmentContexts } from "../lib/teras";
 import { authorizeWorkspaceRole } from "../lib/authorization";
 import { learningNextAction } from "../lib/learning-transition";
@@ -36,6 +36,53 @@ async function queue(trainerId: string) {
   return { contexts, items: items.flat() };
 }
 
+async function diagnosticFollowUps(contexts: Awaited<ReturnType<typeof workspaceAssignmentContexts>>) {
+  return Promise.all(contexts.map(async (context) => {
+    const [profile] = await db.select().from(diagnosticProfilesTable)
+      .where(and(
+        eq(diagnosticProfilesTable.learnerId, context.learner.id),
+        eq(diagnosticProfilesTable.pathwayId, context.pathway.id),
+      ))
+      .orderBy(desc(diagnosticProfilesTable.completedAt), desc(diagnosticProfilesTable.id))
+      .limit(1);
+    if (!profile) return {
+      learnerId: context.learner.id,
+      learnerName: context.learner.name,
+      pathwayId: context.pathway.id,
+      pathwayName: context.pathway.name,
+      baselineScore: null,
+      currentState: null,
+      completedAt: null,
+      dimensionSummaries: {},
+      gaps: [],
+      recommendations: [],
+      safetyFindings: [],
+    };
+    const [gaps, recommendations, safetyFindings] = await Promise.all([
+      db.select().from(diagnosticGapsTable).where(eq(diagnosticGapsTable.profileId, profile.id)),
+      db.select().from(diagnosticRecommendationsTable).where(eq(diagnosticRecommendationsTable.profileId, profile.id)),
+      db.select().from(diagnosticSafetyFlagsTable).where(eq(diagnosticSafetyFlagsTable.profileId, profile.id)),
+    ]);
+    const dimensionSummaries = Object.fromEntries(
+      Object.entries(profile.dimensionSummaries).filter((entry): entry is [string, number] => typeof entry[1] === "number"),
+    );
+    const scores = Object.values(dimensionSummaries);
+    return {
+      learnerId: context.learner.id,
+      learnerName: context.learner.name,
+      pathwayId: context.pathway.id,
+      pathwayName: context.pathway.name,
+      baselineScore: scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0,
+      currentState: profile.currentState,
+      completedAt: profile.completedAt,
+      dimensionSummaries,
+      gaps: gaps.sort((a, b) => (a.severity === "Critical" ? -1 : 0) - (b.severity === "Critical" ? -1 : 0)),
+      recommendations: recommendations.sort((a, b) => (a.priority === "Critical" ? -1 : 0) - (b.priority === "Critical" ? -1 : 0)),
+      safetyFindings,
+    };
+  }));
+}
+
 router.get("/trainer/review-queue", async (req, res): Promise<void> => {
   const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;
   res.json(GetTrainerReviewQueueResponse.parse((await queue(trainerId)).items));
@@ -63,8 +110,8 @@ router.get("/trainer/dashboard", async (req, res): Promise<void> => {
       return attempt && context ? [{ id: review.id, kind: "Practice" as const, learnerId: context.learner.id, learnerName: context.learner.name, pathwayId: context.pathway.id, pathwayName: context.pathway.name, subject: taskById.get(attempt.taskId)?.title ?? "Practice attempt", outcome: review.status, comment: review.feedback, quality: null, reviewer: review.reviewerId ? reviewerNames.get(review.reviewerId) ?? null : null, recordedAt: review.createdAt }] : [];
     }),
   ].sort((a, b) => b.recordedAt.getTime() - a.recordedAt.getTime() || b.id.localeCompare(a.id));
-  const bottlenecks = await trainerBottlenecks(contexts);
-  res.json(GetTrainerDashboardResponse.parse({ trainer, assignedLearnerCount: new Set(contexts.map((context) => context.learner.id)).size, pendingFeedbackCount: items.filter((item) => item.kind === "Practice").length, pendingEvidenceCount: scoped.flatMap((item) => item.evidence).filter((item) => item.status === "Under review").length, activeRemediationCount: scoped.flatMap((item) => item.plans).filter((item) => item.status !== "Completed").length, blockedLearnerCount: new Set(contexts.filter((context, index) => scoped[index]!.gaps.some((gap) => gap.severity === "Critical" && gap.status !== "Resolved")).map((context) => context.learner.id)).size, bottlenecks, recentActivity: items, reviewHistory }));
+  const [bottlenecks, diagnosticFollowUpItems] = await Promise.all([trainerBottlenecks(contexts), diagnosticFollowUps(contexts)]);
+  res.json(GetTrainerDashboardResponse.parse({ trainer, assignedLearnerCount: new Set(contexts.map((context) => context.learner.id)).size, pendingFeedbackCount: items.filter((item) => item.kind === "Practice").length, pendingEvidenceCount: scoped.flatMap((item) => item.evidence).filter((item) => item.status === "Under review").length, activeRemediationCount: scoped.flatMap((item) => item.plans).filter((item) => item.status !== "Completed").length, blockedLearnerCount: new Set(contexts.filter((context, index) => scoped[index]!.gaps.some((gap) => gap.severity === "Critical" && gap.status !== "Resolved")).map((context) => context.learner.id)).size, bottlenecks, diagnosticFollowUps: diagnosticFollowUpItems, recentActivity: items, reviewHistory }));
 });
 router.post("/trainer/practice/:attemptId/review", async (req, res): Promise<void> => {
   const params = ReviewPracticeAttemptParams.safeParse(req.params); const body = ReviewPracticeAttemptBody.safeParse(req.body);

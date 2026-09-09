@@ -1719,6 +1719,10 @@ x-pathway-selection-components:
         pendingEvidenceCount: { type: integer }
         activeRemediationCount: { type: integer }
         blockedLearnerCount: { type: integer }
+        diagnosticFollowUps:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrainerDiagnosticFollowUp"
         recentActivity:
           type: array
           items:
@@ -1727,7 +1731,7 @@ x-pathway-selection-components:
           type: array
           items:
             $ref: "#/components/schemas/TrainerReviewHistoryEvent"
-      required: [trainer, assignedLearnerCount, pendingFeedbackCount, pendingEvidenceCount, activeRemediationCount, blockedLearnerCount, recentActivity, reviewHistory]
+      required: [trainer, assignedLearnerCount, pendingFeedbackCount, pendingEvidenceCount, activeRemediationCount, blockedLearnerCount, diagnosticFollowUps, recentActivity, reviewHistory]
     TrainerReviewHistoryEvent:
       type: object
       properties:
@@ -2497,6 +2501,40 @@ components:
         rationale: { type: string }
         priority: { type: string }
         href: { type: ["string", "null"] }
+    TrainerDiagnosticFollowUp:
+      type: object
+      required: [learnerId, learnerName, pathwayId, pathwayName, baselineScore, currentState, completedAt, dimensionSummaries, gaps, recommendations, safetyFindings]
+      properties:
+        learnerId: { type: string }
+        learnerName: { type: string }
+        pathwayId: { type: string }
+        pathwayName: { type: string }
+        baselineScore: { type: ["integer", "null"], minimum: 0, maximum: 100 }
+        currentState: { type: ["string", "null"] }
+        completedAt: { type: ["string", "null"], format: date-time }
+        dimensionSummaries: { type: object, additionalProperties: { type: number } }
+        gaps:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiagnosticGap"
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiagnosticRecommendation"
+        safetyFindings:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrainerDiagnosticSafetyFinding"
+    TrainerDiagnosticSafetyFinding:
+      type: object
+      required: [id, competencyUnitId, code, severity, blocking, detail]
+      properties:
+        id: { type: string }
+        competencyUnitId: { type: ["string", "null"] }
+        code: { type: string }
+        severity: { type: string }
+        blocking: { type: boolean }
+        detail: { type: string }
     CompetencyProfile:
       type: object
       required: [id, frameworkId, frameworkVersion, pathwayId, currentState, safetyOverride, dimensionSummaries, items, gaps, recommendations]
@@ -3716,6 +3754,10 @@ components:
         pendingEvidenceCount: { type: integer }
         activeRemediationCount: { type: integer }
         blockedLearnerCount: { type: integer }
+        diagnosticFollowUps:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrainerDiagnosticFollowUp"
         bottlenecks:
           $ref: "#/components/schemas/TrainerBottleneckSummary"
         recentActivity:
@@ -3726,7 +3768,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TrainerReviewHistoryEvent"
-      required: [trainer, assignedLearnerCount, pendingFeedbackCount, pendingEvidenceCount, activeRemediationCount, blockedLearnerCount, bottlenecks, recentActivity, reviewHistory]
+      required: [trainer, assignedLearnerCount, pendingFeedbackCount, pendingEvidenceCount, activeRemediationCount, blockedLearnerCount, diagnosticFollowUps, bottlenecks, recentActivity, reviewHistory]
     TrainerBottleneckSummary:
       type: object
       properties:

@@ -11,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { trackReadinessDecisionRecorded, trackReadinessQueueOpened } from "@/lib/analytics";
 import { getGetCapabilityPassportQueryKey, getGetLearnerDashboardQueryKey, getGetLearnerReadinessQueryKey, getGetTrainerDashboardQueryKey, getGetTrainerReviewQueueQueryKey, getListEvidenceQueryKey, useReviewEvidenceByTrainer, useReviewPracticeAttempt, TrainerDashboard } from "@workspace/api-client-react";
+import { DiagnosticFollowUps } from "./diagnostic-follow-ups";
 
 type QueueItem = { id: string; kind: string; title: string; moduleName: string; learnerName: string; pathwayName: string; priority: string; };
 
@@ -102,6 +103,7 @@ export function ReviewQueue({ dashboard }: { dashboard: TrainerDashboard }) {
           })() : <p className="text-sm text-muted-foreground">No assigned active learner pathways are available to identify a lifecycle bottleneck.</p>}
         </CardContent>
       </Card>
+      <DiagnosticFollowUps items={dashboard.diagnosticFollowUps} />
       <Card className="cockpit-panel mt-6">
         <CardHeader><CardTitle data-testid="trainer-role-queue-title">Trainer review queue</CardTitle><p className="text-sm text-muted-foreground">Review submitted practice for feedback and evidence for verification. Remediation and readiness counts are handoff context only; this contract does not expose actions for them here.</p></CardHeader>
         <CardContent className="p-0">

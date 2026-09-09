@@ -125,6 +125,39 @@ export interface DiagnosticRecommendation {
   href: string | null;
 }
 
+export type TrainerDiagnosticFollowUpDimensionSummaries = {[key: string]: number};
+
+export interface TrainerDiagnosticSafetyFinding {
+  id: string;
+  /** @nullable */
+  competencyUnitId: string | null;
+  code: string;
+  severity: string;
+  blocking: boolean;
+  detail: string;
+}
+
+export interface TrainerDiagnosticFollowUp {
+  learnerId: string;
+  learnerName: string;
+  pathwayId: string;
+  pathwayName: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     * @nullable
+     */
+  baselineScore: number | null;
+  /** @nullable */
+  currentState: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  dimensionSummaries: TrainerDiagnosticFollowUpDimensionSummaries;
+  gaps: DiagnosticGap[];
+  recommendations: DiagnosticRecommendation[];
+  safetyFindings: TrainerDiagnosticSafetyFinding[];
+}
+
 export type CompetencyProfileDimensionSummaries = {[key: string]: number};
 
 export interface CompetencyProfile {
@@ -2100,6 +2133,7 @@ export interface TrainerDashboard {
   pendingEvidenceCount: number;
   activeRemediationCount: number;
   blockedLearnerCount: number;
+  diagnosticFollowUps: TrainerDiagnosticFollowUp[];
   bottlenecks: TrainerBottleneckSummary;
   recentActivity: ReviewQueueItem[];
   reviewHistory: TrainerReviewHistoryEvent[];

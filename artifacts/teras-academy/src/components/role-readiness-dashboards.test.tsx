@@ -4,6 +4,7 @@ import test from "node:test";
 
 test("trainer dashboard separates its review remit from readiness handoff", async () => {
   const source = await readFile(new URL("./trainer/review-queue.tsx", import.meta.url), "utf8");
+  const diagnosticSource = await readFile(new URL("./trainer/diagnostic-follow-ups.tsx", import.meta.url), "utf8");
 
   assert.match(source, /Trainer review is not certification/);
   assert.match(source, /Practice feedback/);
@@ -23,6 +24,14 @@ test("trainer dashboard separates its review remit from readiness handoff", asyn
   assert.match(source, /dashboard\.bottlenecks\.asOf/);
   assert.match(source, /Most frequently stalled across your assigned active learner pathways/);
   assert.match(source, /data-testid="trainer-bottleneck-summary"/);
+  assert.match(source, /dashboard\.diagnosticFollowUps/);
+  assert.match(diagnosticSource, /Learner diagnostic follow-up/);
+  assert.match(diagnosticSource, /item\.baselineScore/);
+  assert.match(diagnosticSource, /item\.gaps/);
+  assert.match(diagnosticSource, /item\.recommendations/);
+  assert.match(diagnosticSource, /recommendation\.href/);
+  assert.match(diagnosticSource, /Critical safety finding/);
+  assert.match(diagnosticSource, /not certification, clearance, or a final readiness decision/);
 });
 
 test("assessor dashboard records internal recommendations without claiming certification", async () => {
