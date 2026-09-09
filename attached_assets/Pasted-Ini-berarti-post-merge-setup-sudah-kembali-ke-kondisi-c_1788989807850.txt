@@ -1,0 +1,107 @@
+Ini berarti **post-merge setup sudah kembali ke kondisi canonical dan sehat**. Yang paling penting bukan hanya test lulus, tetapi **duplikasi arsitektur diagnostic sudah benar-benar dibersihkan**.
+
+### Status baseline sekarang
+
+| Area                          | Status                   |
+| ----------------------------- | ------------------------ |
+| Canonical Diagnostic route    | ✅ `routes/diagnostic.ts` |
+| Canonical Diagnostic schema   | ✅ `schema/diagnostic.ts` |
+| Diagnostic subsystem duplikat | ✅ Dihapus                |
+| Duplicate frontend route/card | ✅ Dihapus                |
+| OpenAPI → API client/Zod      | ✅ Regenerated            |
+| Admin management              | ✅ PASS                   |
+| Diagnostic integration        | ✅ PASS                   |
+| API typecheck                 | ✅ PASS                   |
+| Frontend typecheck            | ✅ PASS                   |
+| API workflow                  | ✅ Running                |
+| TERAS Academy workflow        | ✅ Running                |
+| Story / mockup sandbox        | ✅ Running                |
+| Post-merge setup              | ✅ PASS                   |
+
+### Yang saya anggap sudah dikunci
+
+Arsitektur sekarang harus diperlakukan sebagai:
+
+```text
+TERAS CORE
+│
+├── SKTTK Competency Framework
+│
+├── Personal Diagnostic
+│
+├── LMS
+│   ├── Program
+│   ├── Pathway
+│   ├── Module
+│   ├── Course
+│   ├── Lesson
+│   ├── Activity
+│   └── Learning Outcome
+│
+├── Practice
+├── Preparation Evidence
+├── Feedback
+├── Remediation
+├── Internal Simulation
+├── Safety Gate
+├── Readiness
+└── Capability Passport
+```
+
+Dengan **satu canonical Diagnostic subsystem**, bukan dua.
+
+### Yang justru harus dihindari sekarang
+
+Jangan langsung menambahkan fitur diagnostic baru hanya karena setup sudah berhasil.
+
+Kita sekarang berada pada titik yang tepat untuk melakukan **Integration Review Gate** sebelum Task #1 diteruskan.
+
+Fokus review:
+
+```text
+SKTTK Competency Framework
+          │
+          ├──────────────┐
+          ↓              ↓
+   Personal Diagnostic   LMS
+          │              │
+          └──────┬───────┘
+                 ↓
+             Practice
+                 ↓
+       Preparation Evidence
+                 ↓
+          Internal Simulation
+                 ↓
+            Safety Gate
+                 ↓
+             Readiness
+                 ↓
+       Capability Passport
+```
+
+Pertanyaan utamanya:
+
+1. **Apakah setiap diagnostic question dapat menunjuk ke competency unit → element → KUK?**
+2. **Apakah gap dari diagnostic dapat menunjuk ke learning object yang benar-benar ada di LMS?**
+3. **Apakah diagnostic tidak membuat scoring engine kedua yang bertabrakan dengan Readiness Engine?**
+4. **Apakah Practice, Evidence, Simulation, Safety, dan Readiness tetap memakai engine canonical yang sudah ada?**
+5. **Apakah hasil diagnostic menjadi input/rekomendasi, bukan menggantikan Readiness Engine?**
+6. **Apakah seluruh state tetap konsisten sampai Capability Passport?**
+
+### Integration Gate yang saya sarankan
+
+Kita baru menyatakan **Task #1 READY TO IMPLEMENT** apabila:
+
+> **Competency Framework = canonical source of competency truth**
+> **Diagnostic = measurement of current state**
+> **LMS = execution of learning**
+> **Practice = execution of capability development**
+> **Evidence = preparation proof**
+> **Simulation = pre-assessment demonstration**
+> **Safety = independent hard gate**
+> **Readiness = final TERAS recommendation**
+
+Dengan demikian tidak terjadi lagi masalah seperti merge sebelumnya: **subsystem kedua yang secara konsep terlihat mirip tetapi secara arsitektur sebenarnya duplikat.**
+
+**Kesimpulan:** post-merge ini bukan sekadar “build berhasil”; ini adalah **pemulihan architectural integrity**. Sekarang langkah yang benar adalah **Integration Review → Gate → baru Task #1 Personal Diagnostic & Readiness Map**.
