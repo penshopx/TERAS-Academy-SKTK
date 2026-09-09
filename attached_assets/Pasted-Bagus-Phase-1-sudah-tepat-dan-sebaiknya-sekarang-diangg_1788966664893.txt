@@ -1,0 +1,1148 @@
+Bagus. **Phase 1 sudah tepat dan sebaiknya sekarang dianggap baseline terkunci.** Jangan melakukan refactor besar lagi pada foundation.
+
+Dari hasil yang Anda berikan, saya menyarankan kita masuk ke **Phase 2 — Personal Diagnostic & Readiness Map**, karena ini adalah titik yang akan mengubah TERAS SKTTK dari sekadar LMS yang sudah diberi domain SKTTK menjadi **mesin persiapan kompetensi yang benar-benar personal**.
+
+Urutan tiga langkah yang Anda siapkan juga sudah tepat:
+
+> **Diagnostic → Competency Framework → Configurable Readiness Rules**
+
+Namun saya akan sedikit mengubah urutannya secara implementasi:
+
+```text
+PHASE 1
+Foundation
+     ✓
+     │
+     ▼
+PHASE 2
+Personal Diagnostic
+     │
+     ▼
+Personal Competency Profile
+     │
+     ▼
+Readiness Map
+     │
+     ▼
+PHASE 3
+SKTTK Competency Framework
+     │
+     ├── Competency Unit
+     ├── Element
+     ├── KUK
+     ├── Knowledge
+     ├── Practice
+     ├── Safety
+     └── Evidence
+     │
+     ▼
+Learning ↔ Practice ↔ Evidence ↔ Simulation
+     │
+     ▼
+PHASE 4
+Configurable Readiness Rules
+     │
+     ├── Competency threshold
+     ├── Evidence requirement
+     ├── Simulation requirement
+     └── Critical Safety Hard Gate
+     │
+     ▼
+READINESS ENGINE
+```
+
+### Prompt Replit untuk Phase 2
+
+Saya sarankan sekarang jangan memberikan seluruh Master Prompt lagi. Berikan **task prompt yang sangat spesifik** berikut:
+
+# PHASE 2 — PERSONAL DIAGNOSTIC & READINESS MAP
+
+## TERAS SKTTK
+
+Phase 1 — TERAS SKTTK Foundation has been completed and verified.
+
+Current status:
+
+* Branding: TERAS SKTTK
+* Existing routes must remain unchanged.
+* Existing authentication must remain unchanged.
+* Existing readiness engine must remain unchanged in this phase.
+* Existing safety gate must remain functional.
+* Existing Capability Passport must remain functional.
+* Existing LMS architecture must remain functional.
+* Typecheck: PASS
+* Frontend tests: 91/91 PASS
+* Production build: PASS
+* Workflow: RUNNING
+* Browser console: no errors.
+
+DO NOT rewrite the existing application.
+
+DO NOT replace the existing readiness engine yet.
+
+DO NOT modify authentication.
+
+DO NOT remove or rename existing routes.
+
+This phase is additive.
+
+---
+
+# OBJECTIVE
+
+Build:
+
+> **Personal Diagnostic & Readiness Map**
+
+The purpose is to transform TERAS SKTTK from a generic learning environment into a personalized competency preparation system.
+
+The learner must be able to answer:
+
+1. What SKTTK target am I preparing for?
+2. What do I already know?
+3. What can I already do?
+4. What is my experience level?
+5. What are my safety strengths and gaps?
+6. What evidence do I already have?
+7. What competency areas need development?
+8. What should I learn next?
+9. What should I practice next?
+10. What is currently preventing me from being ready?
+
+---
+
+# IMPORTANT PRODUCT PRINCIPLE
+
+Do NOT create a single "pre-test score".
+
+Diagnostic is NOT merely an exam.
+
+It is a:
+
+> **Personal Competency & Readiness Diagnostic**
+
+The output must be a structured learner profile.
+
+---
+
+# DIAGNOSTIC DIMENSIONS
+
+Create these dimensions:
+
+## 1. KNOWLEDGE
+
+Measure:
+
+* technical concepts;
+* terminology;
+* principles;
+* procedures;
+* calculations where applicable;
+* interpretation;
+* troubleshooting knowledge.
+
+---
+
+## 2. PRACTICAL EXPERIENCE
+
+Measure:
+
+* relevant work experience;
+* frequency of performing tasks;
+* level of independence;
+* exposure to actual projects;
+* familiarity with tools/equipment;
+* experience solving technical problems.
+
+---
+
+## 3. PRACTICAL CAPABILITY
+
+Measure the learner's ability to:
+
+* identify equipment;
+* sequence procedures;
+* perform technical tasks;
+* troubleshoot;
+* make technical decisions;
+* follow procedures;
+* explain technical work.
+
+---
+
+## 4. SAFETY
+
+Safety must be a separate dimension.
+
+Measure:
+
+* hazard identification;
+* electrical safety awareness;
+* PPE;
+* isolation procedures;
+* safe working sequence;
+* unsafe condition recognition;
+* emergency response;
+* safety decision-making.
+
+Do NOT merge Safety into a general average score.
+
+---
+
+## 5. COMMUNICATION
+
+Measure:
+
+* technical explanation;
+* procedure explanation;
+* reasoning;
+* justification of technical decisions;
+* ability to communicate safety considerations.
+
+---
+
+## 6. EXISTING EVIDENCE
+
+Ask what the learner already has:
+
+* work experience records;
+* training records;
+* practice records;
+* project documentation;
+* technical reports;
+* photographs/videos where applicable;
+* previous competency-related records.
+
+Important:
+
+These are learner-provided preparation references.
+
+They are NOT automatically official certification evidence.
+
+---
+
+# DIAGNOSTIC FLOW
+
+Implement:
+
+```text
+Select Target
+      ↓
+Diagnostic Introduction
+      ↓
+Profile & Experience
+      ↓
+Knowledge Diagnostic
+      ↓
+Practical Capability Diagnostic
+      ↓
+Safety Diagnostic
+      ↓
+Communication Diagnostic
+      ↓
+Evidence Inventory
+      ↓
+Diagnostic Summary
+      ↓
+Personal Competency Profile
+      ↓
+Personal Readiness Map
+```
+
+The learner should be able to save progress and continue later.
+
+---
+
+# TARGET SELECTION
+
+Create a target selection step.
+
+Minimum fields:
+
+* program;
+* occupation/job role;
+* competency level;
+* specialization/path where applicable.
+
+Do not hardcode only "Solar PV Technician".
+
+Use database-driven program selection.
+
+Example:
+
+```text
+Program:
+TERAS SKTTK
+
+Target:
+Solar PV Technician
+
+Path:
+Installation
+
+Level:
+[configurable]
+```
+
+The architecture must support additional SKTTK programs later.
+
+---
+
+# QUESTION ENGINE
+
+Do not hardcode all diagnostic questions inside frontend components.
+
+Create a configurable question model.
+
+Suggested structure:
+
+```text
+diagnostic_templates
+diagnostic_questions
+diagnostic_options
+diagnostic_responses
+```
+
+Each question should support:
+
+* dimension;
+* competency reference;
+* question type;
+* difficulty;
+* scoring;
+* explanation;
+* safety flag;
+* required flag.
+
+Question types should support:
+
+```text
+single choice
+multiple choice
+true/false
+rating scale
+self assessment
+scenario
+short answer
+experience input
+evidence inventory
+```
+
+Architecture should allow additional question types later.
+
+---
+
+# KNOWLEDGE QUESTIONS
+
+Knowledge questions should be competency-linked.
+
+Example:
+
+```text
+Question:
+Apa langkah yang harus dilakukan sebelum melakukan pekerjaan
+pada instalasi listrik?
+
+Competency:
+Electrical Safety
+
+Dimension:
+Knowledge
+
+Safety:
+TRUE
+```
+
+Do not only store:
+
+```text
+score = 80
+```
+
+Store the competency relationship.
+
+---
+
+# EXPERIENCE QUESTIONS
+
+Example:
+
+```text
+Berapa lama pengalaman Anda pada pekerjaan terkait?
+
+[Belum pernah]
+[< 1 tahun]
+[1–3 tahun]
+[3–5 tahun]
+[> 5 tahun]
+```
+
+Additional questions:
+
+* pernah melakukan instalasi?
+* pernah melakukan testing?
+* pernah melakukan commissioning?
+* pernah melakukan troubleshooting?
+* pernah bekerja dengan prosedur K3?
+* seberapa mandiri Anda melakukan pekerjaan?
+
+Do not treat experience duration alone as proof of competence.
+
+Experience is one diagnostic signal, not certification evidence.
+
+---
+
+# PRACTICAL CAPABILITY DIAGNOSTIC
+
+Use scenario-based questions.
+
+Example:
+
+```text
+Anda menemukan kondisi abnormal pada suatu instalasi.
+
+Apa langkah pertama yang paling tepat?
+
+A. Langsung melakukan perbaikan
+B. Melanjutkan pekerjaan
+C. Mengidentifikasi bahaya dan mengamankan kondisi
+D. Meminta orang lain menyelesaikan
+```
+
+Questions must test:
+
+* sequencing;
+* technical judgment;
+* troubleshooting;
+* safety;
+* decision-making.
+
+---
+
+# SAFETY DIAGNOSTIC
+
+This is critical.
+
+Some answers must be classified as:
+
+```text
+SAFE
+ATTENTION
+UNSAFE
+CRITICAL SAFETY FAILURE
+```
+
+A critical safety answer must create a safety flag.
+
+Example:
+
+```text
+Diagnostic Result
+
+Safety:
+CRITICAL GAP
+
+Reason:
+Unsafe isolation procedure identified.
+
+Action:
+Safety Remediation Required
+```
+
+Do not let a high knowledge score hide this.
+
+---
+
+# DIAGNOSTIC SCORING
+
+Create separate scores:
+
+```text
+Knowledge
+Practical Capability
+Experience
+Safety
+Communication
+Evidence
+```
+
+Example:
+
+```text
+Knowledge             82
+Experience            70
+Practice Capability   64
+Safety                45
+Communication         73
+Evidence              30
+```
+
+But the main output is NOT the average.
+
+Instead generate:
+
+```text
+STRENGTHS
+GAPS
+CRITICAL GAPS
+MISSING EVIDENCE
+SAFETY BLOCKERS
+RECOMMENDED ACTIONS
+```
+
+---
+
+# PERSONAL COMPETENCY PROFILE
+
+After completion, create:
+
+# Personal Competency Profile
+
+Display:
+
+```text
+Target Certification
+Occupation
+Level
+Path
+
+Knowledge
+████████░░ 82
+
+Practice
+██████░░░░ 64
+
+Safety
+████░░░░░░ 45
+
+Communication
+███████░░░ 73
+
+Evidence
+███░░░░░░░ 30
+```
+
+Then:
+
+### Strengths
+
+Example:
+
+* Electrical fundamentals
+* Equipment identification
+
+### Development Areas
+
+Example:
+
+* Troubleshooting
+* Testing procedure
+
+### Critical Gaps
+
+Example:
+
+* Electrical isolation safety
+
+### Evidence Gaps
+
+Example:
+
+* Practical work evidence not available
+
+---
+
+# PERSONAL READINESS MAP
+
+Create a new page:
+
+```text
+/readiness-map
+```
+
+The page must visually map:
+
+```text
+TARGET
+  ↓
+COMPETENCY AREAS
+  ↓
+CURRENT CONDITION
+  ↓
+GAPS
+  ↓
+RECOMMENDED ACTION
+```
+
+Example:
+
+```text
+Electrical Safety
+Status: CRITICAL GAP
+Action: Complete Safety Module M02
+        ↓
+        Practice P02
+        ↓
+        Safety Scenario S02
+```
+
+Another:
+
+```text
+Troubleshooting
+Status: DEVELOPING
+Action: Complete M06
+        ↓
+        Practice P06
+        ↓
+        Simulation S06
+```
+
+---
+
+# RECOMMENDATION ENGINE
+
+Diagnostic must generate personalized recommendations.
+
+Example:
+
+```text
+IF Knowledge < threshold
+→ recommend Learning Module
+
+IF Practice < threshold
+→ recommend Practice
+
+IF Evidence insufficient
+→ recommend Evidence Activity
+
+IF Safety critical
+→ recommend Safety Remediation
+
+IF Communication low
+→ recommend Technical Explanation Practice
+```
+
+For now, create this as a configurable recommendation service.
+
+Do not hardcode recommendation logic into UI.
+
+Suggested service:
+
+```text
+DiagnosticRecommendationService
+```
+
+---
+
+# NEXT ACTION
+
+The most important output of Diagnostic is:
+
+# NEXT ACTION
+
+Example:
+
+```text
+Your highest priority:
+
+Complete:
+Electrical Safety Fundamentals
+
+Reason:
+Critical safety gap identified.
+
+Next:
+M02 → Practice P02 → Safety Simulation S02
+```
+
+The learner dashboard should be able to consume this result.
+
+Do not create a duplicate dashboard.
+
+Integrate the Next Action into the existing dashboard.
+
+---
+
+# DATABASE
+
+Extend the existing schema safely.
+
+Potential entities:
+
+```text
+diagnostic_templates
+diagnostic_questions
+diagnostic_options
+diagnostic_sessions
+diagnostic_responses
+
+competency_profiles
+competency_profile_items
+
+competency_gaps
+diagnostic_recommendations
+```
+
+Reuse existing tables if equivalent entities already exist.
+
+DO NOT create duplicate tables unnecessarily.
+
+Inspect the current schema first.
+
+---
+
+# DATA RELATIONSHIP
+
+The fundamental relationship should be:
+
+```text
+Learner
+   ↓
+Target Program
+   ↓
+Diagnostic
+   ↓
+Competency
+   ↓
+Current Level
+   ↓
+Gap
+   ↓
+Recommendation
+   ↓
+Learning / Practice / Evidence
+```
+
+This architecture will later connect to the SKTTK Competency Framework.
+
+---
+
+# LMS CONNECTION
+
+Do not yet redesign the LMS.
+
+However, Diagnostic must be able to recommend existing learning objects.
+
+Example:
+
+```text
+Gap:
+Electrical Safety
+
+Recommendation:
+Module M02
+
+CTA:
+Mulai M02
+```
+
+If the existing LMS already has module IDs, reference them.
+
+Do not duplicate learning content.
+
+---
+
+# EVIDENCE CONNECTION
+
+If the diagnostic identifies evidence gaps:
+
+```text
+Evidence Status:
+INSUFFICIENT
+```
+
+the system should recommend an evidence activity.
+
+Example:
+
+```text
+Evidence Gap:
+No practical installation record.
+
+Recommended:
+Complete Practice P03
+Submit Preparation Evidence E03
+```
+
+Do not label it official certification evidence.
+
+---
+
+# SAFETY CONNECTION
+
+The existing Safety Gate must remain intact.
+
+Phase 2 may create diagnostic safety flags.
+
+It must NOT weaken or bypass the existing safety engine.
+
+If Diagnostic identifies:
+
+```text
+CRITICAL SAFETY FAILURE
+```
+
+store it as a blocker candidate.
+
+The existing readiness engine will eventually consume these conditions in a later phase.
+
+For this phase, do not rewrite readiness calculation.
+
+---
+
+# UX
+
+Use the existing TERAS SKTTK visual system.
+
+Maintain:
+
+* black;
+* white;
+* blue;
+* technical;
+* professional;
+* clean.
+
+Do not introduce a new design language.
+
+Use existing components wherever possible.
+
+---
+
+# LEARNER EXPERIENCE
+
+The diagnostic should feel like:
+
+> "TERAS sedang memahami posisi saya."
+
+not:
+
+> "Saya sedang mengikuti ujian."
+
+Use clear progress:
+
+```text
+Step 1 of 6
+Profile
+
+Step 2 of 6
+Knowledge
+
+Step 3 of 6
+Practice
+
+Step 4 of 6
+Safety
+
+Step 5 of 6
+Communication
+
+Step 6 of 6
+Evidence
+```
+
+Allow:
+
+* save;
+* continue;
+* previous;
+* next.
+
+---
+
+# RESULT SCREEN
+
+After diagnostic completion show:
+
+# Your Personal Competency Profile
+
+Then:
+
+### Overall Development State
+
+### Strengths
+
+### Priority Gaps
+
+### Safety Status
+
+### Evidence Status
+
+### Recommended Learning
+
+### Recommended Practice
+
+### Recommended Simulation
+
+### Next Action
+
+Example:
+
+```text
+YOUR CURRENT STATE
+
+Developing
+
+Priority:
+Safety
+
+Critical Blocker:
+Electrical Isolation Procedure
+
+Next Action:
+Complete Safety Remediation M02
+```
+
+Avoid saying:
+
+> "You failed."
+
+Use:
+
+> "There are gaps that need to be addressed before readiness can be achieved."
+
+---
+
+# TRAINER VIEW
+
+Add diagnostic visibility to Trainer Dashboard.
+
+Trainer should see:
+
+```text
+Learner
+Target
+Diagnostic Status
+Top Gap
+Safety Status
+Evidence Status
+Recommended Action
+```
+
+Trainer can open the learner's Personal Competency Profile.
+
+Trainer cannot modify official certification status.
+
+---
+
+# ADMIN VIEW
+
+Admin can configure:
+
+* diagnostic templates;
+* questions;
+* competency mappings;
+* thresholds;
+* recommendations.
+
+But do not yet build a complex admin editor if it would delay the core learner flow.
+
+A basic CRUD structure is sufficient.
+
+---
+
+# AUDIT
+
+Record:
+
+* diagnostic started;
+* response submitted;
+* diagnostic completed;
+* profile generated;
+* gap generated;
+* recommendation generated.
+
+---
+
+# TESTING
+
+Add tests for:
+
+### Test 1
+
+Learner completes diagnostic.
+
+Expected:
+
+```text
+Personal Competency Profile generated.
+```
+
+### Test 2
+
+Critical safety answer.
+
+Expected:
+
+```text
+Safety = CRITICAL GAP
+```
+
+### Test 3
+
+Low evidence.
+
+Expected:
+
+```text
+Evidence = INSUFFICIENT
+```
+
+### Test 4
+
+Low practice.
+
+Expected:
+
+```text
+Practice = DEVELOPING
+```
+
+### Test 5
+
+Diagnostic recommendation.
+
+Expected:
+
+```text
+Gap → Learning/Practice recommendation
+```
+
+### Test 6
+
+Existing readiness engine.
+
+Expected:
+
+> Existing readiness tests remain passing.
+
+---
+
+# REGRESSION REQUIREMENT
+
+Before completion run:
+
+```text
+Typecheck
+Frontend tests
+Production build
+Existing readiness tests
+Safety regression tests
+Authorization tests
+```
+
+Target:
+
+```text
+0 TypeScript errors
+0 failed existing tests
+0 safety regression failures
+0 broken existing routes
+0 console errors
+```
+
+---
+
+# DEFINITION OF DONE
+
+Phase 2 is complete when a demo learner can:
+
+```text
+Login
+↓
+Select SKTTK target
+↓
+Start Diagnostic
+↓
+Complete Profile & Experience
+↓
+Complete Knowledge Diagnostic
+↓
+Complete Practical Capability Diagnostic
+↓
+Complete Safety Diagnostic
+↓
+Complete Communication Diagnostic
+↓
+Complete Evidence Inventory
+↓
+Submit Diagnostic
+↓
+Receive Personal Competency Profile
+↓
+See Strengths
+↓
+See Gaps
+↓
+See Safety Status
+↓
+See Evidence Gaps
+↓
+See Recommended Learning
+↓
+See Recommended Practice
+↓
+See NEXT ACTION
+↓
+Open Readiness Map
+```
+
+And the existing TERAS application remains fully functional.
+
+---
+
+# IMPORTANT FINAL INSTRUCTION TO REPLIT AGENT
+
+Before writing code:
+
+1. Inspect the current repository.
+2. Inspect existing database schema.
+3. Inspect existing routes.
+4. Inspect existing readiness engine.
+5. Inspect existing safety engine.
+6. Inspect existing dashboard.
+7. Inspect existing LMS.
+8. Inspect existing role/authorization model.
+9. Identify reusable components.
+10. Identify existing equivalent entities.
+
+Then provide a concise implementation plan.
+
+Only after the assessment, implement Phase 2.
+
+Do not rewrite working systems.
+
+Do not change the existing readiness formula in this phase.
+
+Do not remove existing features.
+
+Build Phase 2 as an additive capability layer.
+
+The core principle is:
+
+> **Diagnostic does not decide competence. Diagnostic discovers the learner's current position so TERAS can determine what the learner needs to learn, practice, prove, and improve next.**
+
+### Kenapa saya menyarankan ini sebagai Phase 2
+
+Karena setelah Phase 1, **TERAS SKTTK sudah memiliki identitas dan boundary yang benar, tetapi belum memiliki "otak personalisasi"**.
+
+Diagnostic akan menjadi penghubung:
+
+**Learner → Competency → LMS**
+
+Sehingga nanti LMS tidak lagi sekadar:
+
+> “Ini daftar materi yang harus Anda pelajari.”
+
+tetapi:
+
+> **“Berdasarkan kondisi Anda, inilah kompetensi yang perlu diperkuat, materi yang perlu dipelajari, praktik yang harus dilakukan, evidence yang perlu dibangun, dan simulasi yang perlu dilewati.”**
+
+Kemudian **Phase 3** baru kita masukkan **SKTTK Competency Framework** secara serius. Di situlah kita mulai membangun hubungan:
+
+> **Unit Kompetensi → Elemen → KUK → Knowledge → Practice → Evidence → Safety → Simulation**
+
+Setelah itu Phase 4 menjadi **Readiness Rules Engine**, sehingga seluruh hasil tersebut akhirnya benar-benar menggerakkan **Readiness Cockpit**.
+
+Dengan urutan ini, kita menjaga prinsip TERAS yang sudah Anda bangun: **jangan merusak mesin yang sudah lulus 91/91 test, tetapi tambahkan lapisan domain SKTTK secara bertahap dan terukur.**
