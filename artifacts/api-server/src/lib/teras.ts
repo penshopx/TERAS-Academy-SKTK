@@ -77,10 +77,9 @@ export async function remediationRecords(learnerId = DEMO_LEARNER, pathwayId?: s
 export async function assessmentSummary(assessment: { id: string; moduleId: string; name: string; gateCode?: string | null }, learnerId = DEMO_LEARNER, pathwayId?: string) { const activePathwayId = pathwayId ?? (await learnerContext(learnerId)).pathway.id; const [attempts, criteria, observations] = await Promise.all([db.select().from(assessmentAttemptsTable).where(and(eq(assessmentAttemptsTable.assessmentId, assessment.id), eq(assessmentAttemptsTable.learnerId, learnerId), eq(assessmentAttemptsTable.pathwayId, activePathwayId))), db.select().from(assessmentCriteriaTable).where(eq(assessmentCriteriaTable.assessmentId, assessment.id)), db.select().from(criterionObservationsTable)]); const latestAttempt = attempts.sort((a, b) => b.number - a.number || b.createdAt.getTime() - a.createdAt.getTime())[0]; const byCriterion = new Map(observations.filter((observation) => observation.attemptId === latestAttempt?.id).map((observation) => [observation.criterionId, observation])); const scores = criteria.map((criterion) => byCriterion.get(criterion.id)?.score).filter((score): score is number => score !== undefined); return { id: assessment.id, moduleId: assessment.moduleId, name: assessment.name, gateCode: assessment.gateCode ?? null, status: latestAttempt?.status ?? "Not started", score: scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length / 3 * 100) : 0, attemptCount: attempts.length, criticalFailure: Boolean(latestAttempt) && criteria.some((criterion) => criterion.critical && (byCriterion.get(criterion.id)?.score ?? 0) < 2) }; }
 export async function readiness(context?: Awaited<ReturnType<typeof learnerContext>>) {
   const activeContext = context ?? await learnerContext();
-  const [allModules, gates, events, gaps, evidences, allAssessments, allRequirements] = await Promise.all([
+  const [allModules, gates, gaps, evidences, allAssessments, allRequirements] = await Promise.all([
     db.select().from(modulesTable),
-    db.select().from(readinessGatesTable).where(eq(readinessGatesTable.pathwayId, activeContext.pathway.id)).orderBy(readinessGatesTable.sequence),
-    db.select().from(readinessEventsTable).where(and(eq(readinessEventsTable.enrollmentId, activeContext.enrollment.id), eq(readinessEventsTable.pathwayId, activeContext.pathway.id))),
+    db.select().from(readinessGatesTable).where(and(eq(readinessGatesTable.pathwayId, activeContext.pathway.id), eq(readinessGatesTable.active, true))).orderBy(readinessGatesTable.sequence),
     gapRecords(activeContext.learner.id, activeContext.pathway.id),
     evidenceRecords(activeContext.learner.id, activeContext.pathway.id),
     db.select().from(assessmentsTable),
@@ -93,12 +92,24 @@ export async function readiness(context?: Awaited<ReturnType<typeof learnerConte
   const assessmentStates = await Promise.all(assessments.map((assessment) => assessmentSummary(assessment, activeContext.learner.id, activeContext.pathway.id)));
   const stateByAssessment = new Map(assessmentStates.map((assessment) => [assessment.id, assessment]));
   const validEvidenceModules = new Set(evidences.filter((evidence) => evidence.status === "Valid").map((evidence) => evidence.moduleId));
-  const latestEvents = latest(events, (event) => event.gateId);
   const safetyBlockers = [
     ...assessmentStates.filter((assessment) => assessment.criticalFailure).map((assessment) => `Critical safety failure in ${assessment.name}`),
     ...gaps.filter((gap) => gap.status !== "Resolved" && gap.severity === "Critical").map((gap) => gap.diagnosis),
   ];
   let previousPassed = true;
+  const inputEvidence = {
+    assessments: assessmentStates.map((assessment) => ({
+      id: assessment.id,
+      score: assessment.score,
+      completed: assessment.status === "Completed",
+      criticalFailure: assessment.criticalFailure,
+    })),
+    evidence: requirements.map((requirement) => ({
+      requirementId: requirement.id,
+      satisfied: validEvidenceModules.has(requirement.moduleId),
+    })),
+    openCriticalGaps: gaps.filter((gap) => gap.status !== "Resolved" && gap.severity === "Critical").map((gap) => gap.id),
+  };
   const gateViews = gates.map((gate) => {
     const gateAssessments = gate.assessmentMode === "All"
       ? assessments
@@ -120,10 +131,20 @@ export async function readiness(context?: Awaited<ReturnType<typeof learnerConte
       ...failedAssessments.map((assessment) => stateByAssessment.get(assessment.id)?.criticalFailure ? `Critical safety failure in ${assessment.name}` : `Assessment not complete: ${assessment.name}`),
       ...missingRequirements.map((requirement) => `Valid evidence required: ${requirement.name}`),
     ];
+    const gateAssessmentStates = gateAssessments.map((assessment) => stateByAssessment.get(assessment.id)).filter(Boolean);
+    const assessmentScore = gateAssessmentStates.length
+      ? gateAssessmentStates.reduce((sum, state) => sum + state!.score, 0) / gateAssessmentStates.length
+      : 100;
+    const evidenceScore = gateRequirements.length
+      ? gateRequirements.filter((requirement) => validEvidenceModules.has(requirement.moduleId)).length / gateRequirements.length * 100
+      : 100;
+    const score = Math.round((assessmentScore + evidenceScore) / 2);
+    if (score < gate.threshold) policyBlockers.push(`Rule threshold not met: ${score}/${gate.threshold}`);
+    const hardGateFailed = gate.hardGate && policyBlockers.length > 0;
     const passed = previousPassed && policyBlockers.length === 0 && safetyBlockers.length === 0;
     const status = passed ? "Passed" : previousPassed ? "In progress" : "Locked";
     previousPassed = passed;
-    return { id: gate.id, code: gate.code, name: gate.name, requirement: gate.requirement, status, blockers: [...policyBlockers, ...(latestEvents.get(gate.id)?.blockers ?? [])] };
+    return { id: gate.id, code: gate.code, name: gate.name, requirement: gate.requirement, status, score, threshold: gate.threshold, hardGate: gate.hardGate, hardGateFailed, competencyUnitId: gate.competencyUnitId, ruleVersion: gate.ruleVersion, blockers: policyBlockers };
   });
   const activeGate = gateViews.find((gate) => gate.status === "In progress") ?? [...gateViews].reverse().find((gate) => gate.status === "Passed") ?? gateViews[0];
   if (!activeGate) throw new Error(`No readiness gates configured for ${activeContext.pathway.name}`);
@@ -135,14 +156,50 @@ export async function readiness(context?: Awaited<ReturnType<typeof learnerConte
   const completedRequirements = completeAssessmentCount + validEvidenceCount;
   const totalRequirements = requiredAssessmentCount + requiredEvidenceCount;
   const currentBlockers = gateViews.filter((gate) => gate.status === "In progress").flatMap((gate) => gate.blockers);
+  const blockers = [...new Set([...safetyBlockers, ...currentBlockers])];
+  const score = totalRequirements ? Math.round(completedRequirements / totalRequirements * 100) : 100;
+  const hardGateFailed = gateViews.some((gate) => gate.hardGateFailed);
+  const allRulesPassed = gateViews.every((gate) => gate.status === "Passed");
+  const status = safetyBlockers.length > 0 || hardGateFailed
+    ? "Not Ready"
+    : allRulesPassed
+      ? "Ready for Official Assessment"
+      : "Developing";
+  const ruleVersion = Math.max(...gates.map((gate) => gate.ruleVersion));
+  const decisionReason = safetyBlockers.length
+    ? "Critical safety evidence failed. Safety is a non-compensable hard gate."
+    : hardGateFailed
+      ? "One or more configured hard gates have not been satisfied."
+      : allRulesPassed
+        ? "All active readiness rules, thresholds, evidence requirements, and safety gates are satisfied."
+        : "Evidence or assessment thresholds are still developing.";
+  const evaluatedAt = new Date();
+  await db.insert(readinessEventsTable).values({
+    id: crypto.randomUUID(),
+    enrollmentId: activeContext.enrollment.id,
+    pathwayId: activeContext.pathway.id,
+    gateId: activeGate.id,
+    status,
+    score,
+    blockers,
+    ruleVersion,
+    inputEvidence,
+    decisionReason,
+    evaluatedAt,
+    createdBy: activeContext.learner.id,
+  });
   return {
     pathway: await pathwaySummary(activeContext.pathway.id),
-    status: safetyBlockers.length ? "Blocked" : activeGate.status,
-    score: totalRequirements ? Math.round(completedRequirements / totalRequirements * 100) : 100,
-    currentGate: { id: activeGate.id, code: activeGate.code, name: activeGate.name, requirement: activeGate.requirement, status: activeGate.status },
-    nextGate: gateViews[currentIndex + 1] ? (({ id, code, name, requirement, status }) => ({ id, code, name, requirement, status }))(gateViews[currentIndex + 1]) : null,
-    gates: gateViews.map(({ id, code, name, requirement, status }) => ({ id, code, name, requirement, status })),
-    blockers: [...safetyBlockers, ...currentBlockers],
+    status,
+    score,
+    ruleVersion,
+    evaluatedAt,
+    decisionReason,
+    inputEvidence,
+    currentGate: (({ id, code, name, requirement, status, score, threshold, hardGate, competencyUnitId, ruleVersion }) => ({ id, code, name, requirement, status, score, threshold, hardGate, competencyUnitId, ruleVersion }))(activeGate),
+    nextGate: gateViews[currentIndex + 1] ? (({ id, code, name, requirement, status, score, threshold, hardGate, competencyUnitId, ruleVersion }) => ({ id, code, name, requirement, status, score, threshold, hardGate, competencyUnitId, ruleVersion }))(gateViews[currentIndex + 1]) : null,
+    gates: gateViews.map(({ id, code, name, requirement, status, score, threshold, hardGate, competencyUnitId, ruleVersion }) => ({ id, code, name, requirement, status, score, threshold, hardGate, competencyUnitId, ruleVersion })),
+    blockers,
     outstandingGapCount: gaps.filter((gap) => gap.status !== "Resolved").length,
     missingEvidenceCount: requirements.filter((requirement) => !validEvidenceModules.has(requirement.moduleId)).length,
   };

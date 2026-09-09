@@ -90,7 +90,7 @@ export default function Dashboard() {
           <CardHeader className="pb-2">
             <CardTitle className="text-lg flex justify-between items-center">
               <span>Capability Readiness</span>
-              <Badge variant={dashboard.readiness.status === "READY" ? "success" : "warning"} className="font-mono">
+              <Badge variant={dashboard.readiness.status === "Ready for Official Assessment" ? "success" : "warning"} className="font-mono">
                 {dashboard.readiness.status}
               </Badge>
             </CardTitle>

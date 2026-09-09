@@ -40,6 +40,7 @@ import type {
   AdminProgram,
   AdminProgramInput,
   AdminProgramUpdate,
+  AdminReadinessRule,
   AdminUser,
   AdminUserInput,
   AdminUserUpdate,
@@ -103,6 +104,7 @@ import type {
   ProgramDetail,
   ProgramSummary,
   ReadinessMap,
+  ReadinessRuleInput,
   ReadinessSummary,
   RemediationActivityCompletionInput,
   RemediationPlan,
@@ -3795,6 +3797,154 @@ export function useGetAdminAccess<TData = Awaited<ReturnType<typeof getAdminAcce
 
 
 
+
+export const getListAdminReadinessRulesUrl = () => {
+
+
+
+
+  return `/api/admin/readiness-rules`
+}
+
+/**
+ * @summary List active versioned readiness rules
+ */
+export const listAdminReadinessRules = async ( options?: Parameters<typeof customFetch>[1]): Promise<AdminReadinessRule[]> => {
+
+  return customFetch<AdminReadinessRule[]>(getListAdminReadinessRulesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAdminReadinessRulesQueryKey = () => {
+    return [
+    `/api/admin/readiness-rules`
+    ] as const;
+    }
+
+
+export const getListAdminReadinessRulesQueryOptions = <TData = Awaited<ReturnType<typeof listAdminReadinessRules>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminReadinessRules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAdminReadinessRulesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminReadinessRules>>> = ({ signal }) => listAdminReadinessRules({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAdminReadinessRules>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAdminReadinessRulesQueryResult = NonNullable<Awaited<ReturnType<typeof listAdminReadinessRules>>>
+export type ListAdminReadinessRulesQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse>
+
+
+/**
+ * @summary List active versioned readiness rules
+ */
+
+export function useListAdminReadinessRules<TData = Awaited<ReturnType<typeof listAdminReadinessRules>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminReadinessRules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAdminReadinessRulesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateAdminReadinessRuleVersionUrl = () => {
+
+
+
+
+  return `/api/admin/readiness-rules`
+}
+
+/**
+ * @summary Publish a new immutable readiness rule version
+ */
+export const createAdminReadinessRuleVersion = async (readinessRuleInput: ReadinessRuleInput, options?: Parameters<typeof customFetch>[1]): Promise<AdminReadinessRule> => {
+
+  return customFetch<AdminReadinessRule>(getCreateAdminReadinessRuleVersionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(readinessRuleInput)
+  }
+);}
+
+
+
+
+
+export const getCreateAdminReadinessRuleVersionMutationOptions = <TError = ErrorType<BadRequestResponse | ForbiddenResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAdminReadinessRuleVersion>>, TError,{data: BodyType<ReadinessRuleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAdminReadinessRuleVersion>>, TError,{data: BodyType<ReadinessRuleInput>}, TContext> => {
+
+const mutationKey = ['createAdminReadinessRuleVersion'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAdminReadinessRuleVersion>>, {data: BodyType<ReadinessRuleInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAdminReadinessRuleVersion(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAdminReadinessRuleVersionMutationResult = NonNullable<Awaited<ReturnType<typeof createAdminReadinessRuleVersion>>>
+    export type CreateAdminReadinessRuleVersionMutationBody = BodyType<ReadinessRuleInput>
+    export type CreateAdminReadinessRuleVersionMutationError = ErrorType<BadRequestResponse | ForbiddenResponse | ConflictResponse>
+
+    /**
+ * @summary Publish a new immutable readiness rule version
+ */
+export const useCreateAdminReadinessRuleVersion = <TError = ErrorType<BadRequestResponse | ForbiddenResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAdminReadinessRuleVersion>>, TError,{data: BodyType<ReadinessRuleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAdminReadinessRuleVersion>>,
+        TError,
+        {data: BodyType<ReadinessRuleInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAdminReadinessRuleVersionMutationOptions(options));
+    }
 
 export const getListAdminCompetencyFrameworksUrl = () => {
 

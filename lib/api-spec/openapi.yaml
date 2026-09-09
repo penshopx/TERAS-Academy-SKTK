@@ -824,6 +824,25 @@ paths:
                 $ref: "#/components/schemas/AdminAccess"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/readiness-rules:
+    get:
+      operationId: listAdminReadinessRules
+      tags: [admin]
+      summary: List active versioned readiness rules
+      responses:
+        "200": { description: Readiness rules, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AdminReadinessRule" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createAdminReadinessRuleVersion
+      tags: [admin]
+      summary: Publish a new immutable readiness rule version
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ReadinessRuleInput" } } } }
+      responses:
+        "201": { description: New active rule version, content: { application/json: { schema: { $ref: "#/components/schemas/AdminReadinessRule" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /admin/competency-frameworks:
     get:
       operationId: listAdminCompetencyFrameworks
@@ -1283,9 +1302,18 @@ x-pathway-selection-components:
             - type: "null"
         evidenceCounts:
           $ref: "#/components/schemas/EvidenceCounts"
+        diagnostic:
+          type: object
+          required: [status, score, topGaps, safetyBlockers, blocked]
+          properties:
+            status: { type: string }
+            score: { type: ["integer", "null"] }
+            topGaps: { type: array, items: { type: string } }
+            safetyBlockers: { type: array, items: { type: string } }
+            blocked: { type: boolean }
         nextAction:
           $ref: "#/components/schemas/NextAction"
-      required: [learner, program, pathway, capabilityProgress, readiness, currentLearning, currentPractice, mainGap, evidenceCounts, nextAction]
+      required: [learner, program, pathway, capabilityProgress, readiness, currentLearning, currentPractice, mainGap, evidenceCounts, diagnostic, nextAction]
     LearnerProfile:
       type: object
       properties:
@@ -1554,12 +1582,21 @@ x-pathway-selection-components:
         name: { type: string }
         status: { type: string }
         requirement: { type: string }
-      required: [id, code, name, status, requirement]
+        score: { type: integer, minimum: 0, maximum: 100 }
+        threshold: { type: integer, minimum: 0, maximum: 100 }
+        hardGate: { type: boolean }
+        competencyUnitId: { type: ["string", "null"] }
+        ruleVersion: { type: integer, minimum: 1 }
+      required: [id, code, name, status, requirement, score, threshold, hardGate, competencyUnitId, ruleVersion]
     ReadinessSummary:
       type: object
       properties:
-        status: { type: string }
+        status: { type: string, enum: [Not Ready, Developing, Ready for Official Assessment] }
         score: { type: integer, minimum: 0, maximum: 100 }
+        ruleVersion: { type: integer, minimum: 1 }
+        evaluatedAt: { type: string, format: date-time }
+        decisionReason: { type: string }
+        inputEvidence: { $ref: "#/components/schemas/ReadinessEvidenceSnapshot" }
         currentGate:
           $ref: "#/components/schemas/GateProgress"
         nextGate:
@@ -1575,7 +1612,57 @@ x-pathway-selection-components:
           items: { type: string }
         outstandingGapCount: { type: integer }
         missingEvidenceCount: { type: integer }
-      required: [status, score, currentGate, nextGate, gates, blockers, outstandingGapCount, missingEvidenceCount]
+      required: [status, score, ruleVersion, evaluatedAt, decisionReason, inputEvidence, currentGate, nextGate, gates, blockers, outstandingGapCount, missingEvidenceCount]
+    ReadinessEvidenceSnapshot:
+      type: object
+      required: [assessments, evidence, openCriticalGaps]
+      properties:
+        assessments:
+          type: array
+          items:
+            type: object
+            required: [id, score, completed, criticalFailure]
+            properties: { id: { type: string }, score: { type: integer }, completed: { type: boolean }, criticalFailure: { type: boolean } }
+        evidence:
+          type: array
+          items:
+            type: object
+            required: [requirementId, satisfied]
+            properties: { requirementId: { type: string }, satisfied: { type: boolean } }
+        openCriticalGaps: { type: array, items: { type: string } }
+    AdminReadinessRule:
+      type: object
+      required: [id, programId, pathwayId, sequence, code, name, requirement, assessmentMode, evidenceMode, competencyUnitId, threshold, hardGate, ruleVersion, active]
+      properties:
+        id: { type: string }
+        programId: { type: string }
+        pathwayId: { type: string }
+        sequence: { type: integer, minimum: 1 }
+        code: { type: string }
+        name: { type: string }
+        requirement: { type: string }
+        assessmentMode: { type: string, enum: [All, Mapped, None] }
+        evidenceMode: { type: string, enum: [All, Mapped, None] }
+        competencyUnitId: { type: ["string", "null"] }
+        threshold: { type: integer, minimum: 0, maximum: 100 }
+        hardGate: { type: boolean }
+        ruleVersion: { type: integer, minimum: 1 }
+        active: { type: boolean }
+    ReadinessRuleInput:
+      type: object
+      required: [programId, pathwayId, sequence, code, name, requirement, assessmentMode, evidenceMode, threshold, hardGate]
+      properties:
+        programId: { type: string, minLength: 1 }
+        pathwayId: { type: string, minLength: 1 }
+        sequence: { type: integer, minimum: 1 }
+        code: { type: string, minLength: 1 }
+        name: { type: string, minLength: 1 }
+        requirement: { type: string, minLength: 1 }
+        assessmentMode: { type: string, enum: [All, Mapped, None] }
+        evidenceMode: { type: string, enum: [All, Mapped, None] }
+        competencyUnitId: { type: ["string", "null"] }
+        threshold: { type: integer, minimum: 0, maximum: 100 }
+        hardGate: { type: boolean }
     CapabilityPassport:
       type: object
       properties:
@@ -3175,9 +3262,18 @@ components:
             - type: "null"
         evidenceCounts:
           $ref: "#/components/schemas/EvidenceCounts"
+        diagnostic:
+          type: object
+          required: [status, score, topGaps, safetyBlockers, blocked]
+          properties:
+            status: { type: string }
+            score: { type: ["integer", "null"] }
+            topGaps: { type: array, items: { type: string } }
+            safetyBlockers: { type: array, items: { type: string } }
+            blocked: { type: boolean }
         nextAction:
           $ref: "#/components/schemas/NextAction"
-      required: [learner, program, pathway, capabilityProgress, readiness, currentLearning, currentPractice, mainGap, evidenceCounts, nextAction]
+      required: [learner, program, pathway, capabilityProgress, readiness, currentLearning, currentPractice, mainGap, evidenceCounts, diagnostic, nextAction]
     LearnerProfile:
       type: object
       properties:
@@ -3471,14 +3567,23 @@ components:
         name: { type: string }
         status: { type: string }
         requirement: { type: string }
-      required: [id, code, name, status, requirement]
+        score: { type: integer, minimum: 0, maximum: 100 }
+        threshold: { type: integer, minimum: 0, maximum: 100 }
+        hardGate: { type: boolean }
+        competencyUnitId: { type: ["string", "null"] }
+        ruleVersion: { type: integer, minimum: 1 }
+      required: [id, code, name, status, requirement, score, threshold, hardGate, competencyUnitId, ruleVersion]
     ReadinessSummary:
       type: object
       properties:
         pathway:
           $ref: "#/components/schemas/PathwaySummary"
-        status: { type: string }
+        status: { type: string, enum: [Not Ready, Developing, Ready for Official Assessment] }
         score: { type: integer, minimum: 0, maximum: 100 }
+        ruleVersion: { type: integer, minimum: 1 }
+        evaluatedAt: { type: string, format: date-time }
+        decisionReason: { type: string }
+        inputEvidence: { $ref: "#/components/schemas/ReadinessEvidenceSnapshot" }
         currentGate:
           $ref: "#/components/schemas/GateProgress"
         nextGate:
@@ -3494,7 +3599,57 @@ components:
           items: { type: string }
         outstandingGapCount: { type: integer }
         missingEvidenceCount: { type: integer }
-      required: [pathway, status, score, currentGate, nextGate, gates, blockers, outstandingGapCount, missingEvidenceCount]
+      required: [pathway, status, score, ruleVersion, evaluatedAt, decisionReason, inputEvidence, currentGate, nextGate, gates, blockers, outstandingGapCount, missingEvidenceCount]
+    ReadinessEvidenceSnapshot:
+      type: object
+      required: [assessments, evidence, openCriticalGaps]
+      properties:
+        assessments:
+          type: array
+          items:
+            type: object
+            required: [id, score, completed, criticalFailure]
+            properties: { id: { type: string }, score: { type: integer }, completed: { type: boolean }, criticalFailure: { type: boolean } }
+        evidence:
+          type: array
+          items:
+            type: object
+            required: [requirementId, satisfied]
+            properties: { requirementId: { type: string }, satisfied: { type: boolean } }
+        openCriticalGaps: { type: array, items: { type: string } }
+    AdminReadinessRule:
+      type: object
+      required: [id, programId, pathwayId, sequence, code, name, requirement, assessmentMode, evidenceMode, competencyUnitId, threshold, hardGate, ruleVersion, active]
+      properties:
+        id: { type: string }
+        programId: { type: string }
+        pathwayId: { type: string }
+        sequence: { type: integer, minimum: 1 }
+        code: { type: string }
+        name: { type: string }
+        requirement: { type: string }
+        assessmentMode: { type: string, enum: [All, Mapped, None] }
+        evidenceMode: { type: string, enum: [All, Mapped, None] }
+        competencyUnitId: { type: ["string", "null"] }
+        threshold: { type: integer, minimum: 0, maximum: 100 }
+        hardGate: { type: boolean }
+        ruleVersion: { type: integer, minimum: 1 }
+        active: { type: boolean }
+    ReadinessRuleInput:
+      type: object
+      required: [programId, pathwayId, sequence, code, name, requirement, assessmentMode, evidenceMode, threshold, hardGate]
+      properties:
+        programId: { type: string, minLength: 1 }
+        pathwayId: { type: string, minLength: 1 }
+        sequence: { type: integer, minimum: 1 }
+        code: { type: string, minLength: 1 }
+        name: { type: string, minLength: 1 }
+        requirement: { type: string, minLength: 1 }
+        assessmentMode: { type: string, enum: [All, Mapped, None] }
+        evidenceMode: { type: string, enum: [All, Mapped, None] }
+        competencyUnitId: { type: ["string", "null"] }
+        threshold: { type: integer, minimum: 0, maximum: 100 }
+        hardGate: { type: boolean }
     CapabilityPassport:
       type: object
       properties:

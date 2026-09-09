@@ -83,7 +83,7 @@ export function LearnerConditionState({
 }
 
 export function LearnerConditionView({ owner, dashboard, readiness }: LearnerConditionViewProps) {
-  const safetyState = readiness.status === "Blocked"
+  const safetyState = readiness.status === "Not Ready"
     ? "BLOCKED"
     : readiness.score === 100 && readiness.blockers.length === 0
       ? "CLEAR"

@@ -27,3 +27,4 @@
 - [TERAS SKTTK phase sequencing](teras-skttk-phase-sequencing.md) — finish the competency framework and integration review before building diagnostic and readiness rules.
 - [Nested aggregate mutation audits](nested-aggregate-mutation-audits.md) — PATCH preserves omitted child collections; audit locked before/after aggregates inside the write transaction.
 - [Diagnostic projection integrity](diagnostic-projection-integrity.md) — diagnostic completion is an immutable, atomic projection; keep safety unit-scoped and readiness independent.
+- [Auditable readiness decisions](auditable-readiness-decisions.md) — publish immutable rule versions and snapshot every decision; critical safety is globally non-compensable.

@@ -158,22 +158,69 @@ export interface PathwaySummary {
   gates: ReadinessGateSummary[];
 }
 
+export type ReadinessSummaryStatus = typeof ReadinessSummaryStatus[keyof typeof ReadinessSummaryStatus];
+
+
+export const ReadinessSummaryStatus = {
+  Not_Ready: 'Not Ready',
+  Developing: 'Developing',
+  Ready_for_Official_Assessment: 'Ready for Official Assessment',
+} as const;
+
+export type ReadinessEvidenceSnapshotAssessmentsItem = {
+  id: string;
+  score: number;
+  completed: boolean;
+  criticalFailure: boolean;
+};
+
+export type ReadinessEvidenceSnapshotEvidenceItem = {
+  requirementId: string;
+  satisfied: boolean;
+};
+
+export interface ReadinessEvidenceSnapshot {
+  assessments: ReadinessEvidenceSnapshotAssessmentsItem[];
+  evidence: ReadinessEvidenceSnapshotEvidenceItem[];
+  openCriticalGaps: string[];
+}
+
 export interface GateProgress {
   id: string;
   code: string;
   name: string;
   status: string;
   requirement: string;
-}
-
-export interface ReadinessSummary {
-  pathway: PathwaySummary;
-  status: string;
   /**
      * @minimum 0
      * @maximum 100
      */
   score: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  threshold: number;
+  hardGate: boolean;
+  /** @nullable */
+  competencyUnitId: string | null;
+  /** @minimum 1 */
+  ruleVersion: number;
+}
+
+export interface ReadinessSummary {
+  pathway: PathwaySummary;
+  status: ReadinessSummaryStatus;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  score: number;
+  /** @minimum 1 */
+  ruleVersion: number;
+  evaluatedAt: string;
+  decisionReason: string;
+  inputEvidence: ReadinessEvidenceSnapshot;
   currentGate: GateProgress;
   nextGate: GateProgress | null;
   gates: GateProgress[];
@@ -1533,6 +1580,15 @@ export interface LearnerEnrollment {
   enrolledAt: string;
 }
 
+export type LearnerDashboardDiagnostic = {
+  status: string;
+  /** @nullable */
+  score: number | null;
+  topGaps: string[];
+  safetyBlockers: string[];
+  blocked: boolean;
+};
+
 export interface LearnerProfile {
   id: string;
   name: string;
@@ -1595,6 +1651,7 @@ export interface LearnerDashboard {
   currentPractice: PracticeTask;
   mainGap: Gap | null;
   evidenceCounts: EvidenceCounts;
+  diagnostic: LearnerDashboardDiagnostic;
   nextAction: NextAction;
 }
 
@@ -1840,6 +1897,91 @@ export interface RemediationPlan {
   /** @nullable */
   dueLabel: string | null;
   activities: RemediationActivity[];
+}
+
+export type AdminReadinessRuleAssessmentMode = typeof AdminReadinessRuleAssessmentMode[keyof typeof AdminReadinessRuleAssessmentMode];
+
+
+export const AdminReadinessRuleAssessmentMode = {
+  All: 'All',
+  Mapped: 'Mapped',
+  None: 'None',
+} as const;
+
+export type AdminReadinessRuleEvidenceMode = typeof AdminReadinessRuleEvidenceMode[keyof typeof AdminReadinessRuleEvidenceMode];
+
+
+export const AdminReadinessRuleEvidenceMode = {
+  All: 'All',
+  Mapped: 'Mapped',
+  None: 'None',
+} as const;
+
+export interface AdminReadinessRule {
+  id: string;
+  programId: string;
+  pathwayId: string;
+  /** @minimum 1 */
+  sequence: number;
+  code: string;
+  name: string;
+  requirement: string;
+  assessmentMode: AdminReadinessRuleAssessmentMode;
+  evidenceMode: AdminReadinessRuleEvidenceMode;
+  /** @nullable */
+  competencyUnitId: string | null;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  threshold: number;
+  hardGate: boolean;
+  /** @minimum 1 */
+  ruleVersion: number;
+  active: boolean;
+}
+
+export type ReadinessRuleInputAssessmentMode = typeof ReadinessRuleInputAssessmentMode[keyof typeof ReadinessRuleInputAssessmentMode];
+
+
+export const ReadinessRuleInputAssessmentMode = {
+  All: 'All',
+  Mapped: 'Mapped',
+  None: 'None',
+} as const;
+
+export type ReadinessRuleInputEvidenceMode = typeof ReadinessRuleInputEvidenceMode[keyof typeof ReadinessRuleInputEvidenceMode];
+
+
+export const ReadinessRuleInputEvidenceMode = {
+  All: 'All',
+  Mapped: 'Mapped',
+  None: 'None',
+} as const;
+
+export interface ReadinessRuleInput {
+  /** @minLength 1 */
+  programId: string;
+  /** @minLength 1 */
+  pathwayId: string;
+  /** @minimum 1 */
+  sequence: number;
+  /** @minLength 1 */
+  code: string;
+  /** @minLength 1 */
+  name: string;
+  /** @minLength 1 */
+  requirement: string;
+  assessmentMode: ReadinessRuleInputAssessmentMode;
+  evidenceMode: ReadinessRuleInputEvidenceMode;
+  /** @nullable */
+  competencyUnitId?: string | null;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  threshold: number;
+  hardGate: boolean;
 }
 
 export interface CapabilityAchievement {

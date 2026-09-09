@@ -1,5 +1,5 @@
 import { useGetCapabilityPassport } from "@workspace/api-client-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity, Award, ShieldCheck, FileText } from "lucide-react";
 import { LearnerCondition } from "@/components/learner-condition";
 import { PassportRecord } from "@/components/passport-record";
@@ -71,6 +71,16 @@ export default function Passport() {
       </Card>
 
       <LearnerCondition owner="Learner" />
+
+      <Card className="border-primary/30" data-testid="passport-readiness-basis">
+        <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><ShieldCheck className="h-5 w-5 text-primary" />Dasar keputusan readiness</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3"><strong className="text-xl">{passport.readiness.status}</strong><span className="font-mono text-xs text-muted-foreground">Rule v{passport.readiness.ruleVersion} · {new Date(passport.readiness.evaluatedAt).toLocaleString("id-ID")}</span></div>
+          <p className="text-sm leading-relaxed text-muted-foreground">{passport.readiness.decisionReason}</p>
+          {passport.readiness.blockers.length > 0 && <ul className="space-y-2 border-l-2 border-destructive pl-4 text-sm">{passport.readiness.blockers.map((blocker, index) => <li key={`${blocker}-${index}`}>{blocker}</li>)}</ul>}
+          <div className="grid gap-3 sm:grid-cols-3 text-sm"><div><strong>{passport.readiness.score}/100</strong><p className="text-muted-foreground">Current evidence score</p></div><div><strong>{passport.readiness.inputEvidence.evidence.filter(item => item.satisfied).length}/{passport.readiness.inputEvidence.evidence.length}</strong><p className="text-muted-foreground">Evidence requirements</p></div><div><strong>{passport.readiness.inputEvidence.openCriticalGaps.length}</strong><p className="text-muted-foreground">Critical safety gaps</p></div></div>
+        </CardContent>
+      </Card>
 
       <div className="mt-8">
         <PassportRecord timeline={passport.timeline} achievements={passport.achievements} />

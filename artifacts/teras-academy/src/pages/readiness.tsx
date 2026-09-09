@@ -52,9 +52,11 @@ export default function Readiness() {
               <div className="flex-1 space-y-6 w-full">
                 <div>
                   <h3 className="text-lg font-semibold mb-2">Current Status</h3>
-                  <Badge variant={readiness.status === "READY" ? "success" : "warning"} className="text-sm px-3 py-1 font-mono uppercase">
+                  <Badge variant={readiness.status === "Ready for Official Assessment" ? "success" : readiness.status === "Not Ready" ? "destructive" : "warning"} className="text-sm px-3 py-1">
                     {readiness.status}
                   </Badge>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{readiness.decisionReason}</p>
+                  <p className="mt-2 font-mono text-xs text-muted-foreground">Rule version {readiness.ruleVersion} · evaluated {new Date(readiness.evaluatedAt).toLocaleString("id-ID")}</p>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
@@ -88,7 +90,7 @@ export default function Readiness() {
                 ))}
               </ul>
             ) : (
-              <div className="text-sm text-green-500 flex items-center gap-2 font-mono">
+                <div className="text-sm text-green-500 flex items-center gap-2 font-mono">
                 <CheckCircle2 className="w-4 h-4" /> NO BLOCKERS
               </div>
             )}
@@ -114,7 +116,12 @@ export default function Readiness() {
                   {isPassed ? <Unlock className="w-4 h-4 text-green-500" /> : <Lock className="w-4 h-4 text-muted-foreground" />}
                 </div>
                 <h4 className="font-bold text-lg mb-1 leading-tight">{gate.name}</h4>
-                <div className="text-xs text-muted-foreground mb-4 h-8">{gate.requirement}</div>
+                <div className="text-xs text-muted-foreground mb-3 min-h-8">{gate.requirement}</div>
+                <div className="mb-3 space-y-1 text-xs">
+                  <div className="flex justify-between"><span>Rule score</span><span className="font-mono">{gate.score}/{gate.threshold}</span></div>
+                  <Progress value={gate.score} className="h-1.5" />
+                  <div className="flex justify-between text-muted-foreground"><span>Version {gate.ruleVersion}</span><span>{gate.hardGate ? "Hard gate" : "Threshold rule"}</span></div>
+                </div>
                 <Badge variant={isPassed ? "success" : isCurrent ? "default" : "secondary"} className="font-mono text-[10px] w-full justify-center">
                   {gate.status}
                 </Badge>
@@ -123,6 +130,14 @@ export default function Readiness() {
           );
         })}
       </div>
+      <Card>
+        <CardHeader><CardTitle className="text-lg">Evidence used for this decision</CardTitle></CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-3 text-sm">
+          <div><strong>{readiness.inputEvidence.assessments.filter(item => item.completed).length}/{readiness.inputEvidence.assessments.length}</strong><p className="text-muted-foreground">Assessments completed</p></div>
+          <div><strong>{readiness.inputEvidence.evidence.filter(item => item.satisfied).length}/{readiness.inputEvidence.evidence.length}</strong><p className="text-muted-foreground">Evidence requirements satisfied</p></div>
+          <div><strong>{readiness.inputEvidence.openCriticalGaps.length}</strong><p className="text-muted-foreground">Open critical safety gaps</p></div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

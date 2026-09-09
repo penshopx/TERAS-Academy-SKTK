@@ -44,7 +44,7 @@ export default function ReadinessMap() {
   }
 
   const { profile, readiness } = mapData;
-  const isReady = readiness.status === "READY" || readiness.status === "ready";
+  const isReady = readiness.status === "Ready for Official Assessment";
   const hasBlockers = readiness.blockers && readiness.blockers.length > 0;
 
   return (

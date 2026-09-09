@@ -479,7 +479,7 @@ router.post(
             enrollmentId: context.enrollment.id,
             pathwayId: context.pathway.id,
             gateId: gate.id,
-            status: decision === "Competent" && remediationPrerequisitesMet ? "Passed" : "In progress",
+            status: criticalFailure ? "Not Ready" : "Developing",
             score: Math.round(
               (body.data.criteria.reduce((sum, item) => sum + item.score, 0) /
                 body.data.criteria.length /
@@ -496,6 +496,20 @@ router.post(
                         ? `Remediation prerequisites are not complete for ${assessment.name}`
                         : `Internal evaluation recommends further reinforcement for ${assessment.name}`,
                   ],
+            ruleVersion: gate.ruleVersion,
+            inputEvidence: {
+              assessments: [{
+                id: assessment.id,
+                score: Math.round((body.data.criteria.reduce((sum, item) => sum + item.score, 0) / body.data.criteria.length / 3) * 100),
+                completed: true,
+                criticalFailure,
+              }],
+              evidence: [],
+              openCriticalGaps: criticalFailure ? [assessment.id] : [],
+            },
+            decisionReason: criticalFailure
+              ? "Critical safety criterion failed. Readiness is not compensable by other scores."
+              : "Assessment evidence recorded. The complete pathway rule set determines the final readiness status.",
             createdBy: assessorId,
           });
         }

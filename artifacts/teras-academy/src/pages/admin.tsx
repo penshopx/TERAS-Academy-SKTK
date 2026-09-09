@@ -14,6 +14,7 @@ import {
   useUpdateAdminUser, useRejectAdminAccessRequest,
   getListAdminKnowledgeArticlesQueryKey, getListAdminKnowledgeNotFoundTopicsQueryKey, useCreateAdminKnowledgeArticle, useListAdminKnowledgeArticles, useListAdminKnowledgeNotFoundTopics, usePublishAdminKnowledgeArticle, useUpdateAdminKnowledgeArticle,
   getListAdminCompetencyFrameworksQueryKey, useListAdminCompetencyFrameworks, useCreateAdminCompetencyFramework, useCreateAdminCompetencyUnit, useUpdateAdminCompetencyUnit,
+  getListAdminReadinessRulesQueryKey, useCreateAdminReadinessRuleVersion, useListAdminReadinessRules,
 } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -115,7 +116,7 @@ function State({ loading, error, empty, children }: { loading: boolean; error: u
 
 export default function Admin() {
   const client = useQueryClient(); const { toast } = useToast();
-  const [tab, setTab] = useState<"summary" | "users" | "programs" | "pathways" | "cohorts" | "enrollments" | "knowledge" | "competencies" | "audit">("summary");
+  const [tab, setTab] = useState<"summary" | "users" | "programs" | "pathways" | "cohorts" | "enrollments" | "knowledge" | "competencies" | "readiness" | "audit">("summary");
   const [selectedQueue, setSelectedQueue] = useState<QueueId | null>(() => queueStateFromSearch(window.location.search).selectedQueue);
   const [queueFilters, setQueueFilters] = useState<QueueFilters>(() => queueStateFromSearch(window.location.search).filters);
   const [confirm, setConfirm] = useState<{ kind: "user" | "program" | "pathway" | "cohort" | "enrollment"; id: string; label: string } | null>(null);
@@ -135,6 +136,7 @@ export default function Admin() {
   const knowledge = useListAdminKnowledgeArticles({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getListAdminKnowledgeArticlesQueryKey() } });
   const unansweredTopics = useListAdminKnowledgeNotFoundTopics({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getListAdminKnowledgeNotFoundTopicsQueryKey() } });
   const competencies = useListAdminCompetencyFrameworks({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getListAdminCompetencyFrameworksQueryKey() } });
+  const readinessRules = useListAdminReadinessRules({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getListAdminReadinessRulesQueryKey() } });
   const summary = useGetAdminOperationalSummary<AdminOperationalSummary>({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getGetAdminOperationalSummaryQueryKey() } });
   const createUser = useCreateAdminUser(); const rolesMutation = useReplaceAdminUserRoles(); const updateUser = useUpdateAdminUser();
   const createAccessRequest = useCreateAdminAccessRequest();
@@ -148,6 +150,7 @@ export default function Admin() {
   const createCompetency = useCreateAdminCompetencyFramework();
   const createCompetencyUnit = useCreateAdminCompetencyUnit();
   const updateCompetencyUnit = useUpdateAdminCompetencyUnit();
+  const createReadinessRule = useCreateAdminReadinessRuleVersion();
   useEffect(() => {
     const restoreQueueState = () => {
       const restored = queueStateFromSearch(window.location.search);
@@ -228,7 +231,30 @@ export default function Admin() {
     }
     createKnowledge.mutate({ data: { id: crypto.randomUUID(), category: values.get("category") as "help" | "energy", title: String(values.get("title")), body: String(values.get("body")), audience } }, { onSuccess: () => { form.reset(); invalidate(getListAdminKnowledgeArticlesQueryKey(), getListAdminAuditEventsQueryKey()); saved("Artikel disimpan sebagai draft."); }, onError: error => toast({ variant: "destructive", title: "Gagal menyimpan artikel", description: adminErrorMessage(error) }) });
   };
-  const tabs = [["summary", "Ringkasan"], ["users", "Pengguna"], ["programs", "Program"], ["pathways", "Pathway"], ["cohorts", "Cohort"], ["enrollments", "Enrollment"], ["knowledge", "Knowledge"], ["competencies", "Kompetensi"], ["audit", "Audit"]] as const;
+  const createRule = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const values = new FormData(formElement);
+    const pathway = pathways.data?.find(item => item.id === values.get("pathwayId"));
+    if (!pathway) return;
+    createReadinessRule.mutate({ data: {
+      programId: pathway.programId,
+      pathwayId: pathway.id,
+      sequence: Number(values.get("sequence")),
+      code: String(values.get("code")),
+      name: String(values.get("name")),
+      requirement: String(values.get("requirement")),
+      assessmentMode: values.get("assessmentMode") as "All" | "Mapped" | "None",
+      evidenceMode: values.get("evidenceMode") as "All" | "Mapped" | "None",
+      competencyUnitId: String(values.get("competencyUnitId")) || null,
+      threshold: Number(values.get("threshold")),
+      hardGate: values.get("hardGate") === "on",
+    } }, {
+      onSuccess: () => { formElement.reset(); invalidate(getListAdminReadinessRulesQueryKey(), getListAdminAuditEventsQueryKey()); saved("Versi aturan readiness baru dipublikasikan."); },
+      onError: error => toast({ variant: "destructive", title: "Gagal menerbitkan aturan", description: adminErrorMessage(error) }),
+    });
+  };
+  const tabs = [["summary", "Ringkasan"], ["users", "Pengguna"], ["programs", "Program"], ["pathways", "Pathway"], ["cohorts", "Cohort"], ["enrollments", "Enrollment"], ["knowledge", "Knowledge"], ["competencies", "Kompetensi"], ["readiness", "Readiness"], ["audit", "Audit"]] as const;
   const openTab = (nextTab: AdminTab) => {
     setTab(nextTab);
     if (nextTab !== "summary") {
@@ -273,6 +299,7 @@ export default function Admin() {
     {tab === "knowledge" && <><Card data-testid="card-unanswered-knowledge-topics"><CardHeader><CardTitle>Topik yang belum terjawab</CardTitle><p className="text-sm text-muted-foreground">Hanya topik anonim yang dinormalisasi dan jumlah kemunculannya yang disimpan. Data kedaluwarsa otomatis setelah {unansweredTopics.data?.retentionDays ?? 90} hari.</p></CardHeader><CardContent><State loading={unansweredTopics.isLoading} error={unansweredTopics.error} empty={!unansweredTopics.data?.topics.length}><div className="grid gap-6 md:grid-cols-2">{(["help", "energy"] as const).map(category => <section key={category} aria-labelledby={`unanswered-${category}`}><h3 id={`unanswered-${category}`} className="mb-3 font-semibold">{category === "help" ? "Help Desk" : "TERAS & Energi"}</h3><div className="space-y-2">{unansweredTopics.data?.topics.filter(topic => topic.category === category).map((topic, index) => <div key={`${category}-${topic.topic}`} className="flex items-start justify-between gap-3 rounded-md border p-3" data-testid={`row-unanswered-${category}-${index}`}><div><p className="font-medium" data-testid={`text-unanswered-topic-${category}-${index}`}>{topic.topic}</p><p className="text-xs text-muted-foreground">Terakhir muncul {auditTime(topic.lastSeenAt)}</p></div><Badge variant="secondary" data-testid={`count-unanswered-topic-${category}-${index}`}>{topic.count}×</Badge></div>)}</div></section>)}</div></State></CardContent></Card><Card><CardHeader><CardTitle>Artikel knowledge baru</CardTitle></CardHeader><CardContent><form onSubmit={createArticle} className="grid gap-3"><select name="category" className="h-10 rounded-md border bg-background px-3" defaultValue="help"><option value="help">Help Desk</option><option value="energy">TERAS & Energi</option></select><Input name="title" required placeholder="Judul artikel" /><textarea name="body" required placeholder="Isi panduan terkurasi" className="min-h-28 rounded-md border bg-background p-3 text-sm" /><AudienceSelector /><Button type="submit" disabled={createKnowledge.isPending}>Simpan draft</Button></form></CardContent></Card><State loading={knowledge.isLoading} error={knowledge.error} empty={!knowledge.data?.length}><div className="grid gap-3">{knowledge.data?.map(article => <Card key={article.id}><CardContent className="flex flex-wrap items-center justify-between gap-3 p-4"><div><strong>{article.title}</strong><p className="text-sm text-muted-foreground">{article.category} · v{article.version} · {article.status} · {article.audience.join(", ")}</p></div><div className="flex gap-2"><Button size="sm" variant="outline" disabled={article.status === "archived"} onClick={() => setEditing({ kind: "knowledge", item: { ...article } })}>Edit</Button><Button size="sm" disabled={article.status !== "draft" || publishKnowledge.isPending} onClick={() => publishKnowledge.mutate({ articleId: article.id }, { onSuccess: () => { invalidate(getListAdminKnowledgeArticlesQueryKey(), getListAdminAuditEventsQueryKey()); saved("Artikel diterbitkan."); }, onError: error => toast({ variant: "destructive", title: "Gagal menerbitkan", description: adminErrorMessage(error) }) })}>Terbitkan</Button></div></CardContent></Card>)}</div></State></>}
     {tab === "competencies" && <Card><CardHeader><CardTitle>Framework kompetensi</CardTitle><p className="text-sm text-muted-foreground">Internal simulation/preparation is not an official assessment or certification.</p></CardHeader><CardContent><form className="flex flex-wrap gap-2" onSubmit={event => { event.preventDefault(); const formElement = event.currentTarget; const values = new FormData(formElement); createCompetency.mutate({ data: { id: crypto.randomUUID(), code: String(values.get("code")), name: String(values.get("name")), description: String(values.get("description")), domain: String(values.get("domain")), version: "1.0", status: "draft" } }, { onSuccess: () => { formElement.reset(); invalidate(getListAdminCompetencyFrameworksQueryKey(), getListAdminAuditEventsQueryKey()); saved("Framework kompetensi disimpan."); } }); }}><Input name="code" required placeholder="Kode" /><Input name="name" required placeholder="Nama" /><Input name="domain" required placeholder="Domain" /><Input name="description" required placeholder="Deskripsi" /><Button type="submit">Tambah</Button></form><State loading={competencies.isLoading} error={competencies.error} empty={!competencies.data?.length}><div className="mt-4 space-y-2">{competencies.data?.map(framework => <div key={framework.id} className="rounded border p-3"><strong>{framework.code} · {framework.name}</strong><p className="text-sm">{framework.units.length} unit terpetakan</p></div>)}</div></State></CardContent></Card>}
     {tab === "competencies" && <CompetencyUnitEditor frameworks={competencies.data ?? []} invalidate={invalidate} />}
+    {tab === "readiness" && <><Card><CardHeader><CardTitle>Versi aturan readiness baru</CardTitle><p className="text-sm text-muted-foreground">Aturan lama tetap tersimpan untuk audit. Critical safety selalu menjadi hard gate yang tidak dapat ditutupi skor lain.</p></CardHeader><CardContent><form onSubmit={createRule} className="grid gap-3 md:grid-cols-3"><select name="pathwayId" required className="h-10 rounded-md border bg-background px-3"><option value="">Pilih pathway</option>{pathways.data?.filter(pathway => pathway.status === "active").map(pathway => <option key={pathway.id} value={pathway.id}>{pathway.name}</option>)}</select><Input name="code" required placeholder="Kode aturan, contoh G1" /><Input name="name" required placeholder="Nama gate" /><Input name="sequence" required type="number" min="1" placeholder="Urutan" /><Input name="threshold" required type="number" min="0" max="100" defaultValue="80" aria-label="Threshold readiness" /><Input name="competencyUnitId" placeholder="ID unit kompetensi (opsional)" /><select name="assessmentMode" defaultValue="Mapped" className="h-10 rounded-md border bg-background px-3"><option>Mapped</option><option>All</option><option>None</option></select><select name="evidenceMode" defaultValue="Mapped" className="h-10 rounded-md border bg-background px-3"><option>Mapped</option><option>All</option><option>None</option></select><label className="flex items-center gap-2 text-sm"><input name="hardGate" type="checkbox" /> Hard gate unit/pathway</label><textarea name="requirement" required placeholder="Dasar dan persyaratan keputusan" className="min-h-24 rounded-md border bg-background p-3 text-sm md:col-span-3" /><Button type="submit" disabled={createReadinessRule.isPending} className="md:col-span-3">{createReadinessRule.isPending ? <Loader2 className="animate-spin" /> : "Publikasikan versi aturan"}</Button></form></CardContent></Card><State loading={readinessRules.isLoading} error={readinessRules.error} empty={!readinessRules.data?.length}><div className="grid gap-3">{readinessRules.data?.map(rule => <Card key={rule.id}><CardContent className="flex flex-wrap items-start justify-between gap-3 p-4"><div><strong>{rule.code} · {rule.name}</strong><p className="text-sm text-muted-foreground">{rule.pathwayId}{rule.competencyUnitId ? ` · Unit ${rule.competencyUnitId}` : " · Pathway-wide"} · threshold {rule.threshold}%</p><p className="mt-1 text-xs text-muted-foreground">{rule.requirement}</p></div><div className="flex gap-2"><Badge variant="outline">v{rule.ruleVersion}</Badge>{rule.hardGate && <Badge variant="destructive">HARD GATE</Badge>}</div></CardContent></Card>)}</div></State></>}
     {tab === "audit" && <State loading={audit.isLoading} error={audit.error} empty={!audit.data?.length}><div className="space-y-2">{audit.data?.map(event => <Card key={event.id} data-testid={`row-audit-${event.id}`}><CardContent className="p-4"><p className="font-medium">{auditDescription(event.action, event.entityType)}</p><p className="mt-1 text-sm text-muted-foreground">Dilakukan oleh administrator · {auditTime(event.createdAt)}</p></CardContent></Card>)}</div></State>}
     <div aria-live="polite" className="sr-only">{createUser.isPending ? "Menyimpan perubahan" : ""}</div>
     <AlertDialog open={!!confirm} onOpenChange={open => !open && setConfirm(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Konfirmasi perubahan status</AlertDialogTitle><AlertDialogDescription>Anda akan menonaktifkan atau mengarsipkan {confirm?.label}. Aksi ini tercatat dalam audit dan dapat memengaruhi akses aktif.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel data-testid="button-cancel-admin-confirm">Batal</AlertDialogCancel><AlertDialogAction onClick={archive} data-testid="button-confirm-admin-status">Lanjutkan</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
@@ -289,7 +316,7 @@ export default function Admin() {
   </div>;
 }
 
-type AdminTab = "summary" | "users" | "programs" | "pathways" | "cohorts" | "enrollments" | "knowledge" | "competencies" | "audit";
+type AdminTab = "summary" | "users" | "programs" | "pathways" | "cohorts" | "enrollments" | "knowledge" | "competencies" | "readiness" | "audit";
 type SummaryQuery = { data?: AdminOperationalSummary; isLoading: boolean; error: unknown };
 
 function OperationalSummary({ summary, selectedQueue, filters, onFilterChange, onOpenQueue, onOpenTab }: { summary: SummaryQuery; selectedQueue: QueueId | null; filters: QueueFilters; onFilterChange: (key: QueueFilterKey, value: string) => void; onOpenQueue: (queue: QueueId) => void; onOpenTab: (tab: AdminTab) => void }) {

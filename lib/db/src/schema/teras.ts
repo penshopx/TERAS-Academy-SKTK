@@ -194,13 +194,33 @@ export const readinessGatesTable = pgTable("teras_readiness_gates", {
   pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id),
   sequence: integer("sequence").notNull(), code: text("code").notNull(), name: text("name").notNull(),
   requirement: text("requirement").notNull(), assessmentMode: text("assessment_mode").notNull().default("Mapped"),
-  evidenceMode: text("evidence_mode").notNull().default("None"), ...audit,
-});
+  evidenceMode: text("evidence_mode").notNull().default("None"),
+  competencyUnitId: text("competency_unit_id"),
+  threshold: integer("threshold").notNull().default(80),
+  hardGate: boolean("hard_gate").notNull().default(false),
+  ruleVersion: integer("rule_version").notNull().default(1),
+  active: boolean("active").notNull().default(true), ...audit,
+}, table => [
+  check("teras_readiness_gates_threshold_check", sql`${table.threshold} BETWEEN 0 AND 100`),
+  uniqueIndex("teras_readiness_gates_rule_version_unique").on(table.pathwayId, table.code, table.ruleVersion),
+]);
 export const readinessEventsTable = pgTable("teras_readiness_events", {
   id: text("id").primaryKey(), enrollmentId: text("enrollment_id").notNull().references(() => enrollmentsTable.id),
   pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id), gateId: text("gate_id").notNull().references(() => readinessGatesTable.id), status: text("status").notNull(),
-  score: integer("score").notNull(), blockers: text("blockers").array().notNull().default([]), ...audit,
-});
+  score: integer("score").notNull(), blockers: text("blockers").array().notNull().default([]),
+  ruleVersion: integer("rule_version").notNull().default(1),
+  inputEvidence: jsonb("input_evidence").$type<{
+    assessments: Array<{ id: string; score: number; completed: boolean; criticalFailure: boolean }>;
+    evidence: Array<{ requirementId: string; satisfied: boolean }>;
+    openCriticalGaps: string[];
+  }>().notNull().default({ assessments: [], evidence: [], openCriticalGaps: [] }),
+  decisionReason: text("decision_reason").notNull().default("Legacy readiness event"),
+  evaluatedAt: timestamp("evaluated_at", { withTimezone: true }).notNull().defaultNow(),
+  ...audit,
+}, table => [
+  check("teras_readiness_events_status_check", sql`${table.status} IN ('Not Ready', 'Developing', 'Ready for Official Assessment')`),
+]);
+
 export const programRelations = relations(programsTable, ({ many }) => ({ modules: many(modulesTable), pathways: many(pathwaysTable) }));
 export const moduleRelations = relations(modulesTable, ({ many }) => ({ tasks: many(practiceTasksTable), assessments: many(assessmentsTable) }));
 

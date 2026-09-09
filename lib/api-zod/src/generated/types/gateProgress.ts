@@ -12,4 +12,19 @@ export interface GateProgress {
   name: string;
   status: string;
   requirement: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  score: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  threshold: number;
+  hardGate: boolean;
+  /** @nullable */
+  competencyUnitId: string | null;
+  /** @minimum 1 */
+  ruleVersion: number;
 }

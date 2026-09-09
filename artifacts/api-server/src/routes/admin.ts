@@ -2,7 +2,7 @@
 // types; runtime operations are constrained by the generated Zod contracts.
 // @ts-nocheck
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   CreateAdminCohortBody, CreateAdminCohortResponse, CreateAdminEnrollmentBody, CreateAdminEnrollmentResponse,
   CreateAdminPathwayBody, CreateAdminPathwayResponse, CreateAdminProgramBody, CreateAdminProgramResponse,
@@ -16,6 +16,7 @@ import {
   ListAdminCompetencyFrameworksResponse, CreateAdminCompetencyFrameworkBody, CreateAdminCompetencyFrameworkResponse,
   UpdateAdminCompetencyFrameworkBody, UpdateAdminCompetencyFrameworkParams, UpdateAdminCompetencyFrameworkResponse,
   CreateAdminCompetencyUnitBody, CreateAdminCompetencyUnitResponse, UpdateAdminCompetencyUnitBody, UpdateAdminCompetencyUnitParams, UpdateAdminCompetencyUnitResponse,
+  CreateAdminReadinessRuleVersionBody, CreateAdminReadinessRuleVersionResponse, ListAdminReadinessRulesResponse,
 } from "@workspace/api-zod";
 import {
   adminAccessRequestsTable, adminAuditEventsTable, assessmentAttemptsTable, cohortsTable, db, enrollmentsTable, evidenceReviewsTable,
@@ -23,6 +24,7 @@ import {
   remediationActivitiesTable, remediationEventsTable, remediationPlansTable,
   competencyFrameworksTable, competencyUnitsTable, pathwayCompetencyUnitsTable, competencyUnitOutcomesTable,
   competencyUnitPracticeTasksTable, competencyUnitEvidenceRequirementsTable, competencyUnitSimulationsTable, competencyUnitSafetyRulesTable,
+  readinessGatesTable,
 } from "@workspace/db";
 import { authorizeAdmin, authorizeLocalUser, authorizeSuperAdmin, type AdminActor } from "../lib/authorization";
 import { supabaseEmailIsVerified, supabaseIdentity } from "../lib/supabase-auth";
@@ -118,6 +120,34 @@ async function readOnlyDashboardProjection() {
 router.get("/admin/access", async (req, res): Promise<void> => {
   if (!await authorizeAdmin(req, res)) return;
   res.json(GetAdminAccessResponse.parse({ authorized: true }));
+});
+
+router.get("/admin/readiness-rules", async (req, res): Promise<void> => {
+  if (!await authorizeAdmin(req, res)) return;
+  const rules = await db.select().from(readinessGatesTable).where(eq(readinessGatesTable.active, true)).orderBy(readinessGatesTable.pathwayId, readinessGatesTable.sequence);
+  res.json(ListAdminReadinessRulesResponse.parse(rules));
+});
+
+router.post("/admin/readiness-rules", async (req, res): Promise<void> => {
+  const actor = await authorizeAdmin(req, res);
+  const input = parsed(CreateAdminReadinessRuleVersionBody, req.body, res);
+  if (!actor || !input) return;
+  const [pathway] = await db.select().from(pathwaysTable).where(and(eq(pathwaysTable.id, input.pathwayId), eq(pathwaysTable.programId, input.programId)));
+  if (!pathway) { res.status(400).json({ error: "Pathway must belong to the selected program" }); return; }
+  try {
+    const record = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`readiness-rule:${input.pathwayId}:${input.code}`}))`);
+      const history = await tx.select().from(readinessGatesTable).where(and(eq(readinessGatesTable.pathwayId, input.pathwayId), eq(readinessGatesTable.code, input.code)));
+      const version = Math.max(0, ...history.map(rule => rule.ruleVersion)) + 1;
+      await tx.update(readinessGatesTable).set({ active: false }).where(and(eq(readinessGatesTable.pathwayId, input.pathwayId), eq(readinessGatesTable.code, input.code), eq(readinessGatesTable.active, true)));
+      const [created] = await tx.insert(readinessGatesTable).values({ ...input, id: crypto.randomUUID(), ruleVersion: version, active: true, createdBy: `supabase:${actor.authSubject}` }).returning();
+      await audit(tx as typeof db, actor, "publish_rule_version", "readiness_rule", created.id, history.find(rule => rule.active) ?? null, created);
+      return created;
+    });
+    res.status(201).json(CreateAdminReadinessRuleVersionResponse.parse(record));
+  } catch (error) {
+    res.status(409).json({ error: "Readiness rule version conflicts with an existing version" });
+  }
 });
 
 router.post("/admin/claim-supabase-identity", async (req, res): Promise<void> => {

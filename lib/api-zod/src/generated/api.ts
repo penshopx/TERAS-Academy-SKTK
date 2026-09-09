@@ -104,6 +104,28 @@ export const getLearnerDashboardResponseCapabilityProgressMax = 100;
 export const getLearnerDashboardResponseReadinessScoreMin = 0;
 export const getLearnerDashboardResponseReadinessScoreMax = 100;
 
+
+export const getLearnerDashboardResponseReadinessCurrentGateScoreMin = 0;
+export const getLearnerDashboardResponseReadinessCurrentGateScoreMax = 100;
+
+export const getLearnerDashboardResponseReadinessCurrentGateThresholdMin = 0;
+export const getLearnerDashboardResponseReadinessCurrentGateThresholdMax = 100;
+
+
+export const getLearnerDashboardResponseReadinessNextGateOneScoreMin = 0;
+export const getLearnerDashboardResponseReadinessNextGateOneScoreMax = 100;
+
+export const getLearnerDashboardResponseReadinessNextGateOneThresholdMin = 0;
+export const getLearnerDashboardResponseReadinessNextGateOneThresholdMax = 100;
+
+
+export const getLearnerDashboardResponseReadinessGatesItemScoreMin = 0;
+export const getLearnerDashboardResponseReadinessGatesItemScoreMax = 100;
+
+export const getLearnerDashboardResponseReadinessGatesItemThresholdMin = 0;
+export const getLearnerDashboardResponseReadinessGatesItemThresholdMax = 100;
+
+
 export const getLearnerDashboardResponseCurrentLearningProgressMin = 0;
 export const getLearnerDashboardResponseCurrentLearningProgressMax = 100;
 
@@ -158,28 +180,59 @@ export const GetLearnerDashboardResponse = zod.object({
   "requirement": zod.string()
 }))
 }),
-  "status": zod.string(),
+  "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']),
   "score": zod.int().min(getLearnerDashboardResponseReadinessScoreMin).max(getLearnerDashboardResponseReadinessScoreMax),
+  "ruleVersion": zod.int().min(1),
+  "evaluatedAt": zod.coerce.date(),
+  "decisionReason": zod.string(),
+  "inputEvidence": zod.object({
+  "assessments": zod.array(zod.object({
+  "id": zod.string(),
+  "score": zod.int(),
+  "completed": zod.boolean(),
+  "criticalFailure": zod.boolean()
+})),
+  "evidence": zod.array(zod.object({
+  "requirementId": zod.string(),
+  "satisfied": zod.boolean()
+})),
+  "openCriticalGaps": zod.array(zod.string())
+}),
   "currentGate": zod.object({
   "id": zod.string(),
   "code": zod.string(),
   "name": zod.string(),
   "status": zod.string(),
-  "requirement": zod.string()
+  "requirement": zod.string(),
+  "score": zod.int().min(getLearnerDashboardResponseReadinessCurrentGateScoreMin).max(getLearnerDashboardResponseReadinessCurrentGateScoreMax),
+  "threshold": zod.int().min(getLearnerDashboardResponseReadinessCurrentGateThresholdMin).max(getLearnerDashboardResponseReadinessCurrentGateThresholdMax),
+  "hardGate": zod.boolean(),
+  "competencyUnitId": zod.string().nullable(),
+  "ruleVersion": zod.int().min(1)
 }),
   "nextGate": zod.union([zod.object({
   "id": zod.string(),
   "code": zod.string(),
   "name": zod.string(),
   "status": zod.string(),
-  "requirement": zod.string()
+  "requirement": zod.string(),
+  "score": zod.int().min(getLearnerDashboardResponseReadinessNextGateOneScoreMin).max(getLearnerDashboardResponseReadinessNextGateOneScoreMax),
+  "threshold": zod.int().min(getLearnerDashboardResponseReadinessNextGateOneThresholdMin).max(getLearnerDashboardResponseReadinessNextGateOneThresholdMax),
+  "hardGate": zod.boolean(),
+  "competencyUnitId": zod.string().nullable(),
+  "ruleVersion": zod.int().min(1)
 }),zod.null()]),
   "gates": zod.array(zod.object({
   "id": zod.string(),
   "code": zod.string(),
   "name": zod.string(),
   "status": zod.string(),
-  "requirement": zod.string()
+  "requirement": zod.string(),
+  "score": zod.int().min(getLearnerDashboardResponseReadinessGatesItemScoreMin).max(getLearnerDashboardResponseReadinessGatesItemScoreMax),
+  "threshold": zod.int().min(getLearnerDashboardResponseReadinessGatesItemThresholdMin).max(getLearnerDashboardResponseReadinessGatesItemThresholdMax),
+  "hardGate": zod.boolean(),
+  "competencyUnitId": zod.string().nullable(),
+  "ruleVersion": zod.int().min(1)
 })),
   "blockers": zod.array(zod.string()),
   "outstandingGapCount": zod.int(),
@@ -222,6 +275,13 @@ export const GetLearnerDashboardResponse = zod.object({
   "valid": zod.int(),
   "underReview": zod.int(),
   "needsRevision": zod.int()
+}),
+  "diagnostic": zod.object({
+  "status": zod.string(),
+  "score": zod.int().nullable(),
+  "topGaps": zod.array(zod.string()),
+  "safetyBlockers": zod.array(zod.string()),
+  "blocked": zod.boolean()
 }),
   "nextAction": zod.object({
   "title": zod.string(),
@@ -679,6 +739,28 @@ export const getLearnerReadinessResponseScoreMin = 0;
 export const getLearnerReadinessResponseScoreMax = 100;
 
 
+export const getLearnerReadinessResponseCurrentGateScoreMin = 0;
+export const getLearnerReadinessResponseCurrentGateScoreMax = 100;
+
+export const getLearnerReadinessResponseCurrentGateThresholdMin = 0;
+export const getLearnerReadinessResponseCurrentGateThresholdMax = 100;
+
+
+export const getLearnerReadinessResponseNextGateOneScoreMin = 0;
+export const getLearnerReadinessResponseNextGateOneScoreMax = 100;
+
+export const getLearnerReadinessResponseNextGateOneThresholdMin = 0;
+export const getLearnerReadinessResponseNextGateOneThresholdMax = 100;
+
+
+export const getLearnerReadinessResponseGatesItemScoreMin = 0;
+export const getLearnerReadinessResponseGatesItemScoreMax = 100;
+
+export const getLearnerReadinessResponseGatesItemThresholdMin = 0;
+export const getLearnerReadinessResponseGatesItemThresholdMax = 100;
+
+
+
 
 export const GetLearnerReadinessResponse = zod.object({
   "pathway": zod.object({
@@ -696,28 +778,59 @@ export const GetLearnerReadinessResponse = zod.object({
   "requirement": zod.string()
 }))
 }),
-  "status": zod.string(),
+  "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']),
   "score": zod.int().min(getLearnerReadinessResponseScoreMin).max(getLearnerReadinessResponseScoreMax),
+  "ruleVersion": zod.int().min(1),
+  "evaluatedAt": zod.coerce.date(),
+  "decisionReason": zod.string(),
+  "inputEvidence": zod.object({
+  "assessments": zod.array(zod.object({
+  "id": zod.string(),
+  "score": zod.int(),
+  "completed": zod.boolean(),
+  "criticalFailure": zod.boolean()
+})),
+  "evidence": zod.array(zod.object({
+  "requirementId": zod.string(),
+  "satisfied": zod.boolean()
+})),
+  "openCriticalGaps": zod.array(zod.string())
+}),
   "currentGate": zod.object({
   "id": zod.string(),
   "code": zod.string(),
   "name": zod.string(),
   "status": zod.string(),
-  "requirement": zod.string()
+  "requirement": zod.string(),
+  "score": zod.int().min(getLearnerReadinessResponseCurrentGateScoreMin).max(getLearnerReadinessResponseCurrentGateScoreMax),
+  "threshold": zod.int().min(getLearnerReadinessResponseCurrentGateThresholdMin).max(getLearnerReadinessResponseCurrentGateThresholdMax),
+  "hardGate": zod.boolean(),
+  "competencyUnitId": zod.string().nullable(),
+  "ruleVersion": zod.int().min(1)
 }),
   "nextGate": zod.union([zod.object({
   "id": zod.string(),
   "code": zod.string(),
   "name": zod.string(),
   "status": zod.string(),
-  "requirement": zod.string()
+  "requirement": zod.string(),
+  "score": zod.int().min(getLearnerReadinessResponseNextGateOneScoreMin).max(getLearnerReadinessResponseNextGateOneScoreMax),
+  "threshold": zod.int().min(getLearnerReadinessResponseNextGateOneThresholdMin).max(getLearnerReadinessResponseNextGateOneThresholdMax),
+  "hardGate": zod.boolean(),
+  "competencyUnitId": zod.string().nullable(),
+  "ruleVersion": zod.int().min(1)
 }),zod.null()]),
   "gates": zod.array(zod.object({
   "id": zod.string(),
   "code": zod.string(),
   "name": zod.string(),
   "status": zod.string(),
-  "requirement": zod.string()
+  "requirement": zod.string(),
+  "score": zod.int().min(getLearnerReadinessResponseGatesItemScoreMin).max(getLearnerReadinessResponseGatesItemScoreMax),
+  "threshold": zod.int().min(getLearnerReadinessResponseGatesItemThresholdMin).max(getLearnerReadinessResponseGatesItemThresholdMax),
+  "hardGate": zod.boolean(),
+  "competencyUnitId": zod.string().nullable(),
+  "ruleVersion": zod.int().min(1)
 })),
   "blockers": zod.array(zod.string()),
   "outstandingGapCount": zod.int(),
@@ -919,6 +1032,28 @@ export const getReadinessMapResponseReadinessScoreMin = 0;
 export const getReadinessMapResponseReadinessScoreMax = 100;
 
 
+export const getReadinessMapResponseReadinessCurrentGateScoreMin = 0;
+export const getReadinessMapResponseReadinessCurrentGateScoreMax = 100;
+
+export const getReadinessMapResponseReadinessCurrentGateThresholdMin = 0;
+export const getReadinessMapResponseReadinessCurrentGateThresholdMax = 100;
+
+
+export const getReadinessMapResponseReadinessNextGateOneScoreMin = 0;
+export const getReadinessMapResponseReadinessNextGateOneScoreMax = 100;
+
+export const getReadinessMapResponseReadinessNextGateOneThresholdMin = 0;
+export const getReadinessMapResponseReadinessNextGateOneThresholdMax = 100;
+
+
+export const getReadinessMapResponseReadinessGatesItemScoreMin = 0;
+export const getReadinessMapResponseReadinessGatesItemScoreMax = 100;
+
+export const getReadinessMapResponseReadinessGatesItemThresholdMin = 0;
+export const getReadinessMapResponseReadinessGatesItemThresholdMax = 100;
+
+
+
 
 export const GetReadinessMapResponse = zod.object({
   "profile": zod.object({
@@ -973,28 +1108,59 @@ export const GetReadinessMapResponse = zod.object({
   "requirement": zod.string()
 }))
 }),
-  "status": zod.string(),
+  "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']),
   "score": zod.int().min(getReadinessMapResponseReadinessScoreMin).max(getReadinessMapResponseReadinessScoreMax),
+  "ruleVersion": zod.int().min(1),
+  "evaluatedAt": zod.coerce.date(),
+  "decisionReason": zod.string(),
+  "inputEvidence": zod.object({
+  "assessments": zod.array(zod.object({
+  "id": zod.string(),
+  "score": zod.int(),
+  "completed": zod.boolean(),
+  "criticalFailure": zod.boolean()
+})),
+  "evidence": zod.array(zod.object({
+  "requirementId": zod.string(),
+  "satisfied": zod.boolean()
+})),
+  "openCriticalGaps": zod.array(zod.string())
+}),
   "currentGate": zod.object({
   "id": zod.string(),
   "code": zod.string(),
   "name": zod.string(),
   "status": zod.string(),
-  "requirement": zod.string()
+  "requirement": zod.string(),
+  "score": zod.int().min(getReadinessMapResponseReadinessCurrentGateScoreMin).max(getReadinessMapResponseReadinessCurrentGateScoreMax),
+  "threshold": zod.int().min(getReadinessMapResponseReadinessCurrentGateThresholdMin).max(getReadinessMapResponseReadinessCurrentGateThresholdMax),
+  "hardGate": zod.boolean(),
+  "competencyUnitId": zod.string().nullable(),
+  "ruleVersion": zod.int().min(1)
 }),
   "nextGate": zod.union([zod.object({
   "id": zod.string(),
   "code": zod.string(),
   "name": zod.string(),
   "status": zod.string(),
-  "requirement": zod.string()
+  "requirement": zod.string(),
+  "score": zod.int().min(getReadinessMapResponseReadinessNextGateOneScoreMin).max(getReadinessMapResponseReadinessNextGateOneScoreMax),
+  "threshold": zod.int().min(getReadinessMapResponseReadinessNextGateOneThresholdMin).max(getReadinessMapResponseReadinessNextGateOneThresholdMax),
+  "hardGate": zod.boolean(),
+  "competencyUnitId": zod.string().nullable(),
+  "ruleVersion": zod.int().min(1)
 }),zod.null()]),
   "gates": zod.array(zod.object({
   "id": zod.string(),
   "code": zod.string(),
   "name": zod.string(),
   "status": zod.string(),
-  "requirement": zod.string()
+  "requirement": zod.string(),
+  "score": zod.int().min(getReadinessMapResponseReadinessGatesItemScoreMin).max(getReadinessMapResponseReadinessGatesItemScoreMax),
+  "threshold": zod.int().min(getReadinessMapResponseReadinessGatesItemThresholdMin).max(getReadinessMapResponseReadinessGatesItemThresholdMax),
+  "hardGate": zod.boolean(),
+  "competencyUnitId": zod.string().nullable(),
+  "ruleVersion": zod.int().min(1)
 })),
   "blockers": zod.array(zod.string()),
   "outstandingGapCount": zod.int(),
@@ -1008,6 +1174,28 @@ export const GetReadinessMapResponse = zod.object({
  */
 export const getCapabilityPassportResponseReadinessScoreMin = 0;
 export const getCapabilityPassportResponseReadinessScoreMax = 100;
+
+
+export const getCapabilityPassportResponseReadinessCurrentGateScoreMin = 0;
+export const getCapabilityPassportResponseReadinessCurrentGateScoreMax = 100;
+
+export const getCapabilityPassportResponseReadinessCurrentGateThresholdMin = 0;
+export const getCapabilityPassportResponseReadinessCurrentGateThresholdMax = 100;
+
+
+export const getCapabilityPassportResponseReadinessNextGateOneScoreMin = 0;
+export const getCapabilityPassportResponseReadinessNextGateOneScoreMax = 100;
+
+export const getCapabilityPassportResponseReadinessNextGateOneThresholdMin = 0;
+export const getCapabilityPassportResponseReadinessNextGateOneThresholdMax = 100;
+
+
+export const getCapabilityPassportResponseReadinessGatesItemScoreMin = 0;
+export const getCapabilityPassportResponseReadinessGatesItemScoreMax = 100;
+
+export const getCapabilityPassportResponseReadinessGatesItemThresholdMin = 0;
+export const getCapabilityPassportResponseReadinessGatesItemThresholdMax = 100;
+
 
 
 
@@ -1053,28 +1241,59 @@ export const GetCapabilityPassportResponse = zod.object({
   "requirement": zod.string()
 }))
 }),
-  "status": zod.string(),
+  "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']),
   "score": zod.int().min(getCapabilityPassportResponseReadinessScoreMin).max(getCapabilityPassportResponseReadinessScoreMax),
+  "ruleVersion": zod.int().min(1),
+  "evaluatedAt": zod.coerce.date(),
+  "decisionReason": zod.string(),
+  "inputEvidence": zod.object({
+  "assessments": zod.array(zod.object({
+  "id": zod.string(),
+  "score": zod.int(),
+  "completed": zod.boolean(),
+  "criticalFailure": zod.boolean()
+})),
+  "evidence": zod.array(zod.object({
+  "requirementId": zod.string(),
+  "satisfied": zod.boolean()
+})),
+  "openCriticalGaps": zod.array(zod.string())
+}),
   "currentGate": zod.object({
   "id": zod.string(),
   "code": zod.string(),
   "name": zod.string(),
   "status": zod.string(),
-  "requirement": zod.string()
+  "requirement": zod.string(),
+  "score": zod.int().min(getCapabilityPassportResponseReadinessCurrentGateScoreMin).max(getCapabilityPassportResponseReadinessCurrentGateScoreMax),
+  "threshold": zod.int().min(getCapabilityPassportResponseReadinessCurrentGateThresholdMin).max(getCapabilityPassportResponseReadinessCurrentGateThresholdMax),
+  "hardGate": zod.boolean(),
+  "competencyUnitId": zod.string().nullable(),
+  "ruleVersion": zod.int().min(1)
 }),
   "nextGate": zod.union([zod.object({
   "id": zod.string(),
   "code": zod.string(),
   "name": zod.string(),
   "status": zod.string(),
-  "requirement": zod.string()
+  "requirement": zod.string(),
+  "score": zod.int().min(getCapabilityPassportResponseReadinessNextGateOneScoreMin).max(getCapabilityPassportResponseReadinessNextGateOneScoreMax),
+  "threshold": zod.int().min(getCapabilityPassportResponseReadinessNextGateOneThresholdMin).max(getCapabilityPassportResponseReadinessNextGateOneThresholdMax),
+  "hardGate": zod.boolean(),
+  "competencyUnitId": zod.string().nullable(),
+  "ruleVersion": zod.int().min(1)
 }),zod.null()]),
   "gates": zod.array(zod.object({
   "id": zod.string(),
   "code": zod.string(),
   "name": zod.string(),
   "status": zod.string(),
-  "requirement": zod.string()
+  "requirement": zod.string(),
+  "score": zod.int().min(getCapabilityPassportResponseReadinessGatesItemScoreMin).max(getCapabilityPassportResponseReadinessGatesItemScoreMax),
+  "threshold": zod.int().min(getCapabilityPassportResponseReadinessGatesItemThresholdMin).max(getCapabilityPassportResponseReadinessGatesItemThresholdMax),
+  "hardGate": zod.boolean(),
+  "competencyUnitId": zod.string().nullable(),
+  "ruleVersion": zod.int().min(1)
 })),
   "blockers": zod.array(zod.string()),
   "outstandingGapCount": zod.int(),
@@ -1928,6 +2147,88 @@ export const ListCourseAuthoringAuditResponse = zod.array(ListCourseAuthoringAud
 
 export const GetAdminAccessResponse = zod.object({
   "authorized": zod.literal(true)
+})
+
+
+/**
+ * @summary List active versioned readiness rules
+ */
+
+export const listAdminReadinessRulesResponseThresholdMin = 0;
+export const listAdminReadinessRulesResponseThresholdMax = 100;
+
+
+
+
+export const ListAdminReadinessRulesResponseItem = zod.object({
+  "id": zod.string(),
+  "programId": zod.string(),
+  "pathwayId": zod.string(),
+  "sequence": zod.int().min(1),
+  "code": zod.string(),
+  "name": zod.string(),
+  "requirement": zod.string(),
+  "assessmentMode": zod.enum(['All', 'Mapped', 'None']),
+  "evidenceMode": zod.enum(['All', 'Mapped', 'None']),
+  "competencyUnitId": zod.string().nullable(),
+  "threshold": zod.int().min(listAdminReadinessRulesResponseThresholdMin).max(listAdminReadinessRulesResponseThresholdMax),
+  "hardGate": zod.boolean(),
+  "ruleVersion": zod.int().min(1),
+  "active": zod.boolean()
+})
+export const ListAdminReadinessRulesResponse = zod.array(ListAdminReadinessRulesResponseItem)
+
+
+/**
+ * @summary Publish a new immutable readiness rule version
+ */
+
+
+
+
+
+
+export const createAdminReadinessRuleVersionBodyThresholdMin = 0;
+export const createAdminReadinessRuleVersionBodyThresholdMax = 100;
+
+
+
+export const CreateAdminReadinessRuleVersionBody = zod.object({
+  "programId": zod.string().min(1),
+  "pathwayId": zod.string().min(1),
+  "sequence": zod.int().min(1),
+  "code": zod.string().min(1),
+  "name": zod.string().min(1),
+  "requirement": zod.string().min(1),
+  "assessmentMode": zod.enum(['All', 'Mapped', 'None']),
+  "evidenceMode": zod.enum(['All', 'Mapped', 'None']),
+  "competencyUnitId": zod.string().nullish(),
+  "threshold": zod.int().min(createAdminReadinessRuleVersionBodyThresholdMin).max(createAdminReadinessRuleVersionBodyThresholdMax),
+  "hardGate": zod.boolean()
+})
+
+
+export const createAdminReadinessRuleVersionResponseThresholdMin = 0;
+export const createAdminReadinessRuleVersionResponseThresholdMax = 100;
+
+
+
+
+export const CreateAdminReadinessRuleVersionResponse = zod.object({
+  "id": zod.string(),
+  "programId": zod.string(),
+  "pathwayId": zod.string(),
+  "sequence": zod.int().min(1),
+  "code": zod.string(),
+  "name": zod.string(),
+  "requirement": zod.string(),
+  "assessmentMode": zod.enum(['All', 'Mapped', 'None']),
+  "evidenceMode": zod.enum(['All', 'Mapped', 'None']),
+  "competencyUnitId": zod.string().nullable(),
+  "threshold": zod.int().min(createAdminReadinessRuleVersionResponseThresholdMin).max(createAdminReadinessRuleVersionResponseThresholdMax),
+  "hardGate": zod.boolean(),
+  "ruleVersion": zod.int().min(1),
+  "active": zod.boolean()
 })
 
 

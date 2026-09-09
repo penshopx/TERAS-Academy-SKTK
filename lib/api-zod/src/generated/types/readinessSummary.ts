@@ -7,15 +7,22 @@
  */
 import type { GateProgress } from './gateProgress';
 import type { PathwaySummary } from './pathwaySummary';
+import type { ReadinessEvidenceSnapshot } from './readinessEvidenceSnapshot';
+import type { ReadinessSummaryStatus } from './readinessSummaryStatus';
 
 export interface ReadinessSummary {
   pathway: PathwaySummary;
-  status: string;
+  status: ReadinessSummaryStatus;
   /**
      * @minimum 0
      * @maximum 100
      */
   score: number;
+  /** @minimum 1 */
+  ruleVersion: number;
+  evaluatedAt: Date;
+  decisionReason: string;
+  inputEvidence: ReadinessEvidenceSnapshot;
   currentGate: GateProgress;
   nextGate: GateProgress | null;
   gates: GateProgress[];

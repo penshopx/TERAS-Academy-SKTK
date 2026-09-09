@@ -7,6 +7,7 @@
  */
 import type { EvidenceCounts } from './evidenceCounts';
 import type { Gap } from './gap';
+import type { LearnerDashboardDiagnostic } from './learnerDashboardDiagnostic';
 import type { LearnerProfile } from './learnerProfile';
 import type { ModuleSummary } from './moduleSummary';
 import type { NextAction } from './nextAction';
@@ -29,5 +30,6 @@ export interface LearnerDashboard {
   currentPractice: PracticeTask;
   mainGap: Gap | null;
   evidenceCounts: EvidenceCounts;
+  diagnostic: LearnerDashboardDiagnostic;
   nextAction: NextAction;
 }

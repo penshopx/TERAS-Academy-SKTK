@@ -111,8 +111,8 @@ async function restoreBaseline() {
   await db.insert(remediationEventsTable).values({ id: "rem-event-m07", activityId: "rem-act-m07", status: "Not started" });
   await db.delete(readinessEventsTable).where(inArray(readinessEventsTable.gateId, ["gate-g1", "gate-g2"]));
   await db.insert(readinessEventsTable).values([
-    { id: "ready-demo-g1", enrollmentId: "enrol-demo", pathwayId: "path-a", gateId: "gate-g1", status: "Passed", score: 55, blockers: [], createdAt: new Date("2025-02-14T10:00:00.000Z") },
-    { id: "ready-demo-g2", enrollmentId: "enrol-demo", pathwayId: "path-a", gateId: "gate-g2", status: "In progress", score: 55, blockers: ["Commissioning evidence review pending"], createdAt: new Date("2025-02-14T10:00:00.000Z") },
+    { id: "ready-demo-g1", enrollmentId: "enrol-demo", pathwayId: "path-a", gateId: "gate-g1", status: "Developing", score: 55, blockers: [], decisionReason: "Fixture baseline", createdAt: new Date("2025-02-14T10:00:00.000Z") },
+    { id: "ready-demo-g2", enrollmentId: "enrol-demo", pathwayId: "path-a", gateId: "gate-g2", status: "Developing", score: 55, blockers: ["Commissioning evidence review pending"], decisionReason: "Fixture baseline", createdAt: new Date("2025-02-14T10:00:00.000Z") },
   ]);
   // The seeded enrollment's path-a assignment is the baseline; selections are events.
   await db.delete(enrollmentPathwayEventsTable).where(eq(enrollmentPathwayEventsTable.enrollmentId, "enrol-demo"));
@@ -188,7 +188,7 @@ async function run() {
       "M03 critical criterion did not override requested Competent decision at the highest possible failing average",
     );
     const blocked = await request<Readiness>("/readiness", "learner");
-    assert(blocked.status === "Blocked" && blocked.blockers.some((blocker) => blocker.includes("Critical safety failure in M03")), "M03 critical failure did not block readiness");
+    assert(blocked.status === "Not Ready" && blocked.blockers.some((blocker) => blocker.includes("Critical safety failure in M03")), "M03 critical failure did not block readiness");
 
     const m07 = await request<AssessmentDetail>("/assessments/assessment-m07?learnerId=learner-demo", "assessor");
     await post("/assessor/assessments/assessment-m07/decision", "assessor", {
@@ -289,7 +289,7 @@ async function run() {
       "Remediation prerequisite history was not preserved",
     );
     const stillBlocked = await request<Readiness>("/readiness", "learner");
-    assert(stillBlocked.status === "Blocked" && stillBlocked.blockers.some((blocker) => blocker.includes("Critical safety failure in M03")), "Completing remediation cleared unresolved M03 critical failure");
+    assert(stillBlocked.status === "Not Ready" && stillBlocked.blockers.some((blocker) => blocker.includes("Critical safety failure in M03")), "Completing remediation cleared unresolved M03 critical failure");
 
     const failedM03Attempt = failedM03.attempts[0];
     assert(failedM03Attempt, "M03 failed assessment attempt was not created");
@@ -321,7 +321,7 @@ async function run() {
     assert(m03History.length === 3 && m03History.some((attempt) => attempt.decision === "Not competent") && m03History.some((attempt) => attempt.decision === "Competent" && attempt.decisionRationale === `${marker}: passing reassessment`), "Assessment attempt history was not immutable in the database");
     const cleared = await request<Readiness>("/readiness", "learner");
     assert(
-      cleared.status !== "Blocked" &&
+      cleared.status !== "Not Ready" &&
         cleared.gates.find((gate) => gate.code === "G1")?.status === "Passed" &&
         cleared.gates.find((gate) => gate.code === "G2")?.status === "Passed",
       "Passing M03 reassessment did not clear the critical blocker or preserve M07 technical readiness",
