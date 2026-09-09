@@ -2275,6 +2275,127 @@ export const CreateAdminReadinessRuleVersionResponse = zod.object({
 
 
 /**
+ * @summary List immutable readiness evaluations for audit
+ */
+
+
+
+
+
+export const ListAdminReadinessHistoryQueryParams = zod.object({
+  "learnerId": zod.coerce.string().min(1).optional(),
+  "pathwayId": zod.coerce.string().min(1).optional(),
+  "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']).optional(),
+  "ruleVersion": zod.coerce.number().int().min(1).optional()
+})
+
+export const listAdminReadinessHistoryResponseScoreMin = 0;
+export const listAdminReadinessHistoryResponseScoreMax = 100;
+
+
+
+
+export const ListAdminReadinessHistoryResponseItem = zod.object({
+  "id": zod.string(),
+  "enrollmentId": zod.string(),
+  "learnerId": zod.string(),
+  "learnerName": zod.string(),
+  "pathwayId": zod.string(),
+  "pathwayName": zod.string(),
+  "gateId": zod.string(),
+  "gateCode": zod.string(),
+  "gateName": zod.string(),
+  "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']),
+  "score": zod.int().min(listAdminReadinessHistoryResponseScoreMin).max(listAdminReadinessHistoryResponseScoreMax),
+  "blockers": zod.array(zod.string()),
+  "ruleVersion": zod.int().min(1),
+  "inputEvidence": zod.object({
+  "assessments": zod.array(zod.object({
+  "id": zod.string(),
+  "score": zod.int(),
+  "completed": zod.boolean(),
+  "criticalFailure": zod.boolean()
+})),
+  "evidence": zod.array(zod.object({
+  "requirementId": zod.string(),
+  "satisfied": zod.boolean()
+})),
+  "openCriticalGaps": zod.array(zod.string())
+}),
+  "decisionReason": zod.string(),
+  "evaluatedAt": zod.coerce.date()
+})
+export const ListAdminReadinessHistoryResponse = zod.array(ListAdminReadinessHistoryResponseItem)
+
+
+/**
+ * @summary Export filtered immutable readiness evaluations as audit-safe JSON
+ */
+
+
+
+
+
+export const ExportAdminReadinessHistoryQueryParams = zod.object({
+  "learnerId": zod.coerce.string().min(1).optional(),
+  "pathwayId": zod.coerce.string().min(1).optional(),
+  "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']).optional(),
+  "ruleVersion": zod.coerce.number().int().min(1).optional()
+})
+
+
+export const exportAdminReadinessHistoryResponseRecordCountMin = 0;
+
+export const exportAdminReadinessHistoryResponseRecordsItemScoreMin = 0;
+export const exportAdminReadinessHistoryResponseRecordsItemScoreMax = 100;
+
+
+
+
+export const ExportAdminReadinessHistoryResponse = zod.object({
+  "schemaVersion": zod.enum(['1.0']),
+  "exportedAt": zod.coerce.date(),
+  "filters": zod.object({
+  "learnerId": zod.string().nullable(),
+  "pathwayId": zod.string().nullable(),
+  "status": zod.union([zod.literal('Not Ready'),zod.literal('Developing'),zod.literal('Ready for Official Assessment'),zod.literal(null)]).nullable(),
+  "ruleVersion": zod.int().min(1).nullable()
+}),
+  "recordCount": zod.int().min(exportAdminReadinessHistoryResponseRecordCountMin),
+  "records": zod.array(zod.object({
+  "id": zod.string(),
+  "enrollmentId": zod.string(),
+  "learnerId": zod.string(),
+  "learnerName": zod.string(),
+  "pathwayId": zod.string(),
+  "pathwayName": zod.string(),
+  "gateId": zod.string(),
+  "gateCode": zod.string(),
+  "gateName": zod.string(),
+  "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']),
+  "score": zod.int().min(exportAdminReadinessHistoryResponseRecordsItemScoreMin).max(exportAdminReadinessHistoryResponseRecordsItemScoreMax),
+  "blockers": zod.array(zod.string()),
+  "ruleVersion": zod.int().min(1),
+  "inputEvidence": zod.object({
+  "assessments": zod.array(zod.object({
+  "id": zod.string(),
+  "score": zod.int(),
+  "completed": zod.boolean(),
+  "criticalFailure": zod.boolean()
+})),
+  "evidence": zod.array(zod.object({
+  "requirementId": zod.string(),
+  "satisfied": zod.boolean()
+})),
+  "openCriticalGaps": zod.array(zod.string())
+}),
+  "decisionReason": zod.string(),
+  "evaluatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
  * @summary List configurable competency frameworks and traceability mappings
  */
 

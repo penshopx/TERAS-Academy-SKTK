@@ -40,6 +40,8 @@ import type {
   AdminProgram,
   AdminProgramInput,
   AdminProgramUpdate,
+  AdminReadinessEvaluation,
+  AdminReadinessExport,
   AdminReadinessRule,
   AdminUser,
   AdminUserInput,
@@ -71,6 +73,7 @@ import type {
   ErrorResponse,
   EvidenceInput,
   EvidenceRecord,
+  ExportAdminReadinessHistoryParams,
   ForbiddenResponse,
   Gap,
   GetAssessmentParams,
@@ -92,6 +95,7 @@ import type {
   LearningTransitionInput,
   LearningTransitionRejection,
   LearningTransitionResult,
+  ListAdminReadinessHistoryParams,
   ManagedResourceUploadRequest,
   ManagedResourceUploadResponse,
   ModuleDetail,
@@ -3945,6 +3949,174 @@ export const useCreateAdminReadinessRuleVersion = <TError = ErrorType<BadRequest
       > => {
       return useMutation(getCreateAdminReadinessRuleVersionMutationOptions(options));
     }
+
+export const getListAdminReadinessHistoryUrl = (params?: ListAdminReadinessHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/readiness-history?${stringifiedParams}` : `/api/admin/readiness-history`
+}
+
+/**
+ * @summary List immutable readiness evaluations for audit
+ */
+export const listAdminReadinessHistory = async (params?: ListAdminReadinessHistoryParams, options?: Parameters<typeof customFetch>[1]): Promise<AdminReadinessEvaluation[]> => {
+
+  return customFetch<AdminReadinessEvaluation[]>(getListAdminReadinessHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAdminReadinessHistoryQueryKey = (params?: ListAdminReadinessHistoryParams,) => {
+    return [
+    `/api/admin/readiness-history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAdminReadinessHistoryQueryOptions = <TData = Awaited<ReturnType<typeof listAdminReadinessHistory>>, TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>>(params?: ListAdminReadinessHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminReadinessHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAdminReadinessHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminReadinessHistory>>> = ({ signal }) => listAdminReadinessHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAdminReadinessHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAdminReadinessHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof listAdminReadinessHistory>>>
+export type ListAdminReadinessHistoryQueryError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>
+
+
+/**
+ * @summary List immutable readiness evaluations for audit
+ */
+
+export function useListAdminReadinessHistory<TData = Awaited<ReturnType<typeof listAdminReadinessHistory>>, TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>>(
+ params?: ListAdminReadinessHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminReadinessHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAdminReadinessHistoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getExportAdminReadinessHistoryUrl = (params?: ExportAdminReadinessHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/readiness-history/export?${stringifiedParams}` : `/api/admin/readiness-history/export`
+}
+
+/**
+ * @summary Export filtered immutable readiness evaluations as audit-safe JSON
+ */
+export const exportAdminReadinessHistory = async (params?: ExportAdminReadinessHistoryParams, options?: Parameters<typeof customFetch>[1]): Promise<AdminReadinessExport> => {
+
+  return customFetch<AdminReadinessExport>(getExportAdminReadinessHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportAdminReadinessHistoryQueryKey = (params?: ExportAdminReadinessHistoryParams,) => {
+    return [
+    `/api/admin/readiness-history/export`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportAdminReadinessHistoryQueryOptions = <TData = Awaited<ReturnType<typeof exportAdminReadinessHistory>>, TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>>(params?: ExportAdminReadinessHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportAdminReadinessHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportAdminReadinessHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportAdminReadinessHistory>>> = ({ signal }) => exportAdminReadinessHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportAdminReadinessHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportAdminReadinessHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof exportAdminReadinessHistory>>>
+export type ExportAdminReadinessHistoryQueryError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>
+
+
+/**
+ * @summary Export filtered immutable readiness evaluations as audit-safe JSON
+ */
+
+export function useExportAdminReadinessHistory<TData = Awaited<ReturnType<typeof exportAdminReadinessHistory>>, TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>>(
+ params?: ExportAdminReadinessHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportAdminReadinessHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportAdminReadinessHistoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListAdminCompetencyFrameworksUrl = () => {
 

@@ -16,7 +16,9 @@ import {
   ListAdminCompetencyFrameworksResponse, CreateAdminCompetencyFrameworkBody, CreateAdminCompetencyFrameworkResponse,
   UpdateAdminCompetencyFrameworkBody, UpdateAdminCompetencyFrameworkParams, UpdateAdminCompetencyFrameworkResponse,
   CreateAdminCompetencyUnitBody, CreateAdminCompetencyUnitResponse, UpdateAdminCompetencyUnitBody, UpdateAdminCompetencyUnitParams, UpdateAdminCompetencyUnitResponse,
-  CreateAdminReadinessRuleVersionBody, CreateAdminReadinessRuleVersionResponse, ListAdminReadinessRulesResponse,
+  CreateAdminReadinessRuleVersionBody, CreateAdminReadinessRuleVersionResponse, ExportAdminReadinessHistoryQueryParams,
+  ExportAdminReadinessHistoryResponse, ListAdminReadinessHistoryQueryParams, ListAdminReadinessHistoryResponse,
+  ListAdminReadinessRulesResponse,
 } from "@workspace/api-zod";
 import {
   adminAccessRequestsTable, adminAuditEventsTable, assessmentAttemptsTable, cohortsTable, db, enrollmentsTable, evidenceReviewsTable,
@@ -24,7 +26,7 @@ import {
   remediationActivitiesTable, remediationEventsTable, remediationPlansTable,
   competencyFrameworksTable, competencyUnitsTable, pathwayCompetencyUnitsTable, competencyUnitOutcomesTable,
   competencyUnitPracticeTasksTable, competencyUnitEvidenceRequirementsTable, competencyUnitSimulationsTable, competencyUnitSafetyRulesTable,
-  readinessGatesTable,
+  readinessEventsTable, readinessGatesTable,
 } from "@workspace/db";
 import { authorizeAdmin, authorizeLocalUser, authorizeSuperAdmin, type AdminActor } from "../lib/authorization";
 import { supabaseEmailIsVerified, supabaseIdentity } from "../lib/supabase-auth";
@@ -148,6 +150,77 @@ router.post("/admin/readiness-rules", async (req, res): Promise<void> => {
   } catch (error) {
     res.status(409).json({ error: "Readiness rule version conflicts with an existing version" });
   }
+});
+
+type ReadinessHistoryFilters = {
+  learnerId?: string;
+  pathwayId?: string;
+  status?: "Not Ready" | "Developing" | "Ready for Official Assessment";
+  ruleVersion?: number;
+};
+
+async function readinessHistory(filters: ReadinessHistoryFilters) {
+  const conditions = [
+    filters.learnerId ? eq(enrollmentsTable.learnerId, filters.learnerId) : undefined,
+    filters.pathwayId ? eq(readinessEventsTable.pathwayId, filters.pathwayId) : undefined,
+    filters.status ? eq(readinessEventsTable.status, filters.status) : undefined,
+    filters.ruleVersion ? eq(readinessEventsTable.ruleVersion, filters.ruleVersion) : undefined,
+  ].filter(Boolean);
+  return db.select({
+    id: readinessEventsTable.id,
+    enrollmentId: readinessEventsTable.enrollmentId,
+    learnerId: enrollmentsTable.learnerId,
+    learnerName: peopleTable.name,
+    pathwayId: readinessEventsTable.pathwayId,
+    pathwayName: pathwaysTable.name,
+    gateId: readinessEventsTable.gateId,
+    gateCode: readinessGatesTable.code,
+    gateName: readinessGatesTable.name,
+    status: readinessEventsTable.status,
+    score: readinessEventsTable.score,
+    blockers: readinessEventsTable.blockers,
+    ruleVersion: readinessEventsTable.ruleVersion,
+    inputEvidence: readinessEventsTable.inputEvidence,
+    decisionReason: readinessEventsTable.decisionReason,
+    evaluatedAt: readinessEventsTable.evaluatedAt,
+  })
+    .from(readinessEventsTable)
+    .innerJoin(enrollmentsTable, eq(enrollmentsTable.id, readinessEventsTable.enrollmentId))
+    .innerJoin(peopleTable, eq(peopleTable.id, enrollmentsTable.learnerId))
+    .innerJoin(pathwaysTable, eq(pathwaysTable.id, readinessEventsTable.pathwayId))
+    .innerJoin(readinessGatesTable, eq(readinessGatesTable.id, readinessEventsTable.gateId))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(readinessEventsTable.evaluatedAt), desc(readinessEventsTable.createdAt));
+}
+
+router.get("/admin/readiness-history", async (req, res): Promise<void> => {
+  if (!await authorizeAdmin(req, res)) return;
+  const filters = parsed(ListAdminReadinessHistoryQueryParams, req.query, res);
+  if (!filters) return;
+  res.json(ListAdminReadinessHistoryResponse.parse(await readinessHistory(filters)));
+});
+
+router.get("/admin/readiness-history/export", async (req, res): Promise<void> => {
+  if (!await authorizeAdmin(req, res)) return;
+  const filters = parsed(ExportAdminReadinessHistoryQueryParams, req.query, res);
+  if (!filters) return;
+  const records = await readinessHistory(filters);
+  const exportedAt = new Date();
+  const payload = ExportAdminReadinessHistoryResponse.parse({
+    schemaVersion: "1.0",
+    exportedAt,
+    filters: {
+      learnerId: filters.learnerId ?? null,
+      pathwayId: filters.pathwayId ?? null,
+      status: filters.status ?? null,
+      ruleVersion: filters.ruleVersion ?? null,
+    },
+    recordCount: records.length,
+    records,
+  });
+  res.setHeader("Content-Disposition", `attachment; filename="readiness-audit-${exportedAt.toISOString().slice(0, 10)}.json"`);
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(payload);
 });
 
 router.post("/admin/claim-supabase-identity", async (req, res): Promise<void> => {

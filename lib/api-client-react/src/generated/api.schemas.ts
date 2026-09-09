@@ -1974,6 +1974,81 @@ export interface AdminReadinessRule {
   active: boolean;
 }
 
+export type AdminReadinessEvaluationStatus = typeof AdminReadinessEvaluationStatus[keyof typeof AdminReadinessEvaluationStatus];
+
+
+export const AdminReadinessEvaluationStatus = {
+  Not_Ready: 'Not Ready',
+  Developing: 'Developing',
+  Ready_for_Official_Assessment: 'Ready for Official Assessment',
+} as const;
+
+export interface AdminReadinessEvaluation {
+  id: string;
+  enrollmentId: string;
+  learnerId: string;
+  learnerName: string;
+  pathwayId: string;
+  pathwayName: string;
+  gateId: string;
+  gateCode: string;
+  gateName: string;
+  status: AdminReadinessEvaluationStatus;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  score: number;
+  blockers: string[];
+  /** @minimum 1 */
+  ruleVersion: number;
+  inputEvidence: ReadinessEvidenceSnapshot;
+  decisionReason: string;
+  evaluatedAt: string;
+}
+
+export type AdminReadinessExportSchemaVersion = typeof AdminReadinessExportSchemaVersion[keyof typeof AdminReadinessExportSchemaVersion];
+
+
+export const AdminReadinessExportSchemaVersion = {
+  '10': '1.0',
+} as const;
+
+/**
+ * @nullable
+ */
+export type AdminReadinessExportFiltersStatus = typeof AdminReadinessExportFiltersStatus[keyof typeof AdminReadinessExportFiltersStatus] | null;
+
+
+export const AdminReadinessExportFiltersStatus = {
+  Not_Ready: 'Not Ready',
+  Developing: 'Developing',
+  Ready_for_Official_Assessment: 'Ready for Official Assessment',
+} as const;
+
+export type AdminReadinessExportFilters = {
+  /** @nullable */
+  learnerId: string | null;
+  /** @nullable */
+  pathwayId: string | null;
+  /** @nullable */
+  status: AdminReadinessExportFiltersStatus;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  ruleVersion: number | null;
+};
+
+export interface AdminReadinessExport {
+  schemaVersion: AdminReadinessExportSchemaVersion;
+  exportedAt: string;
+  filters: AdminReadinessExportFilters;
+  /** @minimum 0 */
+  recordCount: number;
+  records: AdminReadinessEvaluation[];
+}
+
 export type ReadinessRuleInputAssessmentMode = typeof ReadinessRuleInputAssessmentMode[keyof typeof ReadinessRuleInputAssessmentMode];
 
 
@@ -2191,3 +2266,53 @@ export type CompleteRemediation409 = {
   error: CompleteRemediation409Error;
   message: string;
 };
+
+export type ListAdminReadinessHistoryParams = {
+/**
+ * @minLength 1
+ */
+learnerId?: string;
+/**
+ * @minLength 1
+ */
+pathwayId?: string;
+status?: ListAdminReadinessHistoryStatus;
+/**
+ * @minimum 1
+ */
+ruleVersion?: number;
+};
+
+export type ListAdminReadinessHistoryStatus = typeof ListAdminReadinessHistoryStatus[keyof typeof ListAdminReadinessHistoryStatus];
+
+
+export const ListAdminReadinessHistoryStatus = {
+  Not_Ready: 'Not Ready',
+  Developing: 'Developing',
+  Ready_for_Official_Assessment: 'Ready for Official Assessment',
+} as const;
+
+export type ExportAdminReadinessHistoryParams = {
+/**
+ * @minLength 1
+ */
+learnerId?: string;
+/**
+ * @minLength 1
+ */
+pathwayId?: string;
+status?: ExportAdminReadinessHistoryStatus;
+/**
+ * @minimum 1
+ */
+ruleVersion?: number;
+};
+
+export type ExportAdminReadinessHistoryStatus = typeof ExportAdminReadinessHistoryStatus[keyof typeof ExportAdminReadinessHistoryStatus];
+
+
+export const ExportAdminReadinessHistoryStatus = {
+  Not_Ready: 'Not Ready',
+  Developing: 'Developing',
+  Ready_for_Official_Assessment: 'Ready for Official Assessment',
+} as const;

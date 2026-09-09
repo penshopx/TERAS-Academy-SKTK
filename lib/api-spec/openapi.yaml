@@ -843,6 +843,36 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /admin/readiness-history:
+    get:
+      operationId: listAdminReadinessHistory
+      tags: [admin]
+      summary: List immutable readiness evaluations for audit
+      parameters:
+        - { name: learnerId, in: query, schema: { type: string, minLength: 1 } }
+        - { name: pathwayId, in: query, schema: { type: string, minLength: 1 } }
+        - { name: status, in: query, schema: { type: string, enum: [Not Ready, Developing, Ready for Official Assessment] } }
+        - { name: ruleVersion, in: query, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200": { description: Filtered readiness evaluation history, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AdminReadinessEvaluation" } } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/readiness-history/export:
+    get:
+      operationId: exportAdminReadinessHistory
+      tags: [admin]
+      summary: Export filtered immutable readiness evaluations as audit-safe JSON
+      parameters:
+        - { name: learnerId, in: query, schema: { type: string, minLength: 1 } }
+        - { name: pathwayId, in: query, schema: { type: string, minLength: 1 } }
+        - { name: status, in: query, schema: { type: string, enum: [Not Ready, Developing, Ready for Official Assessment] } }
+        - { name: ruleVersion, in: query, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200": { description: Portable audit export with applied filters and complete snapshots, content: { application/json: { schema: { $ref: "#/components/schemas/AdminReadinessExport" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /admin/competency-frameworks:
     get:
       operationId: listAdminCompetencyFrameworks
@@ -3673,6 +3703,42 @@ components:
         hardGate: { type: boolean }
         ruleVersion: { type: integer, minimum: 1 }
         active: { type: boolean }
+    AdminReadinessEvaluation:
+      type: object
+      required: [id, enrollmentId, learnerId, learnerName, pathwayId, pathwayName, gateId, gateCode, gateName, status, score, blockers, ruleVersion, inputEvidence, decisionReason, evaluatedAt]
+      properties:
+        id: { type: string }
+        enrollmentId: { type: string }
+        learnerId: { type: string }
+        learnerName: { type: string }
+        pathwayId: { type: string }
+        pathwayName: { type: string }
+        gateId: { type: string }
+        gateCode: { type: string }
+        gateName: { type: string }
+        status: { type: string, enum: [Not Ready, Developing, Ready for Official Assessment] }
+        score: { type: integer, minimum: 0, maximum: 100 }
+        blockers: { type: array, items: { type: string } }
+        ruleVersion: { type: integer, minimum: 1 }
+        inputEvidence: { $ref: "#/components/schemas/ReadinessEvidenceSnapshot" }
+        decisionReason: { type: string }
+        evaluatedAt: { type: string, format: date-time }
+    AdminReadinessExport:
+      type: object
+      required: [schemaVersion, exportedAt, filters, recordCount, records]
+      properties:
+        schemaVersion: { type: string, enum: ["1.0"] }
+        exportedAt: { type: string, format: date-time }
+        filters:
+          type: object
+          required: [learnerId, pathwayId, status, ruleVersion]
+          properties:
+            learnerId: { type: ["string", "null"] }
+            pathwayId: { type: ["string", "null"] }
+            status: { type: ["string", "null"], enum: [Not Ready, Developing, Ready for Official Assessment, null] }
+            ruleVersion: { type: ["integer", "null"], minimum: 1 }
+        recordCount: { type: integer, minimum: 0 }
+        records: { type: array, items: { $ref: "#/components/schemas/AdminReadinessEvaluation" } }
     ReadinessRuleInput:
       type: object
       required: [programId, pathwayId, sequence, code, name, requirement, assessmentMode, evidenceMode, threshold, hardGate]
