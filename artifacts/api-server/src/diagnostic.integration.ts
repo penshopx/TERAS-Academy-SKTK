@@ -9,6 +9,7 @@ import {
   competencyUnitsTable, pathwayCompetencyUnitsTable, diagnosticTemplatesTable,
   diagnosticQuestionsTable,
   readinessEventsTable,
+  personRolesTable,
 } from "@workspace/db";
 import { createIntegrationTestApp } from "./integration-test-app";
 
@@ -16,10 +17,13 @@ const suffix = crypto.randomUUID();
 const learnerA = `diagnostic-a-${suffix}`;
 const learnerB = `diagnostic-b-${suffix}`;
 const learnerC = `diagnostic-c-${suffix}`;
+const trainerA = `diagnostic-trainer-a-${suffix}`;
+const trainerB = `diagnostic-trainer-b-${suffix}`;
 const enrollmentA = `diagnostic-enrol-a-${suffix}`;
 const enrollmentB = `diagnostic-enrol-b-${suffix}`;
 const enrollmentC = `diagnostic-enrol-c-${suffix}`;
 const ids = [learnerA, learnerB, learnerC];
+const peopleIds = [...ids, trainerA, trainerB];
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 
 async function cleanup() {
@@ -41,7 +45,8 @@ async function cleanup() {
   }
   await db.delete(readinessEventsTable).where(inArray(readinessEventsTable.enrollmentId, [enrollmentA, enrollmentB, enrollmentC]));
   await db.delete(enrollmentsTable).where(inArray(enrollmentsTable.id, [enrollmentA, enrollmentB, enrollmentC]));
-  await db.delete(peopleTable).where(inArray(peopleTable.id, ids));
+  await db.delete(personRolesTable).where(inArray(personRolesTable.personId, [trainerA, trainerB]));
+  await db.delete(peopleTable).where(inArray(peopleTable.id, peopleIds));
 }
 
 async function run() {
@@ -82,28 +87,37 @@ async function run() {
     { id: learnerA, name: "Diagnostic A", initials: "DA", email: `${learnerA}@test`, role: "learner", organization: "test", createdBy: learnerA },
     { id: learnerB, name: "Diagnostic B", initials: "DB", email: `${learnerB}@test`, role: "learner", organization: "test", createdBy: learnerB },
     { id: learnerC, name: "Diagnostic C", initials: "DC", email: `${learnerC}@test`, role: "learner", organization: "test", createdBy: learnerC },
+    { id: trainerA, name: "Diagnostic Trainer A", initials: "TA", email: `${trainerA}@test`, role: "trainer", clerkUserId: `clerk-${trainerA}`, organization: "test", createdBy: trainerA },
+    { id: trainerB, name: "Diagnostic Trainer B", initials: "TB", email: `${trainerB}@test`, role: "trainer", clerkUserId: `clerk-${trainerB}`, organization: "test", createdBy: trainerB },
+  ]);
+  await db.insert(personRolesTable).values([
+    { personId: trainerA, role: "trainer", createdBy: trainerA },
+    { personId: trainerB, role: "trainer", createdBy: trainerB },
   ]);
   await db.insert(enrollmentsTable).values([
-    { id: enrollmentA, learnerId: learnerA, programId: "solar-pv-tech", pathwayId: "path-a", trainerId: null, assessorId: null, createdBy: learnerA },
-    { id: enrollmentB, learnerId: learnerB, programId: "solar-pv-tech", pathwayId: "path-a", trainerId: null, assessorId: null, createdBy: learnerB },
-    { id: enrollmentC, learnerId: learnerC, programId: "solar-pv-tech", pathwayId: "path-b", trainerId: null, assessorId: null, createdBy: learnerC },
+    { id: enrollmentA, learnerId: learnerA, programId: "solar-pv-tech", pathwayId: "path-a", trainerId: trainerA, assessorId: null, createdBy: learnerA },
+    { id: enrollmentB, learnerId: learnerB, programId: "solar-pv-tech", pathwayId: "path-a", trainerId: trainerB, assessorId: null, createdBy: learnerB },
+    { id: enrollmentC, learnerId: learnerC, programId: "solar-pv-tech", pathwayId: "path-b", trainerId: trainerA, assessorId: null, status: "inactive", createdBy: learnerC },
   ]);
   const app = createIntegrationTestApp(req => {
     const identity = req.get("x-diagnostic-learner");
     if (identity === "a") return { userId: learnerA, role: "learner", learnerId: learnerA };
     if (identity === "b") return { userId: learnerB, role: "learner", learnerId: learnerB };
     if (identity === "c") return { userId: learnerC, role: "learner", learnerId: learnerC };
+    if (identity === "trainer-a") return { userId: `clerk-${trainerA}`, role: "trainer" };
+    if (identity === "trainer-b") return { userId: `clerk-${trainerB}`, role: "trainer" };
     return { userId: null, role: null };
   });
   const server = app.listen(0);
   await new Promise<void>(resolve => server.once("listening", resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
-  const request = async <T>(path: string, options: RequestInit = {}, expected = 200, who?: "a" | "b" | "c"): Promise<T> => {
+  type TestIdentity = "a" | "b" | "c" | "trainer-a" | "trainer-b";
+  const request = async <T>(path: string, options: RequestInit = {}, expected = 200, who?: TestIdentity): Promise<T> => {
     const response = await fetch(`${base}${path}`, { ...options, headers: { "content-type": "application/json", ...(who ? { "x-diagnostic-learner": who } : {}), ...options.headers } });
     if (response.status !== expected) throw new Error(`${options.method ?? "GET"} ${path}: expected ${expected}, got ${response.status}: ${await response.text()}`);
     return response.json() as Promise<T>;
   };
-  const put = (path: string, body: unknown, expected = 200, who: "a" | "b" | "c" | undefined = "a") => request<any>(path, { method: "PUT", body: JSON.stringify(body) }, expected, who);
+  const put = (path: string, body: unknown, expected = 200, who: TestIdentity | undefined = "a") => request<any>(path, { method: "PUT", body: JSON.stringify(body) }, expected, who);
   try {
     const [beforeA, beforeB] = await Promise.all([request<any>("/diagnostic", {}, 200, "a"), request<any>("/diagnostic", {}, 200, "b")]);
     assert(beforeA.template.id === "diag-skttk-spv-v1" && beforeA.session === null && beforeA.questions.length === 6, "diagnostic template output was not validated");
@@ -166,6 +180,40 @@ async function run() {
     assert(JSON.stringify(stableReadiness(readinessBefore)) === JSON.stringify(stableReadiness(readinessAfter)), "canonical readiness changed after diagnostic completion");
     const bStillOwnsSession = await request<any>("/diagnostic", {}, 200, "b");
     assert(bStillOwnsSession.session.id === sessionB.id && bStillOwnsSession.session.status === "in_progress", "learner A completion leaked into learner B");
+    const historicalSessionId = `diagnostic-session-historical-${suffix}`;
+    const inactiveSessionId = `diagnostic-session-inactive-${suffix}`;
+    const historicalProfileId = `diagnostic-profile-historical-${suffix}`;
+    const inactiveProfileId = `diagnostic-profile-inactive-${suffix}`;
+    await db.insert(diagnosticSessionsTable).values([
+      { id: historicalSessionId, learnerId: learnerA, enrollmentId: enrollmentA, pathwayId: "path-b", templateId: "diag-skttk-spv-v1", frameworkId: "framework-skttk-solar-pv", status: "completed", progress: 100, completedAt: new Date(), createdBy: learnerA },
+      { id: inactiveSessionId, learnerId: learnerC, enrollmentId: enrollmentC, pathwayId: "path-b", templateId: "diag-skttk-spv-v1", frameworkId: "framework-skttk-solar-pv", status: "completed", progress: 100, completedAt: new Date(), createdBy: learnerC },
+    ]);
+    await db.insert(diagnosticProfilesTable).values([
+      { id: historicalProfileId, sessionId: historicalSessionId, learnerId: learnerA, pathwayId: "path-b", frameworkId: "framework-skttk-solar-pv", frameworkVersion: "1.0", currentState: "HISTORICAL_PROFILE_MUST_NOT_LEAK", dimensionSummaries: { Historical: 99 }, completedAt: new Date(), createdBy: learnerA },
+      { id: inactiveProfileId, sessionId: inactiveSessionId, learnerId: learnerC, pathwayId: "path-b", frameworkId: "framework-skttk-solar-pv", frameworkVersion: "1.0", currentState: "INACTIVE_PROFILE_MUST_NOT_LEAK", dimensionSummaries: { Inactive: 98 }, completedAt: new Date(), createdBy: learnerC },
+    ]);
+    await db.insert(diagnosticGapsTable).values([
+      { id: `diagnostic-gap-historical-${suffix}`, profileId: historicalProfileId, competencyUnitId: "skttk-u-design", frameworkId: "framework-skttk-solar-pv", diagnosis: "HISTORICAL_GAP_MUST_NOT_LEAK", severity: "Critical", createdBy: learnerA },
+      { id: `diagnostic-gap-inactive-${suffix}`, profileId: inactiveProfileId, competencyUnitId: "skttk-u-design", frameworkId: "framework-skttk-solar-pv", diagnosis: "INACTIVE_GAP_MUST_NOT_LEAK", severity: "Critical", createdBy: learnerC },
+    ]);
+    await db.insert(diagnosticRecommendationsTable).values([
+      { id: `diagnostic-recommendation-historical-${suffix}`, profileId: historicalProfileId, competencyUnitId: "skttk-u-design", frameworkId: "framework-skttk-solar-pv", kind: "module", title: "HISTORICAL_RECOMMENDATION_MUST_NOT_LEAK", rationale: "Historical pathway", priority: "Critical", createdBy: learnerA },
+      { id: `diagnostic-recommendation-inactive-${suffix}`, profileId: inactiveProfileId, competencyUnitId: "skttk-u-design", frameworkId: "framework-skttk-solar-pv", kind: "module", title: "INACTIVE_RECOMMENDATION_MUST_NOT_LEAK", rationale: "Inactive assignment", priority: "Critical", createdBy: learnerC },
+    ]);
+    await db.insert(diagnosticSafetyFlagsTable).values([
+      { id: `diagnostic-safety-historical-${suffix}`, profileId: historicalProfileId, competencyUnitId: "skttk-u-design", code: "HISTORICAL_SAFETY_MUST_NOT_LEAK", severity: "Critical", detail: "Historical pathway", createdBy: learnerA },
+      { id: `diagnostic-safety-inactive-${suffix}`, profileId: inactiveProfileId, competencyUnitId: "skttk-u-design", code: "INACTIVE_SAFETY_MUST_NOT_LEAK", severity: "Critical", detail: "Inactive assignment", createdBy: learnerC },
+    ]);
+    const [trainerADashboard, trainerBDashboard] = await Promise.all([
+      request<any>("/trainer/dashboard", {}, 200, "trainer-a"),
+      request<any>("/trainer/dashboard", {}, 200, "trainer-b"),
+    ]);
+    assert(trainerADashboard.diagnosticFollowUps.length === 1 && trainerADashboard.diagnosticFollowUps[0].learnerId === learnerA && trainerADashboard.diagnosticFollowUps[0].pathwayId === "path-a", "Trainer A diagnostic follow-ups escaped its active learner/pathway assignment");
+    assert(trainerADashboard.diagnosticFollowUps[0].currentState === completed1.currentState && trainerADashboard.diagnosticFollowUps[0].gaps.length > 0 && trainerADashboard.diagnosticFollowUps[0].recommendations.length > 0 && trainerADashboard.diagnosticFollowUps[0].safetyFindings.length > 0, "Trainer A did not receive its assigned learner diagnostic summary");
+    assert(trainerBDashboard.diagnosticFollowUps.length === 1 && trainerBDashboard.diagnosticFollowUps[0].learnerId === learnerB && trainerBDashboard.diagnosticFollowUps[0].pathwayId === "path-a", "Trainer B diagnostic follow-ups escaped its active learner/pathway assignment");
+    assert(trainerBDashboard.diagnosticFollowUps[0].completedAt === null && trainerBDashboard.diagnosticFollowUps[0].baselineScore === null && trainerBDashboard.diagnosticFollowUps[0].gaps.length === 0 && trainerBDashboard.diagnosticFollowUps[0].recommendations.length === 0 && trainerBDashboard.diagnosticFollowUps[0].safetyFindings.length === 0, "Learner without a completed profile was omitted or populated from another assignment");
+    const serializedTrainerDashboards = JSON.stringify([trainerADashboard.diagnosticFollowUps, trainerBDashboard.diagnosticFollowUps]);
+    assert(!serializedTrainerDashboards.includes("MUST_NOT_LEAK") && !serializedTrainerDashboards.includes(learnerC), "Historical or inactive diagnostic data leaked into a trainer dashboard");
     const [dashboardA, dashboardB, journeyA, journeyB] = await Promise.all([
       request<any>("/learner/dashboard", {}, 200, "a"),
       request<any>("/learner/dashboard", {}, 200, "b"),
