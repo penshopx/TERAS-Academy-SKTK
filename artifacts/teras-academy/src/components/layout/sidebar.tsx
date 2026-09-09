@@ -15,8 +15,8 @@ const NAV_ITEMS = [
   { href: "/learning", label: "Learning", icon: BookOpen },
   { href: "/programs", label: "Programs", icon: Layers },
   { href: "/practice", label: "Practice", icon: Target },
-  { href: "/evidence", label: "Evidence", icon: Briefcase },
-  { href: "/assessments", label: "Assessments", icon: FileSignature },
+  { href: "/evidence", label: "Preparation Evidence", icon: Briefcase },
+  { href: "/assessments", label: "Internal Simulation", icon: FileSignature },
   { href: "/gaps", label: "Gaps & Remediation", icon: ShieldAlert },
   { href: "/readiness", label: "Readiness", icon: CheckCircle },
   { href: "/passport", label: "Passport", icon: Award },
@@ -80,9 +80,9 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <div className="p-6">
         <h1 className="text-xl font-bold tracking-tight text-primary flex items-center gap-2">
           <Activity className="w-6 h-6 text-primary drop-shadow-[0_0_8px_rgba(0,195,255,0.8)]" />
-          TERAS
+          TERAS SKTTK
         </h1>
-        <p className="text-xs text-sidebar-foreground/60 font-mono mt-1">CAPABILITY COCKPIT</p>
+        <p className="text-xs text-sidebar-foreground/60 font-mono mt-1">SKTTK READINESS COCKPIT</p>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-2 space-y-6">

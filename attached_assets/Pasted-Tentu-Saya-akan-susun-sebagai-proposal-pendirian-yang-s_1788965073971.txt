@@ -1,0 +1,1237 @@
+Tentu. Saya akan susun sebagai **proposal pendirian yang siap dijadikan dokumen resmi**, bukan sekadar uraian konsep. Proposal ini akan menempatkan **TERAS SKTTK sebagai unit/platform persiapan kompetensi yang terintegrasi dengan ekosistem Gustafta**, sekaligus menjaga batas tegas dengan fungsi LSK/asesor dan proses sertifikasi resmi.
+
+# PROPOSAL PENDIRIAN
+
+# TERAS SKTTK
+
+## Platform Persiapan Sertifikasi Kompetensi Tenaga Teknik Ketenagalistrikan
+
+### Terintegrasi dengan Ekosistem Digital Gustafta
+
+**Tagline:**
+
+> **Build Competence. Build Evidence. Build Readiness.**
+
+---
+
+# I. PENDAHULUAN
+
+## 1. Latar Belakang
+
+Tenaga teknik ketenagalistrikan memiliki peran penting dalam menjamin terselenggaranya pekerjaan ketenagalistrikan yang aman, andal, bermutu, dan sesuai dengan standar kompetensi yang dipersyaratkan.
+
+Dalam praktiknya, keberadaan sertifikasi kompetensi tidak hanya membutuhkan proses administrasi dan pelaksanaan uji kompetensi, tetapi juga membutuhkan kesiapan peserta untuk mampu menunjukkan pengetahuan, keterampilan, sikap kerja, pengalaman, serta penerapan keselamatan dalam konteks pekerjaan yang relevan.
+
+Permasalahan yang sering muncul adalah adanya jarak antara:
+
+> **memiliki pengalaman kerja** dengan **siap menghadapi asesmen kompetensi**.
+
+Demikian pula, mengikuti pelatihan atau menyelesaikan materi pembelajaran belum secara otomatis menunjukkan bahwa seseorang siap menghadapi proses asesmen.
+
+Karena itu diperlukan suatu sistem yang tidak hanya menyediakan materi pembelajaran, tetapi mampu membawa calon peserta melalui proses:
+
+**diagnostic → learning → practice → evidence → feedback → remediation → simulation → safety → readiness.**
+
+Atas dasar kebutuhan tersebut, dikembangkan:
+
+# **TERAS SKTTK**
+
+sebagai platform digital persiapan Sertifikasi Kompetensi Tenaga Teknik Ketenagalistrikan.
+
+TERAS SKTTK dirancang sebagai bagian dari ekosistem Gustafta, dengan pembagian fungsi yang jelas antara ekosistem layanan dan pengembangan profesional Gustafta dengan sistem pembangunan kompetensi dan readiness TERAS.
+
+---
+
+# II. IDENTITAS DAN POSISI TERAS SKTTK
+
+## 1. Nama
+
+**TERAS SKTTK**
+
+**Platform Persiapan Sertifikasi Kompetensi Tenaga Teknik Ketenagalistrikan**
+
+---
+
+## 2. Kepanjangan dan terminologi
+
+Dalam proposal ini:
+
+**SKTTK** digunakan dalam konteks:
+
+> **Sertifikasi Kompetensi Tenaga Teknik Ketenagalistrikan**
+
+Sedangkan apabila merujuk kepada standar kompetensi, akan digunakan istilah:
+
+> **Standar Kompetensi Tenaga Teknik Ketenagalistrikan**
+
+untuk menghindari kerancuan terminologi.
+
+---
+
+## 3. Positioning
+
+TERAS SKTTK diposisikan sebagai:
+
+> **Pre-Assessment Capability & Readiness Platform**
+
+yaitu platform yang membantu calon peserta membangun kemampuan dan kesiapan sebelum mengikuti asesmen/sertifikasi kompetensi resmi.
+
+TERAS bukan lembaga sertifikasi dan bukan pengganti asesor.
+
+---
+
+# III. VISI
+
+## Visi
+
+> **Menjadi platform digital terpercaya untuk membangun, membuktikan, dan meningkatkan kesiapan kompetensi tenaga teknik ketenagalistrikan sebelum menghadapi asesmen kompetensi resmi.**
+
+---
+
+# IV. MISI
+
+TERAS SKTTK memiliki misi:
+
+1. menyediakan proses persiapan kompetensi yang sistematis;
+2. membantu peserta mengetahui kondisi dan gap kompetensinya;
+3. menyediakan pembelajaran berbasis kebutuhan kompetensi;
+4. menyediakan latihan praktik dan simulasi;
+5. membantu peserta membangun evidence pembelajaran dan praktik;
+6. menyediakan feedback dan remediation;
+7. memastikan critical safety requirement menjadi bagian utama readiness;
+8. memberikan informasi readiness secara transparan;
+9. menghasilkan rekam jejak proses persiapan melalui Capability Passport;
+10. menghubungkan peserta yang telah siap dengan proses sertifikasi resmi melalui ekosistem Gustafta.
+
+---
+
+# V. TUJUAN PENDIRIAN
+
+Pendirian TERAS SKTTK bertujuan untuk:
+
+### 1. Meningkatkan kualitas persiapan peserta
+
+Peserta tidak hanya memperoleh materi, tetapi menjalani proses pembelajaran dan latihan yang terstruktur.
+
+### 2. Mengurangi competency gap
+
+Peserta mengetahui secara lebih jelas kekurangan yang perlu diperbaiki sebelum mengikuti asesmen.
+
+### 3. Meningkatkan kesiapan asesmen
+
+Peserta mendapatkan pengalaman melalui simulasi sehingga lebih siap menghadapi kondisi asesmen sebenarnya.
+
+### 4. Membangun budaya evidence
+
+Peserta dibiasakan menunjukkan kemampuan melalui hasil kerja, praktik, dan rekam proses pembelajaran.
+
+### 5. Mengutamakan keselamatan
+
+Critical safety failure menjadi blocker yang tidak dapat ditutupi oleh nilai rata-rata.
+
+### 6. Membangun ekosistem kompetensi berkelanjutan
+
+Proses tidak berhenti pada sertifikasi, tetapi dapat dilanjutkan menuju pengembangan profesional, PKB, dan pengelolaan karier melalui Gustafta.
+
+---
+
+# VI. MASALAH YANG INGIN DISELESAIKAN
+
+TERAS SKTTK dirancang untuk menjawab beberapa permasalahan:
+
+### A. Peserta tidak mengetahui tingkat kesiapan dirinya
+
+Peserta sering hanya mengetahui bahwa dirinya "sudah belajar", bukan apakah dirinya siap diuji.
+
+### B. Pembelajaran terpisah dari kompetensi
+
+Materi pembelajaran sering tidak memiliki hubungan langsung dengan kompetensi yang harus ditunjukkan.
+
+### C. Minimnya praktik
+
+Peserta memahami teori tetapi kurang kesempatan untuk melakukan latihan.
+
+### D. Minimnya simulasi
+
+Peserta belum terbiasa menjawab pertanyaan, melakukan task, dan menjelaskan pekerjaan seperti dalam situasi asesmen.
+
+### E. Evidence belum terkelola
+
+Hasil latihan dan pengalaman peserta tidak terdokumentasi secara sistematis.
+
+### F. Safety dapat terabaikan
+
+Nilai akademik yang tinggi dapat memberikan kesan siap meskipun terdapat kelemahan keselamatan yang kritis.
+
+### G. Proses persiapan dan layanan sertifikasi terpisah
+
+Peserta harus berpindah dari pembelajaran ke layanan administratif tanpa kesinambungan data.
+
+TERAS × Gustafta dirancang untuk mengatasi kesenjangan tersebut.
+
+---
+
+# VII. KONSEP UTAMA TERAS SKTTK
+
+TERAS menggunakan prinsip:
+
+# **LEARN → DO → PROVE → SIMULATE → READY**
+
+atau:
+
+> **Belajar → Melakukan → Membuktikan → Mensimulasikan → Siap**
+
+Namun keseluruhan sistem berjalan melalui:
+
+> **Diagnostic → Learning → Practice → Evidence → Feedback → Remediation → Simulation → Safety Gate → Readiness**
+
+---
+
+# VIII. ARSITEKTUR SISTEM
+
+TERAS SKTTK terdiri atas sepuluh komponen utama.
+
+## 1. Competency Framework
+
+Memetakan:
+
+* target sertifikasi;
+* bidang/jabatan;
+* jenjang/kualifikasi;
+* unit kompetensi;
+* elemen kompetensi;
+* kriteria unjuk kerja;
+* knowledge;
+* practice;
+* safety;
+* evidence.
+
+Competency Framework menjadi fondasi seluruh proses TERAS.
+
+---
+
+## 2. Diagnostic Engine
+
+Melakukan pengukuran awal terhadap:
+
+* pengetahuan;
+* pengalaman;
+* kemampuan praktik;
+* keselamatan;
+* komunikasi teknis;
+* evidence;
+* kesiapan menghadapi asesmen.
+
+Output:
+
+> **Personal Competency Profile**
+
+---
+
+## 3. Gap Analysis
+
+Sistem mengidentifikasi:
+
+* competency gap;
+* knowledge gap;
+* practice gap;
+* safety gap;
+* evidence gap;
+* simulation gap.
+
+Kemudian membentuk:
+
+> **Personal Readiness Map**
+
+---
+
+## 4. Learning / LMS
+
+LMS menjadi mesin pembelajaran TERAS.
+
+Materi disusun berdasarkan competency framework dan learning outcomes.
+
+Fitur meliputi:
+
+* learning path;
+* modul;
+* lesson;
+* video;
+* materi;
+* quiz;
+* assignment;
+* AI Tutor;
+* progress tracking;
+* learning analytics.
+
+Namun:
+
+> **LMS bukan keseluruhan TERAS.**
+
+LMS adalah salah satu engine pembangunan kompetensi.
+
+---
+
+## 5. Practice Engine
+
+Peserta menerapkan pembelajaran melalui:
+
+* studi kasus;
+* technical task;
+* troubleshooting;
+* procedure practice;
+* equipment identification;
+* safety scenario;
+* decision making;
+* technical explanation.
+
+Tujuannya mengubah:
+
+> **Knowledge → Capability**
+
+---
+
+## 6. Evidence Engine
+
+Peserta mengumpulkan hasil proses persiapan berupa:
+
+* tugas;
+* hasil praktik;
+* foto/video;
+* checklist;
+* jawaban kasus;
+* technical explanation;
+* simulation result;
+* feedback;
+* remediation record.
+
+Evidence memiliki lifecycle:
+
+> **Submit → Review → Feedback → Revise → Verify**
+
+Status evidence dalam TERAS merupakan:
+
+> **Preparation Evidence**
+
+dan bukan keputusan kompetensi resmi.
+
+---
+
+## 7. Feedback & Remediation Engine
+
+Jika ditemukan gap:
+
+> **Gap → Feedback → Learning → Practice → Reattempt**
+
+Peserta tidak hanya menerima nilai, tetapi mendapatkan rekomendasi tindakan perbaikan.
+
+---
+
+## 8. Simulation Engine
+
+Simulasi dapat meliputi:
+
+### Knowledge Simulation
+
+Simulasi pertanyaan dan kasus.
+
+### Practical Simulation
+
+Simulasi task teknis.
+
+### Oral Simulation
+
+Latihan menjelaskan:
+
+* pekerjaan;
+* prosedur;
+* alasan tindakan;
+* risiko;
+* tindakan korektif.
+
+### Safety Simulation
+
+Skenario yang berkaitan dengan keselamatan ketenagalistrikan.
+
+---
+
+## 9. Safety Gate
+
+Safety menjadi hard gate.
+
+Prinsip:
+
+> **Safety failure cannot be hidden by an average score.**
+
+Contoh:
+
+Knowledge: 90
+Practice: 88
+Evidence: 85
+Simulation: 87
+Safety: **CRITICAL FAILURE**
+
+Maka:
+
+> **READINESS = NOT READY**
+
+---
+
+## 10. Readiness Engine
+
+Readiness tidak hanya berupa satu angka.
+
+Sistem menampilkan:
+
+* knowledge readiness;
+* practice readiness;
+* safety status;
+* evidence status;
+* simulation status;
+* communication readiness;
+* outstanding gaps;
+* blockers;
+* next action.
+
+Contoh:
+
+> **Readiness: 78/100**
+> **Status: NOT READY**
+> **Blocker: Critical Safety Gap**
+
+Angka readiness merupakan indikator internal persiapan, bukan keputusan kompetensi.
+
+---
+
+# IX. TERAS CAPABILITY PASSPORT
+
+Sebagai keluaran proses persiapan, TERAS menyediakan:
+
+# **TERAS Capability Passport**
+
+Memuat:
+
+* identitas peserta;
+* target sertifikasi;
+* learning record;
+* practice record;
+* evidence record;
+* simulation record;
+* safety status;
+* feedback;
+* remediation;
+* readiness history.
+
+Capability Passport merupakan:
+
+> **rekam jejak proses pembelajaran dan kesiapan peserta.**
+
+Bukan:
+
+> sertifikat kompetensi.
+
+---
+
+# X. INTEGRASI DENGAN GUSTAFTA
+
+Integrasi Gustafta dan TERAS merupakan bagian fundamental dari konsep.
+
+## 1. Peran Gustafta
+
+Gustafta berfungsi sebagai:
+
+> **Ecosystem & Professional Service Layer**
+
+Mencakup:
+
+* discovery;
+* konsultasi;
+* layanan kompetensi;
+* document management;
+* workroom;
+* AI;
+* mini apps;
+* professional profile;
+* pengembangan profesional;
+* PKB;
+* koneksi layanan.
+
+---
+
+## 2. Peran TERAS
+
+TERAS berfungsi sebagai:
+
+> **Capability & Readiness Layer**
+
+Mencakup:
+
+* competency;
+* diagnostic;
+* learning;
+* practice;
+* evidence;
+* simulation;
+* safety;
+* remediation;
+* readiness.
+
+---
+
+# XI. INTEGRATED USER JOURNEY
+
+Perjalanan pengguna dirancang sebagai satu perjalanan:
+
+```text
+NEED
+  ↓
+DISCOVER
+  ↓
+SELECT TARGET
+  ↓
+DIAGNOSTIC
+  ↓
+LEARNING
+  ↓
+PRACTICE
+  ↓
+EVIDENCE
+  ↓
+FEEDBACK
+  ↓
+REMEDIATION
+  ↓
+SIMULATION
+  ↓
+SAFETY GATE
+  ↓
+READINESS
+  ↓
+CAPABILITY PASSPORT
+  ↓
+CERTIFICATION HANDOFF
+  ↓
+OFFICIAL ASSESSMENT
+  ↓
+CERTIFICATION
+  ↓
+PROFESSIONAL DEVELOPMENT
+```
+
+---
+
+# XII. PEMBAGIAN FUNGSI GUSTAFTA DAN TERAS
+
+| Gustafta                 | TERAS                  |
+| ------------------------ | ---------------------- |
+| Discovery                | Diagnostic             |
+| Consultation             | Competency Mapping     |
+| Service                  | Learning               |
+| Workroom                 | Practice               |
+| Document Management      | Evidence               |
+| AI Assistant             | AI Competency Coach    |
+| Mini Apps                | Simulation             |
+| Professional Profile     | Safety Gate            |
+| Certification Case       | Readiness              |
+| PKB                      | Capability Passport    |
+| Professional Development | Competency Development |
+
+Dengan pembagian ini tidak terjadi duplikasi fungsi.
+
+---
+
+# XIII. INTEGRASI WORKROOM
+
+Gustafta Workroom menjadi:
+
+> **Case & Service Management Layer**
+
+Sedangkan TERAS menjadi:
+
+> **Competency Journey Layer**
+
+Contoh:
+
+```text
+GUSTAFTA WORKROOM
+       │
+       ├── Identity
+       ├── Documents
+       ├── Administrative Status
+       ├── Service Status
+       │
+       └──── TERAS
+              │
+              ├── Diagnostic
+              ├── Learning
+              ├── Practice
+              ├── Evidence
+              ├── Simulation
+              └── Readiness
+                       │
+                       └──── GUSTAFTA
+                               │
+                               └── Certification Process
+```
+
+---
+
+# XIV. INTEGRASI DOCUMENT MANAGEMENT
+
+Gustafta menjadi sumber utama pengelolaan dokumen pengguna.
+
+Dokumen dapat meliputi:
+
+* pendidikan;
+* pengalaman;
+* pelatihan;
+* identitas;
+* dokumen administratif;
+* dokumen pendukung sertifikasi.
+
+TERAS menggunakan dokumen yang relevan sebagai konteks proses pembelajaran dan persiapan.
+
+Tidak perlu membuat document repository terpisah apabila fungsi yang sama sudah tersedia di Gustafta.
+
+---
+
+# XV. INTEGRASI AI
+
+## Gustafta AI
+
+Berfungsi sebagai:
+
+> **Ecosystem Assistant**
+
+Membantu pengguna menemukan dan memahami layanan.
+
+## TERAS AI
+
+Berfungsi sebagai:
+
+> **AI Competency Coach**
+
+AI TERAS dapat membantu:
+
+* menjelaskan materi;
+* memberikan latihan;
+* menganalisis gap;
+* memberikan feedback awal;
+* menyusun remediation;
+* membuat simulasi;
+* menjelaskan hasil readiness.
+
+AI tidak boleh:
+
+* menetapkan kompeten;
+* menetapkan lulus sertifikasi;
+* menggantikan asesor;
+* menerbitkan keputusan sertifikasi.
+
+---
+
+# XVI. INTEGRASI MINI APPS
+
+Mini Apps Gustafta dapat menjadi tool layer untuk TERAS.
+
+Contoh:
+
+1. SKTTK Readiness Checker
+2. Competency Self Assessment
+3. Evidence Checklist
+4. Safety Checklist
+5. Practice Checklist
+6. Simulation Scorecard
+7. Document Readiness Checker
+8. Renewal Tracker
+
+Dengan demikian pembangunan fitur dapat dilakukan secara modular.
+
+---
+
+# XVII. UNIFIED IDENTITY
+
+Pengguna cukup memiliki satu identitas.
+
+```text
+Gustafta Account
+       ↓
+Unified Identity
+       ├── Gustafta Profile
+       ├── TERAS Learner Profile
+       ├── Workroom
+       ├── Documents
+       └── Capability Passport
+```
+
+Dengan prinsip:
+
+> **One User — One Identity — Multiple Experiences**
+
+---
+
+# XVIII. DATA FLOW
+
+Data yang relevan harus mengalir secara terkendali:
+
+```text
+GUSTAFTA
+User / Target / Documents
+        ↓
+      TERAS
+Diagnostic / Learning / Practice
+        ↓
+Evidence / Simulation / Safety
+        ↓
+Readiness
+        ↓
+Gustafta Workroom
+        ↓
+Official Certification Process
+```
+
+Tidak semua data harus disalin.
+
+Yang diintegrasikan adalah data yang diperlukan untuk kesinambungan proses.
+
+---
+
+# XIX. PERAN PENGGUNA
+
+## 1. Learner / Peserta
+
+Mengikuti:
+
+* diagnostic;
+* learning;
+* practice;
+* evidence;
+* simulation;
+* remediation;
+* readiness.
+
+---
+
+## 2. Trainer / Instructor
+
+Mengelola:
+
+* learning;
+* practice;
+* feedback;
+* evidence review;
+* learner monitoring.
+
+---
+
+## 3. Coach
+
+Membantu:
+
+* competency gap;
+* practice;
+* remediation;
+* readiness preparation.
+
+---
+
+## 4. Admin
+
+Mengelola:
+
+* users;
+* program;
+* competency framework;
+* learning;
+* rules;
+* reports;
+* authorization;
+* audit trail.
+
+---
+
+## 5. Assessor
+
+Jika terhubung ke ekosistem:
+
+> tetap berada pada boundary asesmen resmi.
+
+TERAS tidak mengubah fungsi asesor menjadi fungsi platform.
+
+---
+
+# XX. MODEL BISNIS
+
+TERAS SKTTK dapat dikembangkan sebagai beberapa level layanan.
+
+## Level 1 — Diagnostic
+
+Produk entry-level:
+
+> **SKTTK Readiness Check**
+
+Peserta memperoleh gambaran awal.
+
+---
+
+## Level 2 — Learning
+
+> **TERAS SKTTK Preparation**
+
+Berisi LMS dan learning path.
+
+---
+
+## Level 3 — Capability
+
+> **TERAS SKTTK Practice**
+
+Learning + practice + feedback.
+
+---
+
+## Level 4 — Assessment Ready
+
+> **TERAS SKTTK Assessment Preparation**
+
+Learning + practice + evidence + simulation + safety + readiness.
+
+---
+
+## Level 5 — Integrated Service
+
+> **Gustafta × TERAS SKTTK**
+
+Persiapan kompetensi + pengelolaan dokumen + workroom + layanan sertifikasi melalui jalur resmi.
+
+---
+
+# XXI. MODEL PENDAPATAN
+
+Potensi sumber pendapatan:
+
+1. subscription peserta;
+2. program persiapan SKTTK;
+3. diagnostic berbayar;
+4. simulation package;
+5. AI competency coaching;
+6. institutional/LSP partnership;
+7. corporate training;
+8. enterprise dashboard;
+9. competency preparation program;
+10. professional development/PKB ecosystem.
+
+Model dapat dikembangkan menjadi:
+
+> **B2C + B2B + B2B2C**
+
+---
+
+# XXII. SASARAN PENGGUNA
+
+### Individu
+
+* calon tenaga teknik;
+* tenaga teknik yang akan mengikuti sertifikasi;
+* tenaga teknik yang memerlukan persiapan ulang;
+* tenaga teknik yang ingin meningkatkan kompetensi.
+
+### Institusi
+
+* perusahaan ketenagalistrikan;
+* kontraktor;
+* perusahaan EPC;
+* lembaga pendidikan;
+* lembaga pelatihan;
+* asosiasi;
+* organisasi profesi;
+* mitra sertifikasi.
+
+### Corporate
+
+Perusahaan dapat menggunakan TERAS untuk:
+
+> **internal competency readiness monitoring**
+
+sebelum mengirim tenaga kerja mengikuti sertifikasi.
+
+---
+
+# XXIII. KEUNGGULAN STRATEGIS
+
+TERAS SKTTK memiliki beberapa keunggulan:
+
+### 1. Bukan sekadar LMS
+
+Fokus pada readiness.
+
+### 2. Competency-based
+
+Pembelajaran dikaitkan dengan kompetensi.
+
+### 3. Practice-based
+
+Peserta harus berlatih.
+
+### 4. Evidence-based
+
+Peserta membangun rekam proses.
+
+### 5. Safety-first
+
+Safety menjadi hard gate.
+
+### 6. AI-assisted
+
+AI membantu personalisasi pembelajaran.
+
+### 7. Simulation-driven
+
+Peserta mendapatkan pengalaman sebelum asesmen.
+
+### 8. Integrated
+
+Terhubung dengan Gustafta.
+
+### 9. Traceable
+
+Aktivitas memiliki audit trail.
+
+### 10. Scalable
+
+Mesin TERAS dapat digunakan untuk domain kompetensi lain.
+
+---
+
+# XXIV. PRINSIP BATAS KEWENANGAN
+
+TERAS SKTTK harus memiliki boundary yang jelas.
+
+### TERAS BOLEH:
+
+* melakukan diagnostic;
+* memberikan pembelajaran;
+* memberikan latihan;
+* melakukan simulasi;
+* memberikan feedback;
+* mengukur internal readiness;
+* mengelola evidence pembelajaran;
+* menghasilkan Capability Passport.
+
+### TERAS TIDAK BOLEH MENGKLAIM:
+
+* peserta telah kompeten secara resmi;
+* peserta telah lulus sertifikasi;
+* TERAS adalah LSK;
+* TERAS menggantikan asesor;
+* hasil readiness adalah sertifikat kompetensi.
+
+Prinsip:
+
+> **TERAS prepares. Assessors assess. Certification bodies decide.**
+
+---
+
+# XXV. ROADMAP PENDIRIAN
+
+## PHASE 1 — FOUNDATION
+
+* TERAS Core;
+* unified identity;
+* SKTTK competency framework;
+* user roles;
+* program structure;
+* LMS foundation.
+
+## PHASE 2 — LEARNING
+
+* learning path;
+* module;
+* lesson;
+* content;
+* quiz;
+* assignment;
+* AI Tutor.
+
+## PHASE 3 — CAPABILITY
+
+* practice;
+* evidence;
+* feedback;
+* remediation.
+
+## PHASE 4 — READINESS
+
+* simulation;
+* safety gate;
+* readiness engine;
+* readiness dashboard.
+
+## PHASE 5 — INTEGRATION
+
+* Gustafta SSO/identity;
+* Workroom;
+* Document layer;
+* AI;
+* Mini Apps;
+* certification handoff.
+
+## PHASE 6 — SCALE
+
+* corporate;
+* institutional;
+* additional competency domains;
+* longitudinal Capability Passport;
+* PKB;
+* renewal.
+
+---
+
+# XXVI. INDIKATOR KEBERHASILAN
+
+Keberhasilan TERAS tidak hanya diukur dari jumlah pengguna.
+
+Indikator meliputi:
+
+### Learning
+
+* completion;
+* learning progress;
+* knowledge improvement.
+
+### Capability
+
+* practice completion;
+* practice improvement;
+* competency gap reduction.
+
+### Evidence
+
+* evidence submission;
+* evidence quality;
+* evidence verification.
+
+### Safety
+
+* safety compliance;
+* critical safety blocker resolution.
+
+### Readiness
+
+* readiness improvement;
+* blocker reduction;
+* simulation performance.
+
+### Ecosystem
+
+* conversion Gustafta → TERAS;
+* TERAS → certification process;
+* post-certification engagement;
+* PKB/renewal engagement.
+
+---
+
+# XXVII. GOVERNANCE
+
+TERAS SKTTK perlu memiliki tata kelola yang memastikan:
+
+1. akurasi competency framework;
+2. validitas materi;
+3. kontrol perubahan konten;
+4. keamanan data;
+5. audit trail;
+6. role-based authorization;
+7. AI governance;
+8. separation of preparation and certification;
+9. review berkala;
+10. pengendalian versi kurikulum.
+
+Setiap perubahan standar/regulasi harus dapat menghasilkan:
+
+> **versioned competency framework**
+
+sehingga program lama tetap memiliki jejak historis.
+
+---
+
+# XXVIII. RISIKO DAN MITIGASI
+
+| Risiko                                  | Mitigasi                           |
+| --------------------------------------- | ---------------------------------- |
+| TERAS dianggap LSK                      | Boundary dan disclaimer yang jelas |
+| Readiness dianggap keputusan kompetensi | Gunakan istilah internal readiness |
+| AI memberikan keputusan sertifikasi     | AI safety rules                    |
+| Materi tidak sesuai standar terbaru     | Controlled content/versioning      |
+| Safety tertutup oleh score              | Hard safety gate                   |
+| Duplikasi data dengan Gustafta          | Unified identity                   |
+| Duplikasi dokumen                       | Gustafta sebagai document layer    |
+| Evidence dianggap bukti resmi           | Label Preparation Evidence         |
+| Ketergantungan pada LMS                 | Readiness architecture             |
+| Data peserta tidak terlacak             | Audit trail                        |
+
+---
+
+# XXIX. DAMPAK YANG DIHARAPKAN
+
+Pendirian TERAS SKTTK diharapkan menghasilkan:
+
+### Bagi peserta
+
+> Lebih tahu apa yang harus dipelajari, dilatih, diperbaiki, dan dibuktikan.
+
+### Bagi perusahaan
+
+> Memiliki tenaga teknik yang lebih siap sebelum mengikuti proses sertifikasi.
+
+### Bagi lembaga pelatihan
+
+> Memiliki sistem pembelajaran berbasis competency readiness.
+
+### Bagi ekosistem sertifikasi
+
+> Peserta datang ke proses asesmen dengan persiapan yang lebih terstruktur.
+
+### Bagi Gustafta
+
+> Memiliki competency-readiness engine yang memperkuat ekosistem kompetensi.
+
+---
+
+# XXX. POSITIONING TERAS × GUSTAFTA
+
+Konsep akhir:
+
+## GUSTAFTA
+
+> **Discover → Guide → Manage → Connect → Serve → Develop**
+
+## TERAS
+
+> **Diagnose → Learn → Practice → Prove → Simulate → Ready**
+
+## LSK / ASESOR
+
+> **Assess → Decide → Certify**
+
+Sehingga ekosistem membentuk:
+
+# **NEED → CAPABILITY → READINESS → CERTIFICATION → PROFESSIONAL DEVELOPMENT**
+
+---
+
+# XXXI. BLUEPRINT FINAL
+
+```text
+                    GUSTAFTA
+            PROFESSIONAL ECOSYSTEM
+                       │
+       ┌───────────────┼────────────────┐
+       │               │                │
+   DISCOVERY       WORKROOM            AI
+   SERVICES        DOCUMENTS         TOOLS
+       │               │                │
+       └───────────────┼────────────────┘
+                       │
+                       ▼
+              ┌─────────────────┐
+              │      TERAS      │
+              │  SKTTK ENGINE   │
+              ├─────────────────┤
+              │ Competency      │
+              │ Diagnostic      │
+              │ LMS             │
+              │ Practice        │
+              │ Evidence        │
+              │ Feedback        │
+              │ Remediation     │
+              │ Simulation      │
+              │ Safety Gate     │
+              │ Readiness       │
+              │ Passport        │
+              └────────┬────────┘
+                       │
+                       ▼
+              READY FOR OFFICIAL
+                  ASSESSMENT
+                       │
+                       ▼
+                  GUSTAFTA
+                  WORKROOM
+                       │
+                       ▼
+               OFFICIAL PROCESS
+                       │
+                       ▼
+                  LSK / ASESOR
+                       │
+                       ▼
+                  CERTIFICATION
+                       │
+                       ▼
+                  GUSTAFTA
+                       │
+            ┌──────────┴──────────┐
+            ▼                     ▼
+          WORK                   PKB
+                                  │
+                                  ▼
+                              RENEWAL
+```
+
+---
+
+# XXXII. KESIMPULAN
+
+Pendirian TERAS SKTTK merupakan langkah strategis untuk membangun **lapisan persiapan kompetensi** yang selama ini berada di antara pembelajaran dan proses sertifikasi.
+
+TERAS tidak dibangun untuk menggantikan lembaga sertifikasi.
+
+TERAS dibangun untuk menjawab pertanyaan yang berbeda:
+
+> **“Apakah peserta benar-benar telah mempersiapkan dirinya untuk menghadapi asesmen?”**
+
+Melalui integrasi dengan Gustafta, proses tersebut tidak berhenti pada pembelajaran.
+
+Gustafta mengelola perjalanan pengguna dari:
+
+> **kebutuhan → layanan → dokumen → workroom → proses profesional**
+
+sementara TERAS mengelola:
+
+> **diagnostic → learning → practice → evidence → simulation → safety → readiness.**
+
+Setelah peserta mencapai readiness, perjalanan dapat dilanjutkan kembali melalui Gustafta menuju proses sertifikasi resmi.
+
+Dengan demikian, **TERAS SKTTK dan Gustafta membentuk satu ekosistem yang berkesinambungan**, dengan pembagian fungsi yang jelas, data yang terintegrasi, AI yang kontekstual, dan batas kewenangan yang tetap terjaga.
+
+### Prinsip akhir:
+
+> **GUSTAFTA membuka dan mengelola ekosistem.**
+> **TERAS membangun dan mengukur kesiapan kompetensi.**
+> **ASESOR/LSK melakukan asesmen dan menentukan keputusan resmi.**
+
+### Janji produk:
+
+> **Learn it. Practice it. Prove it. Be Ready.**
+
+### Prinsip keselamatan:
+
+> **Safety failure cannot be hidden by an average score.**
+
+### Prinsip kewenangan:
+
+> **TERAS prepares. Assessors assess. Certification bodies decide.**
+
+---
+
+## PENUTUP
+
+Dengan proposal ini, TERAS SKTTK diusulkan sebagai **platform competency-readiness khusus Sertifikasi Kompetensi Tenaga Teknik Ketenagalistrikan yang terintegrasi dengan ekosistem digital Gustafta**, sekaligus sebagai model awal yang dapat dikembangkan menjadi infrastruktur persiapan kompetensi untuk berbagai bidang tenaga kerja pada masa mendatang.
+
+**TERAS SKTTK bukan sekadar tempat belajar.**
+
+> **TERAS adalah tempat peserta membangun kemampuan, melatih kemampuan tersebut, menghasilkan evidence, menguji kesiapan, memperbaiki gap, dan mengetahui apakah dirinya sudah siap memasuki proses asesmen resmi.**
+
+Sementara Gustafta menjadi ekosistem yang memastikan perjalanan tersebut dapat dilanjutkan dari **kebutuhan kompetensi → persiapan → sertifikasi → pekerjaan → pengembangan profesional → pembaruan kompetensi.**
+
+**Dengan demikian, TERAS SKTTK menjadi competency-readiness engine dari ekosistem Gustafta.**

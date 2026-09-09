@@ -1,0 +1,2413 @@
+# MASTER BUILD PROMPT
+
+## TERAS SKTTK — Platform Persiapan Sertifikasi Kompetensi Tenaga Teknik Ketenagalistrikan
+
+Build a production-ready web application called:
+
+# TERAS SKTTK
+
+**TERAS = Platform Persiapan Sertifikasi Kompetensi Tenaga Teknik Ketenagalistrikan**
+
+Tagline:
+
+> **Build Competence. Build Evidence. Build Readiness.**
+
+TERAS SKTTK is a specialized capability development and pre-assessment readiness platform for people preparing for **Sertifikasi Kompetensi Tenaga Teknik Ketenagalistrikan (SKTTK)**.
+
+---
+
+# 1. CORE PRODUCT POSITIONING
+
+TERAS SKTTK is NOT:
+
+* a certification body;
+* an LSK;
+* an assessor;
+* an official examination system;
+* an official certification decision system;
+* a replacement for an assessor;
+* a system that issues an official SKTTK certificate.
+
+TERAS SKTTK IS:
+
+> A structured digital platform that helps candidates build competence, practice technical tasks, collect preparation evidence, receive feedback, remediate gaps, simulate assessment situations, pass internal safety gates, and understand their readiness before entering the official certification process.
+
+Core principle:
+
+> **TERAS prepares. Assessor assesses. Certification body decides.**
+
+The application must NEVER display internal TERAS readiness as:
+
+* "Competent";
+* "Certified";
+* "Passed SKTTK";
+* "Official Certificate".
+
+Instead use terminology such as:
+
+* Ready for Official Assessment
+* Developing
+* Not Ready
+* Preparation Evidence
+* Readiness Record
+* Capability Passport
+* Internal Simulation
+* Preparation Status
+
+---
+
+# 2. CORE USER JOURNEY
+
+The main product journey must be:
+
+```text
+DISCOVER
+   ↓
+SELECT TARGET
+   ↓
+DIAGNOSTIC
+   ↓
+COMPETENCY GAP
+   ↓
+LEARNING / LMS
+   ↓
+PRACTICE
+   ↓
+EVIDENCE
+   ↓
+FEEDBACK
+   ↓
+REMEDIATION
+   ↓
+RE-PRACTICE
+   ↓
+SIMULATION
+   ↓
+SAFETY GATE
+   ↓
+READINESS
+   ↓
+CAPABILITY PASSPORT
+   ↓
+CERTIFICATION HANDOFF
+   ↓
+OFFICIAL ASSESSMENT
+```
+
+The most important internal learning loop is:
+
+```text
+LEARN
+→ DO
+→ PROVE
+→ GET FEEDBACK
+→ IMPROVE
+→ SIMULATE
+→ SHOW READINESS
+```
+
+---
+
+# 3. PRODUCT PHILOSOPHY
+
+Do NOT build TERAS as a conventional LMS.
+
+TERAS contains an LMS, but LMS is only one engine within the larger capability system.
+
+The system must answer:
+
+> "Kompetensi apa yang sedang dibangun?"
+
+not merely:
+
+> "Berapa banyak materi yang sudah selesai?"
+
+Every learning activity must be mapped to a competency target.
+
+The application should continuously connect:
+
+```text
+Competency
+↕
+Learning
+↕
+Practice
+↕
+Evidence
+↕
+Assessment Simulation
+↕
+Safety
+↕
+Readiness
+```
+
+---
+
+# 4. TEN CORE ENGINES
+
+Build TERAS around these engines:
+
+## Engine 1 — Competency Framework
+
+Stores:
+
+* certification target;
+* occupation/job role;
+* field;
+* level;
+* competency unit;
+* competency element;
+* performance criteria;
+* knowledge requirements;
+* practical requirements;
+* safety requirements;
+* evidence requirements.
+
+Architecture must allow competency frameworks to evolve without rewriting the application.
+
+Do NOT hardcode competency data directly into frontend components.
+
+Use database-driven competency structures.
+
+---
+
+## Engine 2 — Diagnostic Engine
+
+The first serious interaction after selecting a program should be Diagnostic.
+
+Diagnostic evaluates:
+
+### Knowledge
+
+* concepts;
+* principles;
+* terminology;
+* procedures;
+* technical understanding.
+
+### Experience
+
+* work experience;
+* exposure to relevant tasks;
+* project experience.
+
+### Practice
+
+* ability to perform technical tasks;
+* sequencing;
+* troubleshooting;
+* equipment identification;
+* decision making.
+
+### Safety
+
+* K3 awareness;
+* electrical safety;
+* hazard recognition;
+* safe working procedure;
+* unsafe action recognition.
+
+### Communication
+
+* technical explanation;
+* ability to explain procedures;
+* ability to justify decisions.
+
+### Evidence
+
+* existing work records;
+* previous training;
+* practice records;
+* supporting documents.
+
+Diagnostic must NOT simply produce one score.
+
+Generate:
+
+> **Personal Competency Profile**
+
+and:
+
+> **Personal Readiness Map**
+
+---
+
+# 5. GAP ANALYSIS ENGINE
+
+After Diagnostic, generate a competency gap map.
+
+Example:
+
+```text
+Knowledge             GOOD
+Technical Practice    DEVELOPING
+Safety                CRITICAL GAP
+Evidence               INSUFFICIENT
+Communication          DEVELOPING
+Simulation             NOT STARTED
+```
+
+Each gap must produce a recommended action.
+
+Example:
+
+```text
+Gap:
+Electrical Isolation Procedure
+
+Recommended Action:
+Complete Module M03
+
+Then:
+Practice P03
+
+Then:
+Submit Evidence E03
+
+Then:
+Simulation S03
+```
+
+The application must make the next action obvious.
+
+---
+
+# 6. LMS ENGINE
+
+The LMS is a core engine.
+
+Hierarchy:
+
+```text
+Program
+  ↓
+Learning Path
+  ↓
+Module
+  ↓
+Lesson
+  ↓
+Activity
+  ↓
+Learning Outcome
+  ↓
+Practice
+  ↓
+Evidence
+```
+
+Each learning object must contain:
+
+* title;
+* description;
+* learning objective;
+* competency mapping;
+* content;
+* resource;
+* video;
+* document;
+* quiz;
+* assignment;
+* practice task;
+* evidence requirement;
+* completion criteria.
+
+Support:
+
+* text lessons;
+* PDF;
+* video;
+* audio;
+* presentation;
+* quiz;
+* assignment;
+* interactive activity;
+* AI Tutor;
+* discussion;
+* reflection;
+* practice.
+
+Learning completion alone must NOT automatically mean competency readiness.
+
+---
+
+# 7. AI TUTOR
+
+Create an AI Tutor inside TERAS.
+
+The AI Tutor should help learners:
+
+* understand technical concepts;
+* ask questions;
+* explain procedures;
+* provide examples;
+* generate practice questions;
+* explain mistakes;
+* provide remediation guidance;
+* simulate oral technical questions;
+* prepare for assessment scenarios.
+
+The AI must NOT:
+
+* declare official competency;
+* issue certification;
+* act as an official assessor;
+* make official certification decisions.
+
+Display a clear disclaimer:
+
+> "AI Tutor adalah pendamping pembelajaran dan persiapan. Bukan assessor resmi dan bukan pengambil keputusan sertifikasi."
+
+---
+
+# 8. PRACTICE ENGINE
+
+Build a dedicated Practice module.
+
+Practice types:
+
+1. Technical Task
+2. Case Study
+3. Troubleshooting
+4. Equipment Identification
+5. Procedure Sequencing
+6. Safety Scenario
+7. Decision Making
+8. Technical Explanation
+9. Oral Practice
+10. Workplace Scenario
+
+Every practice must map to one or more competency elements.
+
+Practice lifecycle:
+
+```text
+Assigned
+→ Started
+→ Submitted
+→ Reviewed
+→ Feedback
+→ Revision
+→ Verified
+```
+
+Do not use a simplistic "complete/incomplete" model.
+
+---
+
+# 9. EVIDENCE ENGINE
+
+Create an Evidence Center.
+
+Learners can submit:
+
+* text;
+* checklist;
+* assignment;
+* image;
+* video;
+* document;
+* practice result;
+* case answer;
+* technical explanation;
+* simulation result.
+
+Evidence lifecycle:
+
+```text
+Draft
+→ Submitted
+→ Under Review
+→ Feedback
+→ Revision Required
+→ Resubmitted
+→ Verified
+```
+
+Important terminology:
+
+> **Preparation Evidence**
+
+Never label these as:
+
+> Official Certification Evidence
+
+unless explicitly defined by a future official integration.
+
+Every evidence item must show:
+
+* competency mapping;
+* evidence type;
+* status;
+* reviewer;
+* feedback;
+* submission date;
+* revision history.
+
+---
+
+# 10. FEEDBACK & REMEDIATION ENGINE
+
+Feedback must lead to action.
+
+Example:
+
+```text
+Feedback
+↓
+Gap identified
+↓
+Recommended learning
+↓
+Practice
+↓
+Reattempt
+↓
+Readiness updated
+```
+
+Never create a dead-end "failed" screen.
+
+Instead:
+
+> "Masih terdapat gap. Berikut langkah perbaikannya."
+
+The system should generate a personalized remediation plan.
+
+---
+
+# 11. SIMULATION ENGINE
+
+Build a dedicated Simulation Center.
+
+Simulation types:
+
+### Knowledge Simulation
+
+Timed technical questions.
+
+### Practical Simulation
+
+Scenario-based technical tasks.
+
+### Oral Simulation
+
+AI-driven or structured technical questioning.
+
+### Safety Simulation
+
+Hazard recognition and safe/unsafe decision scenarios.
+
+Simulation must resemble assessment conditions but clearly state:
+
+> "Internal Preparation Simulation — bukan asesmen sertifikasi resmi."
+
+Track:
+
+* score;
+* time;
+* competency mapping;
+* mistakes;
+* safety issues;
+* feedback;
+* improvement over time.
+
+---
+
+# 12. SAFETY GATE
+
+This is one of the most important features.
+
+Implement a HARD SAFETY GATE.
+
+Core principle:
+
+> **Safety failure cannot be hidden by an average score.**
+
+Example:
+
+```text
+Knowledge       90
+Practice        88
+Evidence        85
+Simulation      87
+Communication   84
+Safety          CRITICAL FAILURE
+```
+
+Final status:
+
+```text
+NOT READY
+```
+
+Never allow an average score to override a critical safety failure.
+
+Safety must be represented separately from general performance.
+
+Safety states:
+
+```text
+SAFE
+ATTENTION
+REMEDIATION REQUIRED
+CRITICAL BLOCKER
+```
+
+Critical safety blockers must prevent:
+
+```text
+READY FOR OFFICIAL ASSESSMENT
+```
+
+until resolved.
+
+---
+
+# 13. READINESS ENGINE
+
+Build a Readiness Engine.
+
+Readiness must NOT be only a number.
+
+Display:
+
+```text
+READINESS
+78 / 100
+
+STATUS
+NOT READY
+
+SAFETY
+BLOCKED
+
+KNOWLEDGE
+82%
+
+PRACTICE
+76%
+
+EVIDENCE
+70%
+
+SIMULATION
+80%
+
+COMMUNICATION
+75%
+
+OUTSTANDING GAPS
+3
+
+ACTIVE BLOCKERS
+1
+```
+
+Possible status:
+
+```text
+NOT READY
+DEVELOPING
+READY FOR OFFICIAL ASSESSMENT
+```
+
+But this is an INTERNAL TERAS readiness status.
+
+Never use:
+
+```text
+COMPETENT
+CERTIFIED
+PASSED
+```
+
+for TERAS internal readiness.
+
+---
+
+# 14. READINESS LOGIC
+
+Implement readiness as a rule-based engine.
+
+Suggested model:
+
+```text
+Readiness =
+Knowledge
++ Practice
++ Evidence
++ Simulation
++ Communication
+```
+
+However:
+
+```text
+IF Critical Safety Failure = TRUE
+THEN
+Status = NOT READY
+```
+
+Regardless of average score.
+
+Also:
+
+```text
+IF required evidence is missing
+THEN
+Status cannot be READY
+```
+
+And:
+
+```text
+IF mandatory competency area is incomplete
+THEN
+Status cannot be READY
+```
+
+The architecture must allow administrators to configure thresholds.
+
+Do NOT hardcode all thresholds.
+
+Create configurable readiness rules.
+
+---
+
+# 15. CAPABILITY PASSPORT
+
+Build:
+
+# Capability Passport
+
+This is one of the primary outputs of TERAS.
+
+It should contain:
+
+### Identity
+
+* learner name;
+* profile;
+* role.
+
+### Target
+
+* certification target;
+* field;
+* level;
+* program.
+
+### Learning Record
+
+* modules completed;
+* learning outcomes.
+
+### Practice Record
+
+* practices completed;
+* performance.
+
+### Evidence Record
+
+* preparation evidence.
+
+### Simulation Record
+
+* simulations;
+* results;
+* improvement.
+
+### Safety
+
+* safety status;
+* safety remediation.
+
+### Feedback
+
+* important feedback.
+
+### Readiness
+
+* readiness status;
+* readiness history;
+* outstanding gaps.
+
+Important label:
+
+> **Preparation & Readiness Record**
+
+Not:
+
+> Official Certificate
+
+The Passport should visually communicate the learner's development journey, not look like an official government/LSK certificate.
+
+---
+
+# 16. DASHBOARD
+
+Create role-based dashboards.
+
+## LEARNER DASHBOARD
+
+Show:
+
+* identity;
+* target SKTTK;
+* current program;
+* readiness;
+* current gate;
+* current module;
+* active practice;
+* pending evidence;
+* safety status;
+* next action;
+* progress timeline.
+
+Most important component:
+
+# NEXT ACTION
+
+Example:
+
+> Lanjutkan M03 — Prosedur Keselamatan
+
+or:
+
+> Perbaiki Evidence E04
+
+or:
+
+> Selesaikan Safety Remediation S02
+
+---
+
+# 17. LEARNING JOURNEY PAGE
+
+Create a visual journey:
+
+```text
+Diagnostic
+   ✓
+Learning
+   ✓
+Practice
+   ✓
+Evidence
+   →
+Feedback
+   →
+Remediation
+   →
+Simulation
+   →
+Safety Gate
+   →
+Readiness
+```
+
+Each stage has:
+
+* status;
+* completion;
+* blockers;
+* next action.
+
+---
+
+# 18. LEARNING PLAN
+
+Generate a personalized learning plan after Diagnostic.
+
+Example:
+
+```text
+WEEK 1
+M01 Electrical Fundamentals
+M02 Safety Fundamentals
+
+WEEK 2
+M03 Installation Procedure
+P03 Practical Task
+
+WEEK 3
+E03 Evidence Submission
+S03 Simulation
+
+WEEK 4
+Remediation
+Final Simulation
+```
+
+Learning plan must be dynamically generated from competency gaps.
+
+---
+
+# 19. ADMIN DASHBOARD
+
+Create Admin Dashboard with:
+
+* users;
+* learners;
+* instructors;
+* programs;
+* competency frameworks;
+* modules;
+* lessons;
+* practice;
+* evidence;
+* simulations;
+* safety rules;
+* readiness rules;
+* reports;
+* audit logs.
+
+Admin can configure:
+
+* programs;
+* competency units;
+* learning paths;
+* learning modules;
+* assessment simulations;
+* safety gates;
+* readiness thresholds.
+
+---
+
+# 20. INSTRUCTOR / TRAINER DASHBOARD
+
+Create Trainer Dashboard.
+
+Trainer can:
+
+* view assigned learners;
+* monitor learning progress;
+* review practice;
+* review evidence;
+* provide feedback;
+* assign remediation;
+* monitor safety;
+* review simulations;
+* monitor readiness;
+* create learning content.
+
+Trainer must NOT be able to issue official certification decisions.
+
+---
+
+# 21. CONTENT AUTHOR ROLE
+
+Create Content Author role.
+
+Can create:
+
+* programs;
+* modules;
+* lessons;
+* quizzes;
+* practice;
+* cases;
+* simulations;
+* competency mappings.
+
+Content Author cannot change certification decisions.
+
+---
+
+# 22. REVIEWER ROLE
+
+Reviewer can:
+
+* review preparation evidence;
+* review practice;
+* give feedback;
+* verify preparation evidence;
+* request revision.
+
+Reviewer cannot issue official certification.
+
+---
+
+# 23. SUPER ADMIN
+
+Super Admin can configure:
+
+* system;
+* roles;
+* permissions;
+* competency frameworks;
+* readiness rules;
+* safety rules;
+* integrations;
+* audit settings.
+
+Implement proper RBAC.
+
+---
+
+# 24. DATABASE ARCHITECTURE
+
+Use a relational database.
+
+Prefer PostgreSQL.
+
+Design normalized schema.
+
+Minimum entities:
+
+```text
+users
+roles
+permissions
+user_roles
+
+programs
+learning_paths
+modules
+lessons
+activities
+
+competency_frameworks
+competency_units
+competency_elements
+performance_criteria
+
+diagnostics
+diagnostic_questions
+diagnostic_responses
+competency_profiles
+competency_gaps
+
+learning_enrollments
+learning_progress
+
+practice_tasks
+practice_attempts
+
+evidence_items
+evidence_reviews
+evidence_versions
+
+feedback
+remediation_plans
+remediation_actions
+
+simulations
+simulation_attempts
+simulation_results
+
+safety_rules
+safety_checks
+safety_incidents
+safety_remediations
+
+readiness_rules
+readiness_snapshots
+readiness_history
+
+capability_passports
+
+notifications
+audit_logs
+```
+
+Use foreign keys.
+
+Use timestamps.
+
+Use status enums where appropriate.
+
+Maintain audit history for important changes.
+
+---
+
+# 25. AUDIT TRAIL
+
+Every important action must be auditable.
+
+Examples:
+
+```text
+Diagnostic completed
+Practice submitted
+Evidence submitted
+Evidence reviewed
+Feedback created
+Remediation assigned
+Simulation completed
+Safety blocker created
+Safety blocker resolved
+Readiness recalculated
+Passport generated
+```
+
+Audit record should include:
+
+* actor;
+* role;
+* action;
+* object;
+* timestamp;
+* previous state;
+* new state.
+
+---
+
+# 26. SECURITY
+
+Implement:
+
+* authentication;
+* authorization;
+* role-based access;
+* secure password handling;
+* session management;
+* input validation;
+* server-side authorization;
+* file upload validation;
+* audit logs.
+
+Do not trust frontend authorization.
+
+All critical permissions must be verified server-side.
+
+---
+
+# 27. FILE MANAGEMENT
+
+Support upload of:
+
+* learning materials;
+* preparation evidence;
+* practice attachments;
+* images;
+* videos;
+* documents.
+
+Use secure storage abstraction.
+
+Do not store sensitive files directly in public directories.
+
+Create file metadata:
+
+```text
+file_name
+file_type
+file_size
+storage_location
+uploaded_by
+created_at
+related_entity
+```
+
+---
+
+# 28. NOTIFICATION ENGINE
+
+Create notifications for:
+
+* new learning assignment;
+* practice deadline;
+* evidence feedback;
+* remediation;
+* simulation;
+* safety blocker;
+* readiness update.
+
+---
+
+# 29. GUSTAFTA INTEGRATION
+
+TERAS SKTTK must be architected as a capability/readiness layer within the broader Gustafta ecosystem.
+
+Conceptual architecture:
+
+```text
+GUSTAFTA
+Ecosystem / Professional Layer
+        ↓
+TERAS SKTTK
+Capability & Readiness Layer
+        ↓
+LSK / ASSESSOR
+Official Assessment Layer
+```
+
+Gustafta should act as the ecosystem/front door.
+
+TERAS handles:
+
+```text
+Diagnose
+Learn
+Practice
+Prove
+Simulate
+Safety
+Readiness
+```
+
+Gustafta can handle:
+
+```text
+Discovery
+Consultation
+Documents
+Services
+Professional Profile
+Workroom
+AI Ecosystem
+Mini Apps
+Professional Development
+```
+
+Do NOT duplicate all Gustafta functions inside TERAS.
+
+---
+
+# 30. UNIFIED IDENTITY
+
+Architect for:
+
+> One User — One Identity — Multiple Experiences
+
+A user should ideally be able to move:
+
+```text
+Gustafta
+↓
+TERAS
+↓
+Workroom
+↓
+Professional Profile
+```
+
+without creating multiple unrelated accounts.
+
+For initial MVP, implement integration abstraction/API-ready architecture even if the live Gustafta API is not yet available.
+
+Create:
+
+```text
+IntegrationService
+IdentityService
+UserMapping
+ExternalReference
+```
+
+so future Gustafta integration does not require rewriting the core application.
+
+---
+
+# 31. DOCUMENT INTEGRATION
+
+Do not unnecessarily duplicate documents.
+
+Gustafta should eventually become a source of truth for:
+
+* identity documents;
+* education;
+* experience;
+* training;
+* administrative documents;
+* certification supporting documents.
+
+TERAS should maintain its own:
+
+> Preparation Evidence
+
+and learning/practice records.
+
+Architect the database so external document references can be stored.
+
+---
+
+# 32. GUSTAFTA WORKROOM INTEGRATION
+
+When a learner becomes:
+
+> READY FOR OFFICIAL ASSESSMENT
+
+the system can create or update a certification preparation case in Gustafta Workroom.
+
+Example:
+
+```text
+TERAS
+Readiness:
+READY FOR OFFICIAL ASSESSMENT
+
+        ↓
+
+Gustafta Workroom
+
+Case:
+SKTTK Certification Preparation
+
+Status:
+READY FOR CERTIFICATION PROCESS
+```
+
+Do not claim that the learner is officially certified.
+
+---
+
+# 33. GUSTAFTA AI + TERAS AI
+
+Separate AI responsibilities.
+
+### Gustafta AI
+
+Handles ecosystem-level questions:
+
+* regulations;
+* services;
+* documents;
+* processes;
+* professional pathways.
+
+### TERAS AI
+
+Handles learning and competency preparation:
+
+* tutoring;
+* practice;
+* feedback;
+* remediation;
+* simulation.
+
+Never allow AI to make an official certification decision.
+
+---
+
+# 34. MINI APPS
+
+Design TERAS so Gustafta Mini Apps can be integrated.
+
+Potential tools:
+
+```text
+SKTTK Readiness Checker
+Competency Self Assessment
+Evidence Checklist
+Electrical Safety Checklist
+Practice Checklist
+Simulation Scorecard
+Document Readiness Checker
+Certification Preparation Tracker
+Renewal Tracker
+```
+
+Do not rebuild everything if an existing Gustafta Mini App can be reused through integration.
+
+---
+
+# 35. API-FIRST ARCHITECTURE
+
+Create clean API boundaries.
+
+Suggested services:
+
+```text
+/auth
+/users
+/programs
+/competencies
+/diagnostics
+/learning
+/practice
+/evidence
+/feedback
+/remediation
+/simulations
+/safety
+/readiness
+/passport
+/integrations/gustafta
+/audit
+```
+
+Use consistent JSON responses.
+
+Implement validation.
+
+Return meaningful HTTP status codes.
+
+---
+
+# 36. FRONTEND UX
+
+Design language:
+
+### Visual identity
+
+Primary:
+
+* Black
+* White
+* Blue
+
+Style:
+
+* professional;
+* technical;
+* modern;
+* trustworthy;
+* clean;
+* minimal;
+* industrial/engineering feel.
+
+Avoid:
+
+* childish LMS appearance;
+* excessive gradients;
+* gamification overload;
+* decorative dashboards;
+* excessive cards.
+
+The application should feel like:
+
+> Professional Engineering Capability Platform
+
+not a generic online course website.
+
+---
+
+# 37. MAIN NAVIGATION
+
+Learner navigation:
+
+```text
+Dashboard
+Journey
+Learning Plan
+Programs
+Practice
+Evidence
+Simulation
+Readiness
+Capability Passport
+AI Tutor
+Profile
+```
+
+Admin navigation:
+
+```text
+Dashboard
+Users
+Programs
+Competencies
+Learning
+Practice
+Evidence
+Simulation
+Safety
+Readiness
+Reports
+Audit Logs
+Integrations
+Settings
+```
+
+Trainer navigation:
+
+```text
+Dashboard
+My Learners
+Learning
+Practice
+Evidence
+Feedback
+Remediation
+Simulation
+Readiness
+Reports
+```
+
+---
+
+# 38. LANDING PAGE
+
+Build a strong landing page.
+
+Hero:
+
+# TERAS SKTTK
+
+> Platform Persiapan Sertifikasi Kompetensi Tenaga Teknik Ketenagalistrikan
+
+Supporting message:
+
+> Bangun kompetensi. Buktikan melalui practice dan evidence. Uji kesiapan melalui simulasi. Masuk ke proses sertifikasi dengan kesiapan yang lebih terukur.
+
+CTA:
+
+> Mulai TERAS
+
+Secondary:
+
+> Masuk
+
+Show visual journey:
+
+```text
+Diagnostic
+→ Learning
+→ Practice
+→ Evidence
+→ Simulation
+→ Readiness
+```
+
+Include:
+
+> **Safety failure cannot be hidden by an average score.**
+
+And:
+
+> TERAS bukan lembaga sertifikasi. TERAS membantu Anda mempersiapkan kompetensi dan readiness sebelum mengikuti asesmen resmi.
+
+---
+
+# 39. LEARNER DASHBOARD DESIGN
+
+Hero dashboard should immediately answer:
+
+### Who am I?
+
+Identity.
+
+### What am I preparing for?
+
+Target SKTTK.
+
+### Where am I?
+
+Current journey stage.
+
+### Am I ready?
+
+Readiness status.
+
+### What is blocking me?
+
+Active blockers.
+
+### What should I do next?
+
+Next Action.
+
+Example:
+
+```text
+Solar PV Technician
+
+Readiness
+72 / 100
+
+STATUS
+DEVELOPING
+
+Safety
+SAFE
+
+Current Gate
+Practice
+
+Next Action
+Lanjutkan Practice P03
+```
+
+The "Next Action" button must be highly visible and full width.
+
+---
+
+# 40. READINESS PAGE
+
+Create a dedicated Readiness Cockpit.
+
+Sections:
+
+```text
+Overall Readiness
+Competency Readiness
+Knowledge
+Practice
+Evidence
+Simulation
+Communication
+Safety
+Outstanding Gaps
+Active Blockers
+Gate Sequence
+Next Action
+Readiness History
+```
+
+Never show only:
+
+> Score 10
+
+Instead show:
+
+> Readiness 10 / 100
+
+The scale must always be explicit.
+
+---
+
+# 41. CAPABILITY PASSPORT PAGE
+
+Create a professional Passport interface.
+
+Include:
+
+```text
+Learner Identity
+
+Target Certification
+
+Capability Summary
+
+Learning Record
+
+Practice Record
+
+Preparation Evidence
+
+Simulation Record
+
+Safety Status
+
+Readiness Summary
+
+Outstanding Gaps
+
+Development History
+```
+
+Make it clear this is a:
+
+> Preparation & Readiness Record
+
+not an official certificate.
+
+---
+
+# 42. DESIGN SYSTEM
+
+Create reusable components:
+
+```text
+StatusBadge
+ReadinessCard
+SafetyGate
+ProgressBar
+CompetencyMap
+JourneyStepper
+NextAction
+EvidenceCard
+PracticeCard
+FeedbackPanel
+RemediationPanel
+SimulationCard
+CapabilityPassport
+AuditTimeline
+```
+
+Use consistent status semantics.
+
+---
+
+# 43. STATUS SYSTEM
+
+Standardize status colors and meanings.
+
+Example:
+
+```text
+SUCCESS
+READY
+VERIFIED
+
+WARNING
+DEVELOPING
+ATTENTION
+
+DANGER
+BLOCKED
+CRITICAL
+
+NEUTRAL
+NOT STARTED
+IN PROGRESS
+```
+
+Safety status must be visually stronger than ordinary progress.
+
+---
+
+# 44. CORE BUSINESS RULES
+
+Implement these as backend business rules.
+
+RULE 1:
+
+```text
+Critical Safety Failure
+→ Readiness cannot become READY
+```
+
+RULE 2:
+
+```text
+Mandatory Competency Incomplete
+→ Readiness cannot become READY
+```
+
+RULE 3:
+
+```text
+Required Evidence Missing
+→ Readiness cannot become READY
+```
+
+RULE 4:
+
+```text
+Simulation Requirement Incomplete
+→ Readiness cannot become READY
+```
+
+RULE 5:
+
+```text
+Average Score cannot override a Safety Blocker
+```
+
+RULE 6:
+
+```text
+TERAS readiness is internal preparation status.
+```
+
+RULE 7:
+
+```text
+Only authorized external certification bodies/assessors
+can determine official certification results.
+```
+
+---
+
+# 45. READINESS GATE ARCHITECTURE
+
+Use gates:
+
+```text
+GATE 0
+Target Defined
+
+GATE 1
+Diagnostic Complete
+
+GATE 2
+Learning Foundation
+
+GATE 3
+Practice Capability
+
+GATE 4
+Evidence Sufficiency
+
+GATE 5
+Simulation
+
+GATE 6
+Safety Clearance
+
+GATE 7
+Readiness Review
+
+GATE 8
+Ready for Official Assessment
+```
+
+Each gate must have:
+
+* entry criteria;
+* completion criteria;
+* blockers;
+* evidence;
+* status;
+* next action.
+
+---
+
+# 46. REPORTING
+
+Create reports for:
+
+### Learner
+
+* progress;
+* gaps;
+* readiness;
+* evidence;
+* practice;
+* simulation;
+* safety.
+
+### Trainer
+
+* learner cohort;
+* competency gaps;
+* evidence quality;
+* remediation;
+* readiness distribution.
+
+### Admin
+
+* active learners;
+* program performance;
+* completion;
+* readiness distribution;
+* safety blockers;
+* content effectiveness.
+
+---
+
+# 47. ANALYTICS
+
+Track:
+
+```text
+Enrollment
+Diagnostic Completion
+Learning Completion
+Practice Completion
+Evidence Submission
+Evidence Revision
+Simulation Completion
+Safety Blockers
+Readiness Progress
+Drop-off Points
+Time to Readiness
+```
+
+Do not optimize only for course completion.
+
+The main KPI is:
+
+> **Capability and Readiness Progress**
+
+---
+
+# 48. DEMO DATA
+
+Create realistic seed data.
+
+Example program:
+
+```text
+Program:
+TERAS SKTTK — Solar PV Technician
+
+Path:
+Path A — Installation
+
+Modules:
+M01 Electrical Fundamentals
+M02 Electrical Safety
+M03 Solar PV Components
+M04 Installation Procedure
+M05 Testing & Commissioning
+M06 Troubleshooting
+M07 Assessment Simulation
+```
+
+Create sample:
+
+* learner;
+* trainer;
+* admin;
+* competency units;
+* lessons;
+* practice;
+* evidence;
+* simulation;
+* safety blocker;
+* remediation;
+* readiness record.
+
+The demo data must demonstrate the full journey.
+
+---
+
+# 49. TEST SCENARIO
+
+Create automated tests for critical rules.
+
+At minimum test:
+
+### Test 1
+
+```text
+High knowledge
+High practice
+High evidence
+High simulation
+CRITICAL SAFETY FAILURE
+
+Expected:
+NOT READY
+```
+
+### Test 2
+
+```text
+High average score
+Mandatory evidence missing
+
+Expected:
+NOT READY
+```
+
+### Test 3
+
+```text
+Safety blocker resolved
+Mandatory evidence complete
+Competency complete
+Simulation complete
+
+Expected:
+READY FOR OFFICIAL ASSESSMENT
+```
+
+### Test 4
+
+Ensure unauthorized roles cannot modify:
+
+* readiness rules;
+* safety rules;
+* official certification status.
+
+---
+
+# 50. TECHNICAL STACK
+
+Use a modern production-ready stack.
+
+Preferred:
+
+```text
+Frontend:
+React + TypeScript
+
+Backend:
+Node.js + TypeScript
+
+Database:
+PostgreSQL
+
+ORM:
+Drizzle ORM or Prisma
+
+Authentication:
+Secure session-based authentication
+
+UI:
+Tailwind CSS + reusable component system
+
+Validation:
+Zod or equivalent
+
+Testing:
+Vitest / Playwright or equivalent
+```
+
+Use the existing Replit-supported stack where appropriate, but preserve the architecture above.
+
+---
+
+# 51. DEVELOPMENT STRATEGY
+
+DO NOT attempt to create every feature as a single uncontrolled implementation.
+
+Build in phases.
+
+## PHASE 1 — FOUNDATION
+
+Implement:
+
+* authentication;
+* RBAC;
+* database;
+* user profiles;
+* program;
+* competency framework;
+* base layout;
+* navigation;
+* audit trail.
+
+## PHASE 2 — LEARNING ENGINE
+
+Implement:
+
+* learning path;
+* modules;
+* lessons;
+* activities;
+* progress;
+* quizzes;
+* learning dashboard.
+
+## PHASE 3 — CAPABILITY ENGINE
+
+Implement:
+
+* diagnostic;
+* gap analysis;
+* practice;
+* evidence;
+* feedback;
+* remediation.
+
+## PHASE 4 — ASSESSMENT PREPARATION
+
+Implement:
+
+* simulations;
+* safety gate;
+* readiness engine;
+* readiness cockpit.
+
+## PHASE 5 — CAPABILITY PASSPORT
+
+Implement:
+
+* passport;
+* history;
+* export;
+* learner development record.
+
+## PHASE 6 — GUSTAFTA INTEGRATION
+
+Implement:
+
+* identity mapping;
+* external document references;
+* Workroom integration;
+* service handoff;
+* API integration layer.
+
+---
+
+# 52. IMPORTANT DEVELOPMENT RULE
+
+Before implementing a feature:
+
+1. Inspect existing code.
+2. Inspect existing database schema.
+3. Reuse existing components.
+4. Do not duplicate existing functionality.
+5. Do not break working features.
+6. Preserve existing routes.
+7. Preserve existing authentication.
+8. Add migrations safely.
+9. Run typecheck.
+10. Run tests.
+11. Run production build.
+
+Never rewrite the entire application unnecessarily.
+
+---
+
+# 53. EXISTING TERAS ARCHITECTURE
+
+If this project already contains TERAS Academy components, preserve and extend them.
+
+Existing conceptual routes include:
+
+```text
+/dashboard
+/journey
+/learning-plan
+/programs
+/practice
+/evidence
+/assessments
+```
+
+Do not delete these routes.
+
+Extend them into the SKTTK domain.
+
+Where possible, use:
+
+```text
+TERAS Core Engine
++
+SKTTK Competency Program
+```
+
+rather than creating a completely separate application.
+
+This means:
+
+```text
+TERAS Core
+    ↓
+SKTTK Program
+    ↓
+SKTTK Competency Framework
+    ↓
+SKTTK Learning Path
+```
+
+The architecture should later allow other certification domains without rewriting the TERAS engine.
+
+---
+
+# 54. MULTI-PROGRAM ARCHITECTURE
+
+Do not hardcode "Solar PV Technician" as the entire application.
+
+Instead:
+
+```text
+TERAS
+ ├── SKTTK
+ │    ├── Solar PV Technician
+ │    ├── Electrical Installation
+ │    └── Other SKTTK Programs
+ │
+ └── Future Programs
+```
+
+The system must be program-configurable.
+
+---
+
+# 55. EXTENSIBILITY
+
+The long-term architecture should allow TERAS to support other competency domains.
+
+Therefore separate:
+
+```text
+TERAS CORE
+```
+
+from:
+
+```text
+DOMAIN PROGRAM
+```
+
+TERAS Core manages:
+
+* learning;
+* practice;
+* evidence;
+* simulation;
+* safety;
+* readiness;
+* passport.
+
+SKTTK provides:
+
+* competency framework;
+* technical content;
+* safety requirements;
+* assessment preparation rules.
+
+---
+
+# 56. DATA MODEL PRINCIPLE
+
+Never make the database merely represent pages.
+
+The database must represent:
+
+> **Competency → Learning → Practice → Evidence → Feedback → Remediation → Simulation → Safety → Readiness**
+
+This is the heart of TERAS.
+
+---
+
+# 57. UX PRINCIPLE
+
+At every screen, answer at least one of these questions:
+
+```text
+What am I learning?
+What competency am I building?
+What should I practice?
+What evidence do I need?
+What feedback did I receive?
+What must I improve?
+What is blocking me?
+How ready am I?
+What should I do next?
+```
+
+Avoid dashboards that show data without action.
+
+---
+
+# 58. SAFETY & REGULATORY LANGUAGE
+
+Use careful terminology throughout the application.
+
+Correct:
+
+> Persiapan Sertifikasi
+
+> Persiapan Asesmen
+
+> Internal Simulation
+
+> Preparation Evidence
+
+> Readiness
+
+> Capability Development
+
+Incorrect:
+
+> Sertifikasi oleh TERAS
+
+> Lulus Sertifikasi
+
+> Kompeten menurut TERAS
+
+> Sertifikat TERAS
+
+> Hasil Asesmen Resmi
+
+---
+
+# 59. FINAL PRODUCT STRUCTURE
+
+The final application should conceptually become:
+
+```text
+TERAS SKTTK
+│
+├── Authentication
+│
+├── Learner
+│   ├── Dashboard
+│   ├── Journey
+│   ├── Diagnostic
+│   ├── Learning Plan
+│   ├── Programs
+│   ├── LMS
+│   ├── Practice
+│   ├── Evidence
+│   ├── Feedback
+│   ├── Remediation
+│   ├── Simulation
+│   ├── Safety
+│   ├── Readiness
+│   ├── Capability Passport
+│   └── AI Tutor
+│
+├── Trainer
+│   ├── Dashboard
+│   ├── Learners
+│   ├── Practice Review
+│   ├── Evidence Review
+│   ├── Feedback
+│   ├── Remediation
+│   ├── Simulation
+│   └── Readiness
+│
+├── Content Author
+│   ├── Programs
+│   ├── Competencies
+│   ├── Modules
+│   ├── Lessons
+│   ├── Practice
+│   └── Simulation
+│
+├── Admin
+│   ├── Users
+│   ├── Programs
+│   ├── Competencies
+│   ├── Learning
+│   ├── Practice
+│   ├── Evidence
+│   ├── Safety
+│   ├── Readiness
+│   ├── Reports
+│   ├── Audit
+│   └── Integrations
+│
+└── Integration
+    └── Gustafta
+```
+
+---
+
+# 60. DEFINITION OF DONE
+
+The application is not considered complete merely because pages exist.
+
+TERAS SKTTK is considered functional when a demo learner can perform this complete journey:
+
+```text
+Register/Login
+↓
+Select SKTTK Program
+↓
+Complete Diagnostic
+↓
+See Competency Profile
+↓
+See Gap Analysis
+↓
+Receive Learning Plan
+↓
+Study LMS Module
+↓
+Complete Practice
+↓
+Submit Preparation Evidence
+↓
+Receive Feedback
+↓
+Perform Remediation
+↓
+Repeat Practice
+↓
+Complete Simulation
+↓
+Pass Safety Gate
+↓
+View Readiness
+↓
+Generate Capability Passport
+↓
+Move toward Official Certification Handoff
+```
+
+The system must preserve state across every step.
+
+Example:
+
+If the learner has a critical safety blocker, this condition must be consistently reflected in:
+
+```text
+Dashboard
+Journey
+Readiness
+Capability Passport
+Trainer Dashboard
+```
+
+No screen may falsely indicate readiness while a critical blocker exists.
+
+---
+
+# 61. CRITICAL CONSISTENCY PRINCIPLE
+
+The following must always communicate the same learner condition:
+
+> **Readiness ↔ Safety ↔ Evidence ↔ Assessment Simulation ↔ Capability Passport**
+
+If:
+
+```text
+Safety = BLOCKED
+```
+
+then the system must not display:
+
+```text
+READY
+```
+
+anywhere.
+
+If:
+
+```text
+Evidence = INSUFFICIENT
+```
+
+the system must not display:
+
+```text
+READY FOR OFFICIAL ASSESSMENT
+```
+
+If readiness changes, the change must propagate to the relevant dashboard and passport state.
+
+---
+
+# 62. FIRST IMPLEMENTATION TASK
+
+Start by inspecting the current Replit project.
+
+Do NOT immediately rewrite the project.
+
+First provide an implementation assessment containing:
+
+1. Existing technology stack.
+2. Existing database schema.
+3. Existing authentication.
+4. Existing routes.
+5. Existing TERAS Academy components.
+6. Existing readiness logic.
+7. Existing safety logic.
+8. Existing role system.
+9. Existing tests.
+10. What can be reused.
+11. What must be modified.
+12. What must be added.
+
+Then create a phased implementation plan.
+
+After that, begin implementation with:
+
+> **PHASE 1 — TERAS SKTTK FOUNDATION**
+
+Do not destroy working functionality.
+
+Every phase must end with:
+
+```text
+Typecheck
+Tests
+Production Build
+Responsive Check
+Authorization Check
+Safety Regression Check
+```
+
+---
+
+# 63. FINAL PRINCIPLE
+
+Build TERAS SKTTK as:
+
+> **A system that transforms learning into demonstrable capability and demonstrable capability into measurable readiness.**
+
+The ultimate product outcome is NOT:
+
+> "Learner completed a course."
+
+The ultimate outcome is:
+
+> "Learner has built, practiced, demonstrated, reviewed, remediated, simulated, and documented the capabilities required for the target SKTTK preparation pathway, with safety blockers explicitly identified and readiness transparently communicated."
+
+Build this as a serious production SaaS platform, not a prototype LMS.
+
+The architecture must be clean, modular, auditable, secure, scalable, and ready for future integration with Gustafta and official certification workflows.

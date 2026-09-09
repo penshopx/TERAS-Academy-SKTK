@@ -60,9 +60,9 @@ function PublicHome() {
 
         {/* Navigation */}
         <header className="flex items-center justify-between z-10 animate-in fade-in slide-in-from-top-4 duration-700">
-          <Link href="/" className="flex items-center gap-3 group" aria-label="TERAS Academy">
+          <Link href="/" className="flex items-center gap-3 group" aria-label="TERAS SKTTK">
             <span className="text-2xl font-extrabold tracking-[0.18em] text-[#00c3ff] group-hover:text-white transition-colors duration-500">TERAS</span>
-            <span className="hidden border-l border-white/20 pl-3 text-[10px] font-bold uppercase leading-tight tracking-[0.2em] text-white/60 sm:inline">Capability<br />Academy</span>
+            <span className="hidden border-l border-white/20 pl-3 text-[10px] font-bold uppercase leading-tight tracking-[0.2em] text-white/60 sm:inline">SKTTK<br />Readiness</span>
           </Link>
           <div className="flex items-center gap-4">
             <Link href="/sign-in" className="text-sm font-semibold text-white/70 transition hover:text-white">Masuk</Link>
@@ -81,14 +81,14 @@ function PublicHome() {
             </div>
 
             <h1 className="text-6xl font-extrabold leading-[0.95] tracking-[-0.04em] sm:text-7xl lg:text-[5.5rem]">
-              Build Proof.<br />
+              Build Competence.<br />
               <span className="mt-2 block text-transparent bg-clip-text bg-gradient-to-r from-[#00c3ff] to-[#0077ff]">
-                Show Readiness.
+                Build Readiness.
               </span>
             </h1>
 
             <p className="mt-8 max-w-2xl text-lg leading-relaxed text-white/60 font-medium">
-              Platform kapabilitas teknis terpadu untuk tenaga kerja transisi energi. Mengukur kemampuan, merekam bukti praktik, dan memastikan <strong className="text-white font-semibold">safety readiness</strong> sebelum turun ke lapangan.
+              Platform persiapan <strong className="text-white font-semibold">Sertifikasi Kompetensi Tenaga Teknik Ketenagalistrikan</strong>. Bangun kemampuan, buktikan melalui practice dan preparation evidence, lalu uji readiness sebelum memasuki proses asesmen resmi.
             </p>
 
             <div className="mt-10 flex flex-wrap gap-4">
@@ -104,11 +104,11 @@ function PublicHome() {
             <div className="mt-12 flex flex-wrap items-center gap-x-8 gap-y-4 text-sm font-medium text-white/40">
               <span className="flex items-center gap-2.5">
                 <ShieldCheck className="h-4 w-4 text-[#00c3ff]/80" />
-                Safety gate tak bisa dilewati
+                Safety gate tidak dapat dilewati
               </span>
               <span className="flex items-center gap-2.5">
                 <RouteIcon className="h-4 w-4 text-[#00c3ff]/80" />
-                Histori kemampuan terpusat
+                Capability Passport terukur
               </span>
             </div>
           </div>
@@ -117,7 +117,7 @@ function PublicHome() {
             <div className="absolute -inset-10 rounded-full bg-[#00c3ff]/10 blur-[80px]" />
             <div className="relative rounded-2xl border border-white/10 bg-[#0a0a0a]/80 p-1 shadow-2xl backdrop-blur-xl group overflow-hidden">
               <div className="absolute inset-0 z-0 opacity-40 mix-blend-luminosity transition-opacity duration-700 group-hover:opacity-60">
-                <img src={`${basePath}/images/teras-energy-control-room.jpg`} alt="TERAS Academy Readiness Control Center" className="w-full h-full object-cover" />
+                <img src={`${basePath}/images/teras-energy-control-room.jpg`} alt="TERAS SKTTK Readiness Control Center" className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/80 to-[#0a0a0a]/20" />
               </div>
               <div className="relative z-10 rounded-xl border border-white/5 bg-black/40 p-6 backdrop-blur-md">
@@ -127,7 +127,7 @@ function PublicHome() {
                       <Zap className="h-3.5 w-3.5 text-[#00c3ff]" />
                       <p className="font-mono text-[10px] tracking-[0.2em] text-[#00c3ff]">READINESS COCKPIT</p>
                     </div>
-                    <p className="mt-2 font-bold text-lg">Solar PV Technician</p>
+                    <p className="mt-2 font-bold text-lg">TERAS SKTTK · Solar PV Technician</p>
                     <p className="text-sm text-white/40">ID: T-8829-PV</p>
                   </div>
                   <span className="rounded-md border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-bold text-amber-400 uppercase tracking-wider">
@@ -179,12 +179,12 @@ function PublicHome() {
               </div>
             </div>
             <p className="mt-5 text-center font-mono text-[10px] tracking-[0.2em] text-white/30 uppercase">
-              TERAS Academy Readiness Control Center
+              TERAS SKTTK Readiness Control Center
             </p>
           </div>
         </section>
 
-        {/* TERAS Academy Story Video Section */}
+        {/* TERAS capability story */}
         <section className="py-20 lg:py-24 relative border-t border-white/5">
           <div className="max-w-5xl mx-auto px-6 lg:px-10">
             <div className="mb-12 text-center">
@@ -196,7 +196,7 @@ function PublicHome() {
                 Menyiapkan Tenaga Transisi Energi Indonesia
               </h2>
               <p className="mt-5 text-lg text-white/60 max-w-2xl mx-auto leading-relaxed">
-                Lihat bagaimana TERAS Academy mentransformasi pelatihan teknis menjadi kesiapan lapangan yang nyata dan terukur.
+                Lihat bagaimana TERAS mengubah pembelajaran teknis menjadi capability dan readiness yang nyata serta terukur.
               </p>
             </div>
 
@@ -204,7 +204,7 @@ function PublicHome() {
               <div className="aspect-video w-full relative">
                 <iframe
                   src="/teras-academy-story/"
-                  title="Video dokumenter TERAS Academy untuk kesiapan transisi energi"
+                  title="Video TERAS tentang capability dan readiness"
                   className="absolute inset-0 w-full h-full border-0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
@@ -216,7 +216,7 @@ function PublicHome() {
                     <BadgeCheck className="h-4 w-4 text-[#00c3ff]" />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-white">TERAS Academy 60-Second Overview</p>
+                    <p className="text-sm font-bold text-white">TERAS 60-Second Overview</p>
                     <p className="text-xs text-white/50">Capability to Readiness Story</p>
                   </div>
                 </div>
@@ -267,7 +267,7 @@ function PublicHome() {
                   <div className="theme-image-overlay absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/20 to-transparent" />
                   <div className="absolute bottom-5 left-5 right-5 flex items-end justify-between">
                     <div>
-                      <p className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#00c3ff] mb-1">TERAS ACADEMY</p>
+                      <p className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#00c3ff] mb-1">TERAS SKTTK</p>
                       <p className="text-sm font-bold text-white tracking-wide">HORIZON 2046</p>
                     </div>
                     <span className="flex h-2 w-2 rounded-full bg-[#00c3ff] shadow-[0_0_8px_rgba(0,195,255,0.8)]"></span>
@@ -330,7 +330,7 @@ function PublicHome() {
                 { step: 'Learning', desc: 'Pengetahuan inti' },
                 { step: 'Practice', desc: 'Simulasi aman' },
                 { step: 'Evidence', desc: 'Bukti terapan' },
-                { step: 'Assessment', desc: 'Validasi objektif' },
+                { step: 'Simulation', desc: 'Uji kondisi asesmen' },
                 { step: 'Readiness', desc: 'Kesiapan tahap berikutnya' }
               ].map((item, index) => (
                 <div key={item.step} className="group relative">
@@ -354,7 +354,7 @@ function PublicHome() {
             <div className="theme-image-card relative rounded-3xl overflow-hidden border border-white/10 group h-[260px] md:h-[300px]">
               <img
                 src={`${basePath}/images/teras-solar-technician.jpg`}
-                alt="Teknisi TERAS Academy melakukan inspeksi panel surya lapangan dengan standar keselamatan ketat"
+                alt="Teknisi TERAS melakukan inspeksi panel surya lapangan dengan standar keselamatan ketat"
                 className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                 loading="lazy"
               />
@@ -364,7 +364,7 @@ function PublicHome() {
                   <ShieldCheck className="h-4 w-4 text-[#00c3ff]" />
                   <span className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#00c3ff] uppercase">Field Verification</span>
                 </div>
-                <p className="text-sm text-white/80 font-medium leading-relaxed max-w-sm">Program Pengembangan TERAS Academy membangun bukti kesiapan untuk tahap berikutnya, bukan sekadar kelulusan teori di atas kertas.</p>
+                <p className="text-sm text-white/80 font-medium leading-relaxed max-w-sm">TERAS membangun bukti kesiapan untuk tahap berikutnya, bukan sekadar penyelesaian materi teori.</p>
               </div>
             </div>
 
@@ -396,7 +396,7 @@ function PublicHome() {
                 icon: Target
               },
               {
-                title: 'Assessment & Remediation',
+                title: 'Simulation & Remediation',
                 desc: 'Gap menghasilkan rencana perbaikan (remediation) dan reassessment—bukan sekadar skor akhir.',
                 icon: Activity
               },
@@ -453,7 +453,7 @@ function PublicHome() {
             <div className="h-4 w-4 rounded-sm bg-[#00c3ff]/20 border border-[#00c3ff]/50 flex items-center justify-center">
               <div className="h-1.5 w-1.5 bg-[#00c3ff] rounded-full"></div>
             </div>
-            <span className="font-mono text-[10px] tracking-[0.2em] text-white/40">TERAS ACADEMY · CAPABILITY WITH EVIDENCE</span>
+            <span className="font-mono text-[10px] tracking-[0.2em] text-white/40">TERAS SKTTK · CAPABILITY WITH EVIDENCE</span>
           </div>
 
           <div className="font-mono text-[10px] tracking-[0.15em] text-white/30 flex gap-2 flex-wrap justify-center">
@@ -463,7 +463,9 @@ function PublicHome() {
             <span className="text-[#00c3ff]/30">→</span>
             <span>PRACTICE</span>
             <span className="text-[#00c3ff]/30">→</span>
-            <span>ASSESSMENT</span>
+            <span>SIMULATION</span>
+            <span className="text-[#00c3ff]/30">→</span>
+            <span>SAFETY GATE</span>
             <span className="text-[#00c3ff]/30">→</span>
             <span className="text-white/60">READINESS</span>
           </div>
@@ -558,7 +560,7 @@ function AuthPage({ mode }: { mode: "sign-in" | "sign-up" }) {
   };
   return <main className="flex min-h-[100dvh] items-center justify-center bg-background px-4 text-foreground">
     <form className="w-full max-w-md rounded-2xl border border-border bg-card p-8 shadow-2xl" onSubmit={submit}>
-      <p className="font-mono text-xs font-bold tracking-[.2em] text-primary">TERAS ACADEMY</p>
+      <p className="font-mono text-xs font-bold tracking-[.2em] text-primary">TERAS SKTTK</p>
       <h1 className="mt-4 text-3xl font-extrabold">{isSignUp ? "Buat akun" : "Masuk"}</h1>
       <p className="mt-2 text-sm text-muted-foreground">{isSignUp ? "Mulai perjalanan capability Anda." : "Masuk ke capability cockpit Anda."}</p>
       <label className="mt-6 block text-sm font-medium" htmlFor="auth-email">Email</label>
@@ -584,9 +586,9 @@ function ProtectedPageMessage() {
     <main className="public-theme-surface relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-background px-6 text-foreground">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(0,195,255,0.15),transparent_35%)]" />
       <div className="relative w-full max-w-xl rounded-2xl border border-border bg-card p-8 text-center shadow-2xl sm:p-12">
-        <p className="font-mono text-xs font-bold tracking-[0.22em] text-[#00c3ff]">TERAS ACADEMY</p>
+        <p className="font-mono text-xs font-bold tracking-[0.22em] text-[#00c3ff]">TERAS SKTTK</p>
         <h1 className="mt-5 text-3xl font-extrabold tracking-tight sm:text-4xl">Masuk untuk melanjutkan ke TERAS</h1>
-        <p className="mt-5 leading-7 text-muted-foreground">Journey, Readiness, dan Capability Passport tersedia setelah Anda masuk ke workspace.</p>
+        <p className="mt-5 leading-7 text-muted-foreground">Journey, Readiness, dan Capability Passport tersedia setelah Anda masuk ke ruang persiapan TERAS SKTTK.</p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <Link href="/sign-in" className="rounded-lg bg-[#00c3ff] px-6 py-3 font-bold text-black transition hover:bg-[#70dcff]">Masuk</Link>
           <Link href="/" className="rounded-lg border border-border px-6 py-3 font-bold transition hover:border-[#00c3ff]/70">Kembali ke Beranda</Link>
@@ -600,7 +602,7 @@ function LearnerAwaitingEnrollment() {
   return (
     <main className="flex min-h-[100dvh] items-center justify-center bg-background px-6 text-foreground">
       <div className="w-full max-w-xl rounded-2xl border border-primary/30 bg-card p-8 text-center shadow-xl">
-        <p className="font-mono text-xs font-bold tracking-[.2em] text-primary">AKUN LEARNER AKTIF</p>
+        <p className="font-mono text-xs font-bold tracking-[.2em] text-primary">TERAS SKTTK · AKUN LEARNER AKTIF</p>
         <h1 className="mt-4 text-3xl font-extrabold">Selamat datang di TERAS</h1>
         <p className="mt-4 leading-7 text-muted-foreground">
           Email Anda sudah terverifikasi dan akun Learner sudah aktif. Akses ke pathway utama sedang
