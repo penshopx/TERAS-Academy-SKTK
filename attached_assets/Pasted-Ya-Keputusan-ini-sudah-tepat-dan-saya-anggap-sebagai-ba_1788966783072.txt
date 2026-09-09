@@ -1,0 +1,105 @@
+Ya. **Keputusan ini sudah tepat dan saya anggap sebagai baseline implementasi Phase 2.**
+
+Yang paling penting sekarang adalah **jangan meminta Replit Agent mengerjakan ulang sesuatu yang sedang dikerjakan Task #2**. Biarkan Task #2 selesai, kemudian Task #1 dapat dijalankan sebagai task terpisah dengan spesifikasi yang sudah dikunci.
+
+Saya menyarankan struktur backlog TERAS SKTTK berikut:
+
+| Task        | Modul                                   | Status    |
+| ----------- | --------------------------------------- | --------- |
+| Phase 1     | Foundation & Branding                   | ✅ Locked  |
+| **Task #1** | **Personal Diagnostic & Readiness Map** | ⏳ Waiting |
+| **Task #2** | **SKTTK Competency Framework**          | 🔄 Active |
+| Task #3     | Configurable Readiness Rules            | ⏳ Planned |
+| Task #4     | Learning ↔ Competency Mapping           | ⏳ Planned |
+| Task #5     | Practice ↔ Competency ↔ Evidence        | ⏳ Planned |
+| Task #6     | Simulation & Safety Integration         | ⏳ Planned |
+| Task #7     | Capability Passport Enhancement         | ⏳ Planned |
+| Task #8     | Gustafta Integration                    | ⏳ Planned |
+
+### Ada satu hal yang menurut saya sangat penting
+
+**Task #1 dan Task #2 sebenarnya akan menjadi dua sisi dari mesin TERAS.**
+
+Task #1 menjawab:
+
+> **“Di mana posisi peserta sekarang?”**
+
+Task #2 menjawab:
+
+> **“Kompetensi apa yang harus dimiliki peserta?”**
+
+Kemudian keduanya bertemu:
+
+```text
+             SKTTK COMPETENCY FRAMEWORK
+                       │
+                       │ Target State
+                       ▼
+                 ┌─────────────┐
+                 │  COMPETENCY  │
+                 │   TARGET     │
+                 └──────┬──────┘
+                        │
+                        │ dibandingkan
+                        ▼
+                PERSONAL DIAGNOSTIC
+                        │
+                        │ Current State
+                        ▼
+              PERSONAL COMPETENCY
+                   PROFILE
+                        │
+                        ▼
+              PERSONAL READINESS
+                     MAP
+                        │
+             ┌──────────┼──────────┐
+             ▼          ▼          ▼
+          LEARNING    PRACTICE   EVIDENCE
+             │          │          │
+             └──────────┼──────────┘
+                        ▼
+                   SIMULATION
+                        │
+                        ▼
+                   SAFETY GATE
+                        │
+                        ▼
+                    READINESS
+```
+
+Inilah yang nantinya membuat TERAS **berbeda secara fundamental dari LMS biasa**.
+
+### Setelah Task #2 selesai
+
+Jangan langsung masuk ke Readiness Rules.
+
+Lakukan dulu satu tahap **Integration Review**:
+
+**Competency Framework ↔ Diagnostic ↔ Existing LMS**
+
+Kita perlu memastikan setiap:
+
+* competency unit,
+* element,
+* KUK,
+* knowledge,
+* practice,
+* safety,
+* evidence requirement
+
+memiliki struktur yang bisa dipakai oleh Diagnostic dan LMS.
+
+Baru kemudian **Task #1** dijalankan.
+
+Dengan demikian Personal Diagnostic tidak lagi membuat kategori generik seperti *Knowledge / Practice / Safety* saja, tetapi dapat mengatakan secara konkret:
+
+> **Anda memiliki gap pada kompetensi X → elemen Y → KUK Z → rekomendasi Module M03 → Practice P03 → Evidence E03 → Simulation S03.**
+
+Dan setelah Task #3:
+
+> **Readiness 78/100 — NOT READY — Critical Safety Blocker — Next Action: Safety Remediation S03.**
+
+Itulah titik ketika TERAS SKTTK mulai menjadi **mesin capability & readiness**, bukan sekadar aplikasi kursus.
+
+**Baseline Phase 1 tetap dikunci. Task #2 lanjut. Task #1 menunggu sampai slot tersedia.**
