@@ -5,6 +5,7 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { DiagnosticBaseline } from './diagnosticBaseline';
 import type { EvidenceCounts } from './evidenceCounts';
 import type { Gap } from './gap';
 import type { LearnerProfile } from './learnerProfile';
@@ -30,4 +31,5 @@ export interface LearnerDashboard {
   mainGap: Gap | null;
   evidenceCounts: EvidenceCounts;
   nextAction: NextAction;
+  diagnostic: DiagnosticBaseline;
 }

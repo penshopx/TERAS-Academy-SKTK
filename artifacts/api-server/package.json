@@ -16,6 +16,8 @@
     "test:identity-isolation": "NODE_ENV=test tsx ./src/identity-isolation.integration.ts",
     "test:learner-provisioning": "NODE_ENV=test tsx ./src/learner-provisioning.integration.ts",
     "test:learner-isolation": "NODE_ENV=test tsx ./src/learner-isolation.integration.ts",
+    "test:diagnostic": "NODE_ENV=test tsx --test ./src/diagnostic.regression.test.ts",
+    "test:diagnostic-integration": "NODE_ENV=test tsx ./src/diagnostic.integration.ts",
     "test:readiness-dashboard-isolation": "NODE_ENV=test tsx ./src/readiness-dashboard-isolation.integration.ts",
     "test:diagnostic": "NODE_ENV=test tsx ./src/diagnostic.integration.ts",
     "test:admin-authorization": "NODE_ENV=test tsx ./src/admin-authorization.integration.ts",

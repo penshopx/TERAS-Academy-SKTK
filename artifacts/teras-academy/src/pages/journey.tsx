@@ -31,7 +31,7 @@ export default function Journey() {
               const isPending = step.status === "PENDING";
 
               return (
-                <div key={step.id} className="relative">
+                <div key={step.id} data-testid={`journey-step-${step.id}`} className="relative">
                   <div className={cn(
                     "absolute -left-[41px] top-1 rounded-full bg-background p-1",
                     isCompleted ? "text-primary" : 
@@ -62,7 +62,7 @@ export default function Journey() {
                         </div>
                       )}
                     </div>
-                    <p className="text-sm text-muted-foreground max-w-2xl">{step.description}</p>
+                    <p data-testid={`journey-description-${step.id}`} className="text-sm text-muted-foreground max-w-2xl">{step.description}</p>
                     
                     {isActive && step.href && (
                       <div className="mt-4">

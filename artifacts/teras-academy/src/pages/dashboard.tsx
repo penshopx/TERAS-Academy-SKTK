@@ -62,6 +62,23 @@ export default function Dashboard() {
       </div>
 
       <LearnerCondition owner="Learner" />
+      <Card data-testid="card-diagnostic-baseline" className="border-primary/30">
+        <CardHeader><CardTitle className="text-lg">Personal baseline</CardTitle><CardDescription>Preparation diagnostic — bukan sertifikasi.</CardDescription></CardHeader>
+        <CardContent className="flex flex-wrap items-center justify-between gap-4">
+          <div><div data-testid="text-diagnostic-baseline-score" className="font-mono text-3xl font-bold">{dashboard.diagnostic.score === null ? "—" : `${dashboard.diagnostic.score}/100`}</div><div data-testid="status-diagnostic-safety" className={dashboard.diagnostic.blocked ? "text-destructive text-sm" : "text-muted-foreground text-sm"}>{dashboard.diagnostic.blocked ? "CRITICAL SAFETY FAILURE · BLOCKED" : dashboard.diagnostic.status === "completed" ? "Baseline complete" : "Diagnostic belum selesai"}</div></div>
+          {dashboard.diagnostic.topGaps.length > 0 && <div data-testid="text-diagnostic-gaps" className="text-sm text-muted-foreground">Gaps: {dashboard.diagnostic.topGaps.join(", ")}</div>}
+          <Link href="/diagnostic"><Button data-testid="link-dashboard-diagnostic">{dashboard.diagnostic.status === "completed" ? "Lihat peta" : "Mulai / lanjutkan"}</Button></Link>
+        </CardContent>
+      </Card>
+      <Card className="border-primary/30 bg-primary/5">
+        <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5">
+          <div>
+            <CardTitle className="text-base">Personal initial diagnostic</CardTitle>
+            <CardDescription className="mt-1">Tetapkan baseline, gap, dan langkah belajar berikutnya.</CardDescription>
+          </div>
+          <Link href="/diagnostic"><Button data-testid="link-dashboard-diagnostic">Mulai / lanjutkan diagnostic <ArrowRight className="ml-2 h-4 w-4" /></Button></Link>
+        </CardContent>
+      </Card>
 
       {diagnostic.data && diagnostic.data.session?.status !== "completed" && (
         <Card className="bg-primary/5 border-primary/20">
