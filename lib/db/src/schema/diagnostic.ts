@@ -37,7 +37,11 @@ export const diagnosticSessionsTable = pgTable("teras_diagnostic_sessions", {
   enrollmentId: text("enrollment_id").notNull().references(() => enrollmentsTable.id, { onDelete: "cascade" }), pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id),
   templateId: text("template_id").notNull().references(() => diagnosticTemplatesTable.id), frameworkId: text("framework_id").notNull().references(() => competencyFrameworksTable.id),
   status: text("status").notNull().default("in_progress"), progress: integer("progress").notNull().default(0), completedAt: timestamp("completed_at", { withTimezone: true }), ...audit,
-}, table => [index("teras_diagnostic_sessions_learner_pathway_idx").on(table.learnerId, table.pathwayId), check("teras_diagnostic_sessions_progress_check", sql`${table.progress} >= 0 AND ${table.progress} <= 100`)]);
+}, table => [
+  index("teras_diagnostic_sessions_learner_pathway_idx").on(table.learnerId, table.pathwayId),
+  uniqueIndex("teras_diagnostic_sessions_one_active_unique").on(table.learnerId, table.pathwayId).where(sql`${table.status} = 'in_progress'`),
+  check("teras_diagnostic_sessions_progress_check", sql`${table.progress} >= 0 AND ${table.progress} <= 100`),
+]);
 
 export const diagnosticResponsesTable = pgTable("teras_diagnostic_responses", {
   id: text("id").primaryKey(), sessionId: text("session_id").notNull().references(() => diagnosticSessionsTable.id, { onDelete: "cascade" }),

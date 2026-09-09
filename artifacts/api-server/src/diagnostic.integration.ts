@@ -59,6 +59,7 @@ async function run() {
   await pool.query(migration);
   const followUpMigration = await readFile(new URL("../../../lib/db/migrations/0019_diagnostic_recommendation_follow_ups.sql", import.meta.url), "utf8");
   await pool.query(followUpMigration);
+  const singleActiveSessionMigration = await readFile(new URL("../../../lib/db/migrations/0020_diagnostic_single_active_session.sql", import.meta.url), "utf8");
   await db.insert(programsTable).values({ id: "solar-pv-tech", domain: "renewable", name: "Solar PV", description: "Fixture", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
   await db.insert(pathwaysTable).values({ id: "path-a", programId: "solar-pv-tech", name: "Path A", type: "standard", outcome: "Technician", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
   await db.insert(pathwaysTable).values({ id: "path-b", programId: "solar-pv-tech", name: "Path B", type: "standard", outcome: "Designer", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
@@ -104,6 +105,42 @@ async function run() {
     { id: enrollmentB, learnerId: learnerB, programId: "solar-pv-tech", pathwayId: "path-a", trainerId: trainerB, assessorId: null, createdBy: learnerB },
     { id: enrollmentC, learnerId: learnerC, programId: "solar-pv-tech", pathwayId: "path-b", trainerId: trainerA, assessorId: null, status: "inactive", createdBy: learnerC },
   ]);
+  const migrationClient = await pool.connect();
+  const legacyCanonicalId = `diagnostic-legacy-canonical-${suffix}`;
+  const legacyDuplicateId = `diagnostic-legacy-duplicate-${suffix}`;
+  let legacyMigrationVerified = false;
+  try {
+    await migrationClient.query("DROP INDEX IF EXISTS teras_diagnostic_sessions_one_active_unique");
+    await migrationClient.query(
+      `INSERT INTO teras_diagnostic_sessions
+        (id, learner_id, enrollment_id, pathway_id, template_id, framework_id, status, progress, created_at, updated_at, created_by)
+       VALUES
+        ($1, $3, $4, 'path-a', 'diag-skttk-spv-v1', 'framework-skttk-solar-pv', 'in_progress', 70, '2026-01-01T00:00:00Z', now(), $3),
+        ($2, $3, $4, 'path-a', 'diag-skttk-spv-v1', 'framework-skttk-solar-pv', 'in_progress', 20, '2026-01-02T00:00:00Z', now(), $3)`,
+      [legacyCanonicalId, legacyDuplicateId, learnerA, enrollmentA],
+    );
+    await migrationClient.query(singleActiveSessionMigration);
+    const legacyRows = await migrationClient.query<{ id: string; status: string }>(
+      "SELECT id, status FROM teras_diagnostic_sessions WHERE learner_id = $1 AND pathway_id = 'path-a' ORDER BY id",
+      [learnerA],
+    );
+    assert(legacyRows.rows.filter(row => row.status === "in_progress").length === 1, "single-active migration did not reconcile legacy duplicate sessions");
+    assert(legacyRows.rows.find(row => row.id === legacyCanonicalId)?.status === "in_progress", "single-active migration did not preserve the highest-progress legacy session");
+    assert(legacyRows.rows.find(row => row.id === legacyDuplicateId)?.status === "superseded", "single-active migration did not supersede the duplicate legacy session");
+    const legacyAudit = await migrationClient.query<{ details: { canonicalSessionId?: string } }>(
+      "SELECT details FROM teras_diagnostic_audit_events WHERE session_id = $1 AND action = 'diagnostic_session_superseded'",
+      [legacyDuplicateId],
+    );
+    assert(legacyAudit.rows[0]?.details.canonicalSessionId === legacyCanonicalId, "single-active migration did not audit the canonical replacement session");
+    legacyMigrationVerified = true;
+  } finally {
+    if (!legacyMigrationVerified) {
+      await migrationClient.query("DELETE FROM teras_diagnostic_audit_events WHERE session_id = ANY($1::text[])", [[legacyCanonicalId, legacyDuplicateId]]);
+      await migrationClient.query("DELETE FROM teras_diagnostic_sessions WHERE id = ANY($1::text[])", [[legacyCanonicalId, legacyDuplicateId]]);
+    }
+    await migrationClient.query(singleActiveSessionMigration);
+    migrationClient.release();
+  }
   const app = createIntegrationTestApp(req => {
     const identity = req.get("x-diagnostic-learner");
     if (identity === "a") return { userId: learnerA, role: "learner", learnerId: learnerA };
@@ -124,12 +161,25 @@ async function run() {
   };
   const put = (path: string, body: unknown, expected = 200, who: TestIdentity | undefined = "a") => request<any>(path, { method: "PUT", body: JSON.stringify(body) }, expected, who);
   try {
+    const resumedLegacy = await request<any>("/diagnostic", {}, 200, "a");
+    assert(resumedLegacy.session.id === legacyCanonicalId && resumedLegacy.session.status === "in_progress", "GET diagnostic did not resume the canonical active legacy session");
+    await db.delete(diagnosticAuditEventsTable).where(inArray(diagnosticAuditEventsTable.sessionId, [legacyCanonicalId, legacyDuplicateId]));
+    await db.delete(diagnosticSessionsTable).where(inArray(diagnosticSessionsTable.id, [legacyCanonicalId, legacyDuplicateId]));
     const [beforeA, beforeB] = await Promise.all([request<any>("/diagnostic", {}, 200, "a"), request<any>("/diagnostic", {}, 200, "b")]);
     assert(beforeA.template.id === "diag-skttk-spv-v1" && beforeA.session === null && beforeA.questions.length === 6, "diagnostic template output was not validated");
     assert(beforeB.session === null && beforeB.responses?.length === 0, "diagnostic state leaked between learners");
     await request("/diagnostic", {}, 404, "c");
     const safety = beforeA.questions.find((q: any) => q.id === "diag-q-safety");
-    const sessionA = await request<any>("/diagnostic/sessions", { method: "POST", body: "{}" }, 201, "a");
+    const startA = () => fetch(`${base}/diagnostic/sessions`, { method: "POST", body: "{}", headers: { "content-type": "application/json", "x-diagnostic-learner": "a" } });
+    const [startA1, startA2] = await Promise.all([startA(), startA()]);
+    assert([startA1.status, startA2.status].sort().join(",") === "200,201", `concurrent diagnostic starts returned ${startA1.status} and ${startA2.status}`);
+    const [sessionA, duplicateSessionA] = await Promise.all([
+      startA1.json() as Promise<{ id: string }>,
+      startA2.json() as Promise<{ id: string }>,
+    ]);
+    assert(sessionA.id === duplicateSessionA.id, "concurrent diagnostic starts returned different sessions");
+    const activeSessionsA = await db.select({ id: diagnosticSessionsTable.id }).from(diagnosticSessionsTable).where(and(eq(diagnosticSessionsTable.learnerId, learnerA), eq(diagnosticSessionsTable.pathwayId, "path-a"), eq(diagnosticSessionsTable.status, "in_progress")));
+    assert(activeSessionsA.length === 1 && activeSessionsA[0]?.id === sessionA.id, "concurrent diagnostic starts created more than one active row");
     const sessionB = await request<any>("/diagnostic/sessions", { method: "POST", body: "{}" }, 201, "b");
     assert(sessionA.id !== sessionB.id, "sessions were not isolated");
     const crossSaveBody = { progress: 25, responses: [{ questionId: safety.id, optionId: "diag-o-safe" }] };

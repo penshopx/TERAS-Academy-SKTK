@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   db, diagnosticTemplatesTable, diagnosticQuestionsTable, diagnosticOptionsTable, diagnosticSessionsTable,
   diagnosticResponsesTable, diagnosticProfilesTable, diagnosticProfileItemsTable, diagnosticGapsTable,
@@ -26,7 +26,14 @@ router.get("/diagnostic", async (req, res): Promise<void> => {
   const learnerId = await authorizeLearner(req, res); if (!learnerId) return;
   const context = await learnerContext(learnerId); const template = await activeTemplate(context.pathway.id);
   if (!template) { res.status(404).json({ error: "No active diagnostic template" }); return; }
-  const [session] = await db.select().from(diagnosticSessionsTable).where(and(eq(diagnosticSessionsTable.learnerId, learnerId), eq(diagnosticSessionsTable.pathwayId, context.pathway.id))).orderBy(desc(diagnosticSessionsTable.createdAt)).limit(1);
+  const [session] = await db.select().from(diagnosticSessionsTable)
+    .where(and(
+      eq(diagnosticSessionsTable.learnerId, learnerId),
+      eq(diagnosticSessionsTable.pathwayId, context.pathway.id),
+      inArray(diagnosticSessionsTable.status, ["in_progress", "completed"]),
+    ))
+    .orderBy(sql`case when ${diagnosticSessionsTable.status} = 'in_progress' then 0 else 1 end`, desc(diagnosticSessionsTable.createdAt))
+    .limit(1);
   const questions = await db.select().from(diagnosticQuestionsTable).where(eq(diagnosticQuestionsTable.templateId, template.id)).orderBy(diagnosticQuestionsTable.sequence);
   const options = await db.select().from(diagnosticOptionsTable);
   const saved = session ? await db.select().from(diagnosticResponsesTable).where(eq(diagnosticResponsesTable.sessionId, session.id)) : [];
@@ -37,12 +44,16 @@ router.post("/diagnostic/sessions", async (req, res): Promise<void> => {
   const learnerId = await authorizeLearner(req, res); if (!learnerId) return;
   const context = await learnerContext(learnerId); const template = await activeTemplate(context.pathway.id);
   if (!template) { res.status(404).json({ error: "No active diagnostic template" }); return; }
-  const [existing] = await db.select().from(diagnosticSessionsTable).where(and(eq(diagnosticSessionsTable.learnerId, learnerId), eq(diagnosticSessionsTable.pathwayId, context.pathway.id), eq(diagnosticSessionsTable.status, "in_progress"))).limit(1);
-  if (existing) { res.json(StartDiagnosticSessionResponse.parse(sessionView(existing))); return; }
-  const [session] = await db.insert(diagnosticSessionsTable).values({ id: id("diagnostic-session"), learnerId, enrollmentId: context.enrollment.id, pathwayId: context.pathway.id, templateId: template.id, frameworkId: template.frameworkId, createdBy: learnerId }).returning();
-  if (!session) throw new Error("Failed to create diagnostic session");
-  await db.insert(diagnosticAuditEventsTable).values({ id: id("diagnostic-audit"), sessionId: session.id, learnerId, action: "diagnostic_started", details: {}, createdBy: learnerId });
-  res.status(201).json(StartDiagnosticSessionResponse.parse(sessionView(session)));
+  const result = await db.transaction(async tx => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${learnerId}), hashtext(${context.pathway.id}))`);
+    const [existing] = await tx.select().from(diagnosticSessionsTable).where(and(eq(diagnosticSessionsTable.learnerId, learnerId), eq(diagnosticSessionsTable.pathwayId, context.pathway.id), eq(diagnosticSessionsTable.status, "in_progress"))).limit(1);
+    if (existing) return { session: existing, created: false };
+    const [session] = await tx.insert(diagnosticSessionsTable).values({ id: id("diagnostic-session"), learnerId, enrollmentId: context.enrollment.id, pathwayId: context.pathway.id, templateId: template.id, frameworkId: template.frameworkId, createdBy: learnerId }).returning();
+    if (!session) throw new Error("Failed to create diagnostic session");
+    await tx.insert(diagnosticAuditEventsTable).values({ id: id("diagnostic-audit"), sessionId: session.id, learnerId, action: "diagnostic_started", details: {}, createdBy: learnerId });
+    return { session, created: true };
+  });
+  res.status(result.created ? 201 : 200).json(StartDiagnosticSessionResponse.parse(sessionView(result.session)));
 });
 
 router.put("/diagnostic/sessions/:sessionId/responses", async (req, res): Promise<void> => {
