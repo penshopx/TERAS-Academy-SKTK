@@ -32,6 +32,50 @@ type DownloadEnvironment = {
   createAnchor: () => Pick<HTMLAnchorElement, "href" | "download" | "click">;
 };
 
+type ExportRequest = (
+  signal: AbortSignal,
+  callbacks: {
+    onResponse: (response: Response) => void;
+    onDownloadProgress: (progress: { loadedBytes: number; totalBytes: number | null }) => void;
+  },
+) => Promise<AdminReadinessExport>;
+
+export async function runReadinessAuditExport({
+  controller,
+  request,
+  download,
+  onRecordCount,
+  onLoadedBytes,
+}: {
+  controller: AbortController;
+  request: ExportRequest;
+  download: (payload: AdminReadinessExport) => { checksum: string };
+  onRecordCount: (count: number) => void;
+  onLoadedBytes: (loadedBytes: number) => void;
+}): Promise<
+  | { status: "success"; checksum: string; recordCount: number }
+  | { status: "cancelled" }
+  | { status: "failed"; error: unknown }
+> {
+  try {
+    const payload = await request(controller.signal, {
+      onResponse: response => {
+        const count = Number(response.headers.get("x-export-record-count"));
+        if (Number.isInteger(count) && count >= 0) onRecordCount(count);
+      },
+      onDownloadProgress: ({ loadedBytes }) => onLoadedBytes(loadedBytes),
+    });
+    const downloaded = download(payload);
+    onRecordCount(payload.recordCount);
+    return { status: "success", checksum: downloaded.checksum, recordCount: payload.recordCount };
+  } catch (error) {
+    if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+      return { status: "cancelled" };
+    }
+    return { status: "failed", error };
+  }
+}
+
 export function downloadReadinessAuditExport(
   payload: AdminReadinessExport,
   now = new Date(),
@@ -98,6 +142,22 @@ const formatBytes = (bytes: number) => new Intl.NumberFormat("id-ID", {
   maximumFractionDigits: bytes >= 1_000_000 ? 1 : 0,
 }).format(bytes >= 1_000_000 ? bytes / 1_000_000 : bytes / 1_000) + (bytes >= 1_000_000 ? " MB" : " KB");
 
+export function ReadinessExportProgress({
+  recordCount,
+  loadedBytes,
+}: {
+  recordCount: number | null;
+  loadedBytes: number;
+}) {
+  return <div className="rounded-md border bg-muted/30 p-3 text-sm" role="status" aria-live="polite" data-testid="readiness-export-progress">
+    <p className="font-medium">File sedang disiapkan</p>
+    <p className="mt-1 text-muted-foreground">
+      {recordCount === null ? "Menghitung record sesuai filter aktif…" : `${recordCount} record akan diekspor`}
+      {loadedBytes > 0 ? ` · ${formatBytes(loadedBytes)} diterima` : ""}
+    </p>
+  </div>;
+}
+
 export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }: Props) {
   const [learnerId, setLearnerId] = useState("");
   const [pathwayId, setPathwayId] = useState("");
@@ -139,24 +199,22 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
     setExportRecordCount(null);
     setExportLoadedBytes(0);
     setExportError(null);
+    const result = await runReadinessAuditExport({
+      controller,
+      request: (signal, callbacks) => exportAdminReadinessHistory(exportParams, { signal, ...callbacks }),
+      download: downloadReadinessAuditExport,
+      onRecordCount: setExportRecordCount,
+      onLoadedBytes: setExportLoadedBytes,
+    });
     try {
-      const payload = await exportAdminReadinessHistory(exportParams, {
-        signal: controller.signal,
-        onResponse: response => {
-          const count = Number(response.headers.get("x-export-record-count"));
-          if (Number.isInteger(count) && count >= 0) setExportRecordCount(count);
-        },
-        onDownloadProgress: ({ loadedBytes }) => setExportLoadedBytes(loadedBytes),
-      });
-      const downloaded = downloadReadinessAuditExport(payload);
-      setLastChecksum(downloaded.checksum);
-      setExportRecordCount(payload.recordCount);
-      setExportStatus("success");
-    } catch (error) {
-      if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+      if (result.status === "success") {
+        setLastChecksum(result.checksum);
+        setExportRecordCount(result.recordCount);
+        setExportStatus("success");
+      } else if (result.status === "cancelled") {
         setExportStatus("cancelled");
       } else {
-        setExportError(error);
+        setExportError(result.error);
         setExportStatus("failed");
       }
     } finally {
@@ -202,13 +260,7 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
             {exporting && <Button variant="destructive" size="icon" onClick={cancelExport} aria-label="Batalkan ekspor" data-testid="button-cancel-readiness-export"><X className="h-4 w-4" /></Button>}
           </div>
         </div>
-        {exporting && <div className="rounded-md border bg-muted/30 p-3 text-sm" role="status" aria-live="polite" data-testid="readiness-export-progress">
-          <p className="font-medium">File sedang disiapkan</p>
-          <p className="mt-1 text-muted-foreground">
-            {exportRecordCount === null ? "Menghitung record sesuai filter aktif…" : `${exportRecordCount} record akan diekspor`}
-            {exportLoadedBytes > 0 ? ` · ${formatBytes(exportLoadedBytes)} diterima` : ""}
-          </p>
-        </div>}
+        {exporting && <ReadinessExportProgress recordCount={exportRecordCount} loadedBytes={exportLoadedBytes} />}
         <ReadinessExportFeedback status={exportStatus} recordCount={exportRecordCount} error={exportError} errorMessage={errorMessage} checksum={lastChecksum} />
         {history.isLoading && <div className="flex min-h-24 items-center gap-2 text-sm text-muted-foreground" role="status"><Loader2 className="h-4 w-4 animate-spin" />Memuat riwayat…</div>}
         {history.error && <p className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive" role="alert">{errorMessage(history.error)}</p>}

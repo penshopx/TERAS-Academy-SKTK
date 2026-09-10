@@ -3,9 +3,12 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { AdminReadinessExport } from "@workspace/api-client-react";
+import { customFetch } from "../../../../lib/api-client-react/src/custom-fetch";
 import {
   downloadReadinessAuditExport,
+  ReadinessExportProgress,
   ReadinessExportFeedback,
+  runReadinessAuditExport,
 } from "./admin/ReadinessAuditHistory";
 
 const checksum = "a".repeat(64);
@@ -93,4 +96,114 @@ test("readiness export feedback displays export failures", () => {
 
   assert.match(markup, /role="alert"/);
   assert.match(markup, /Ekspor gagal: Jaringan terputus/);
+});
+
+test("readiness export shows the filtered record count and advancing streamed bytes", async () => {
+  const counts: number[] = [];
+  const loaded: number[] = [];
+  const result = await runReadinessAuditExport({
+    controller: new AbortController(),
+    request: async (_signal, callbacks) => {
+      callbacks.onResponse(new Response(null, { headers: { "x-export-record-count": "7" } }));
+      callbacks.onDownloadProgress({ loadedBytes: 1_200, totalBytes: 3_000 });
+      callbacks.onDownloadProgress({ loadedBytes: 2_400, totalBytes: 3_000 });
+      return { ...payload, recordCount: 7 };
+    },
+    download: exported => ({ checksum: exported.integrity.checksum }),
+    onRecordCount: count => counts.push(count),
+    onLoadedBytes: bytes => loaded.push(bytes),
+  });
+
+  assert.deepEqual(counts, [7, 7]);
+  assert.deepEqual(loaded, [1_200, 2_400]);
+  assert.equal(result.status, "success");
+  const markup = renderToStaticMarkup(<ReadinessExportProgress recordCount={counts[0]!} loadedBytes={loaded.at(-1)!} />);
+  assert.match(markup, /7 record akan diekspor/);
+  assert.match(markup, /2 KB diterima/);
+});
+
+test("cancelling readiness export prevents downloads and reports cancellation", async () => {
+  const controller = new AbortController();
+  let downloads = 0;
+  const resultPromise = runReadinessAuditExport({
+    controller,
+    request: signal => new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+    }),
+    download: () => {
+      downloads += 1;
+      return { checksum };
+    },
+    onRecordCount: () => {},
+    onLoadedBytes: () => {},
+  });
+
+  controller.abort();
+  const result = await resultPromise;
+  assert.deepEqual(result, { status: "cancelled" });
+  assert.equal(downloads, 0);
+  const markup = renderToStaticMarkup(
+    <ReadinessExportFeedback status="cancelled" recordCount={null} error={null} errorMessage={String} checksum="" />,
+  );
+  assert.match(markup, /Ekspor dibatalkan\. Tidak ada file yang diunduh\./);
+});
+
+test("readiness export runner keeps successful and failed outcomes explicit", async () => {
+  const success = await runReadinessAuditExport({
+    controller: new AbortController(),
+    request: async () => payload,
+    download: exported => ({ checksum: exported.integrity.checksum }),
+    onRecordCount: () => {},
+    onLoadedBytes: () => {},
+  });
+  const failure = await runReadinessAuditExport({
+    controller: new AbortController(),
+    request: async () => { throw new Error("Jaringan terputus"); },
+    download: () => { throw new Error("download tidak boleh berjalan"); },
+    onRecordCount: () => {},
+    onLoadedBytes: () => {},
+  });
+
+  assert.equal(success.status, "success");
+  assert.equal(failure.status, "failed");
+  assert.match(failure.status === "failed" ? String(failure.error) : "", /Jaringan terputus/);
+});
+
+test("custom fetch exposes response headers before reporting each streamed chunk", async () => {
+  const originalFetch = globalThis.fetch;
+  const encoder = new TextEncoder();
+  const body = JSON.stringify(payload);
+  const midpoint = Math.floor(body.length / 2);
+  const responseEvents: string[] = [];
+  const progress: number[] = [];
+
+  globalThis.fetch = async () => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(body.slice(0, midpoint)));
+      controller.enqueue(encoder.encode(body.slice(midpoint)));
+      controller.close();
+    },
+  }), {
+    headers: {
+      "content-type": "application/json",
+      "content-length": String(encoder.encode(body).byteLength),
+      "x-export-record-count": "1",
+    },
+  });
+
+  try {
+    const exported = await customFetch<AdminReadinessExport>("/api/admin/readiness-history/export", {
+      responseType: "json",
+      onResponse: response => responseEvents.push(response.headers.get("x-export-record-count") ?? ""),
+      onDownloadProgress: event => progress.push(event.loadedBytes),
+    });
+
+    assert.deepEqual(responseEvents, ["1"]);
+    assert.equal(progress.length, 2);
+    assert(progress[1]! > progress[0]!);
+    assert.equal(progress.at(-1), encoder.encode(body).byteLength);
+    assert.equal(exported.recordCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

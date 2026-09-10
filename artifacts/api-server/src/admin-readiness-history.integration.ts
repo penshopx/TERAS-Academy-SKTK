@@ -162,6 +162,7 @@ async function run() {
     const exportResponse = await request(`/admin/readiness-history/export?status=Not%20Ready&ruleVersion=3`, "admin");
     const exported = await exportResponse.json() as any;
     assert(exportResponse.status === 200 && exportResponse.headers.get("cache-control") === "private, no-store", "Audit export must be private and non-cacheable");
+    assert(exportResponse.headers.get("x-export-record-count") === "2", "Audit export must expose the filtered record count before the response stream completes");
     assert(exported.schemaVersion === "1.0" && exported.recordCount === 2, "Export must be versioned and report its record count");
     assert(exported.records.some((record: any) => record.id === ids.eventB && record.inputEvidence.openCriticalGaps[0] === "gap-b"), "Export must include complete decision snapshots");
     assert(exported.records.some((record: any) => record.id === ids.eventC), "Export must preserve records with identical evaluation timestamps");
