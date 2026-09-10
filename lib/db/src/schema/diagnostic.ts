@@ -91,6 +91,27 @@ export const diagnosticRecommendationFollowUpsTable = pgTable("teras_diagnostic_
   index("teras_diagnostic_recommendation_follow_ups_recommendation_created_idx").on(table.recommendationId, table.createdAt),
   check("teras_diagnostic_recommendation_follow_ups_status_check", sql`${table.status} IN ('planned','in_progress','completed')`),
 ]);
+export const diagnosticFollowUpReminderDeliveriesTable = pgTable("teras_diagnostic_follow_up_reminder_deliveries", {
+  id: text("id").primaryKey(),
+  followUpId: text("follow_up_id").notNull().references(() => diagnosticRecommendationFollowUpsTable.id, { onDelete: "cascade" }),
+  trainerId: text("trainer_id").notNull().references(() => peopleTable.id),
+  channel: text("channel").notNull(),
+  reminderKind: text("reminder_kind").notNull(),
+  destination: text("destination").notNull(),
+  status: text("status").notNull().default("pending"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  failureReason: text("failure_reason"),
+  ...audit,
+}, table => [
+  uniqueIndex("teras_diagnostic_follow_up_reminder_delivery_unique").on(table.followUpId, table.reminderKind, table.channel),
+  index("teras_diagnostic_follow_up_reminder_delivery_status_idx").on(table.status, table.lastAttemptAt),
+  check("teras_diagnostic_follow_up_reminder_delivery_channel_check", sql`${table.channel} IN ('email')`),
+  check("teras_diagnostic_follow_up_reminder_delivery_kind_check", sql`${table.reminderKind} IN ('due_soon','overdue')`),
+  check("teras_diagnostic_follow_up_reminder_delivery_status_check", sql`${table.status} IN ('pending','sending','sent','failed')`),
+  check("teras_diagnostic_follow_up_reminder_delivery_attempt_count_check", sql`${table.attemptCount} >= 0 AND ${table.attemptCount} <= 3`),
+]);
 export const diagnosticSafetyFlagsTable = pgTable("teras_diagnostic_safety_flags", {
   id: text("id").primaryKey(), profileId: text("profile_id").notNull().references(() => diagnosticProfilesTable.id, { onDelete: "cascade" }), competencyUnitId: text("competency_unit_id").references(() => competencyUnitsTable.id), code: text("code").notNull(), severity: text("severity").notNull(), blocking: boolean("blocking").notNull().default(true), detail: text("detail").notNull(), ...audit,
 });
@@ -105,7 +126,7 @@ export const diagnosticAuditEventsTable = pgTable("teras_diagnostic_audit_events
   }).onDelete("cascade"),
 ]);
 
-const tables = { diagnosticTemplatesTable, diagnosticQuestionsTable, diagnosticOptionsTable, diagnosticSessionsTable, diagnosticResponsesTable, diagnosticProfilesTable, diagnosticProfileItemsTable, diagnosticGapsTable, diagnosticRecommendationsTable, diagnosticRecommendationFollowUpsTable, diagnosticSafetyFlagsTable, diagnosticAuditEventsTable };
+const tables = { diagnosticTemplatesTable, diagnosticQuestionsTable, diagnosticOptionsTable, diagnosticSessionsTable, diagnosticResponsesTable, diagnosticProfilesTable, diagnosticProfileItemsTable, diagnosticGapsTable, diagnosticRecommendationsTable, diagnosticRecommendationFollowUpsTable, diagnosticFollowUpReminderDeliveriesTable, diagnosticSafetyFlagsTable, diagnosticAuditEventsTable };
 export const diagnosticInsertSchemas = Object.fromEntries(Object.entries(tables).map(([name, table]) => [name, createInsertSchema(table).omit({ createdAt: true, updatedAt: true })]));
 export type DiagnosticSession = typeof diagnosticSessionsTable.$inferSelect;
 export type DiagnosticProfile = typeof diagnosticProfilesTable.$inferSelect;
