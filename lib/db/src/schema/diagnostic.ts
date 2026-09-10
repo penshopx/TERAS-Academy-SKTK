@@ -95,8 +95,15 @@ export const diagnosticSafetyFlagsTable = pgTable("teras_diagnostic_safety_flags
   id: text("id").primaryKey(), profileId: text("profile_id").notNull().references(() => diagnosticProfilesTable.id, { onDelete: "cascade" }), competencyUnitId: text("competency_unit_id").references(() => competencyUnitsTable.id), code: text("code").notNull(), severity: text("severity").notNull(), blocking: boolean("blocking").notNull().default(true), detail: text("detail").notNull(), ...audit,
 });
 export const diagnosticAuditEventsTable = pgTable("teras_diagnostic_audit_events", {
-  id: text("id").primaryKey(), sessionId: text("session_id").notNull().references(() => diagnosticSessionsTable.id, { onDelete: "cascade" }), learnerId: text("learner_id").notNull().references(() => peopleTable.id, { onDelete: "cascade" }), action: text("action").notNull(), details: jsonb("details").$type<Record<string, unknown>>().notNull().default({}), ...audit,
-}, table => [index("teras_diagnostic_audit_session_created_idx").on(table.sessionId, table.createdAt)]);
+  id: text("id").primaryKey(), sessionId: text("session_id").notNull(), learnerId: text("learner_id").notNull().references(() => peopleTable.id, { onDelete: "cascade" }), action: text("action").notNull(), details: jsonb("details").$type<Record<string, unknown>>().notNull().default({}), ...audit,
+}, table => [
+  index("teras_diagnostic_audit_session_created_idx").on(table.sessionId, table.createdAt),
+  foreignKey({
+    columns: [table.sessionId, table.learnerId],
+    foreignColumns: [diagnosticSessionsTable.id, diagnosticSessionsTable.learnerId],
+    name: "teras_diagnostic_audit_events_session_learner_fk",
+  }).onDelete("cascade"),
+]);
 
 const tables = { diagnosticTemplatesTable, diagnosticQuestionsTable, diagnosticOptionsTable, diagnosticSessionsTable, diagnosticResponsesTable, diagnosticProfilesTable, diagnosticProfileItemsTable, diagnosticGapsTable, diagnosticRecommendationsTable, diagnosticRecommendationFollowUpsTable, diagnosticSafetyFlagsTable, diagnosticAuditEventsTable };
 export const diagnosticInsertSchemas = Object.fromEntries(Object.entries(tables).map(([name, table]) => [name, createInsertSchema(table).omit({ createdAt: true, updatedAt: true })]));

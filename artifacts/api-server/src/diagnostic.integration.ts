@@ -62,6 +62,8 @@ async function run() {
   const singleActiveSessionMigration = await readFile(new URL("../../../lib/db/migrations/0020_diagnostic_single_active_session.sql", import.meta.url), "utf8");
   const profileOwnershipMigration = await readFile(new URL("../../../lib/db/migrations/0021_diagnostic_profile_session_learner.sql", import.meta.url), "utf8");
   await pool.query(profileOwnershipMigration);
+  const auditOwnershipMigration = await readFile(new URL("../../../lib/db/migrations/0024_diagnostic_audit_session_learner.sql", import.meta.url), "utf8");
+  await pool.query(auditOwnershipMigration);
   await db.insert(programsTable).values({ id: "solar-pv-tech", domain: "renewable", name: "Solar PV", description: "Fixture", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
   await db.insert(pathwaysTable).values({ id: "path-a", programId: "solar-pv-tech", name: "Path A", type: "standard", outcome: "Technician", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
   await db.insert(pathwaysTable).values({ id: "path-b", programId: "solar-pv-tech", name: "Path B", type: "standard", outcome: "Designer", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
@@ -244,6 +246,54 @@ async function run() {
         || (error as { code?: string }).code === "23503";
     }
     assert(crossLearnerProfileRejected, "database accepted a diagnostic profile owned by a different learner than its session");
+    const legacyMismatchedAuditId = `diagnostic-audit-legacy-mismatch-${suffix}`;
+    const auditMigrationClient = await pool.connect();
+    try {
+      await auditMigrationClient.query(
+        "ALTER TABLE teras_diagnostic_audit_events DROP CONSTRAINT teras_diagnostic_audit_events_session_learner_fk",
+      );
+      await auditMigrationClient.query(
+        `INSERT INTO teras_diagnostic_audit_events
+          (id, session_id, learner_id, action, details, created_by)
+         VALUES ($1, $2, $3, 'legacy_mismatched_owner', '{}'::jsonb, $3)`,
+        [legacyMismatchedAuditId, sessionB.id, learnerA],
+      );
+      let legacyMismatchDetected = false;
+      try {
+        await auditMigrationClient.query(auditOwnershipMigration);
+      } catch (error) {
+        legacyMismatchDetected = (error as { code?: string }).code === "P0001";
+        await auditMigrationClient.query("ROLLBACK");
+      }
+      assert(legacyMismatchDetected, "audit ownership migration did not reject mismatched legacy data");
+      await auditMigrationClient.query("DELETE FROM teras_diagnostic_audit_events WHERE id = $1", [legacyMismatchedAuditId]);
+      await auditMigrationClient.query(auditOwnershipMigration);
+    } finally {
+      auditMigrationClient.release();
+    }
+    const ownershipAuditId = `diagnostic-audit-ownership-${suffix}`;
+    const ownershipAudit = {
+      id: ownershipAuditId,
+      sessionId: sessionB.id,
+      learnerId: learnerB,
+      action: "ownership_constraint_test",
+      details: {},
+      createdBy: learnerB,
+    };
+    await db.insert(diagnosticAuditEventsTable).values(ownershipAudit);
+    await db.delete(diagnosticAuditEventsTable).where(eq(diagnosticAuditEventsTable.id, ownershipAuditId));
+    let crossLearnerAuditRejected = false;
+    try {
+      await db.insert(diagnosticAuditEventsTable).values({
+        ...ownershipAudit,
+        learnerId: learnerA,
+        createdBy: learnerA,
+      });
+    } catch (error) {
+      crossLearnerAuditRejected = (error as { cause?: { code?: string }; code?: string }).cause?.code === "23503"
+        || (error as { code?: string }).code === "23503";
+    }
+    assert(crossLearnerAuditRejected, "database accepted a diagnostic audit event owned by a different learner than its session");
     const crossSaveBody = { progress: 25, responses: [{ questionId: safety.id, optionId: "diag-o-safe" }] };
     const beforeCrossSessions = await db.select().from(diagnosticSessionsTable).where(inArray(diagnosticSessionsTable.id, [sessionA.id, sessionB.id]));
     const beforeCrossResponses = await db.select().from(diagnosticResponsesTable).where(inArray(diagnosticResponsesTable.sessionId, [sessionA.id, sessionB.id]));
