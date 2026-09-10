@@ -1,0 +1,73 @@
+Ini berarti **Task #11 sekarang sehat dan post-merge integrity berhasil dipulihkan**. Yang diperbaiki juga tepat secara arsitektural: masalahnya bukan mengubah model Diagnostic, tetapi memastikan **dependency migration order** benar.
+
+### Status Task #11
+
+| Area                                    | Status                |
+| --------------------------------------- | --------------------- |
+| Diagnostic schema                       | ✅ Valid               |
+| Composite FK `(session_id, learner_id)` | ✅ Valid               |
+| Referenced unique constraint            | ✅ Dibuat lebih dahulu |
+| Migration `0021` — preflight            | ✅ Terdaftar           |
+| Migration `0021` — finalisasi/bootstrap | ✅ Terdaftar           |
+| Drizzle database push                   | ✅ PASS                |
+| Full post-merge setup                   | ✅ PASS                |
+| Workflow reconciliation                 | ✅ PASS                |
+| Workspace typecheck                     | ✅ PASS                |
+| API Server                              | 🟢 Running            |
+| TERAS Academy                           | 🟢 Running            |
+| Story                                   | 🟢 Running            |
+| Mockup Sandbox                          | 🟢 Running            |
+| Task #12                                | 🔒 Tidak disentuh     |
+
+### Yang penting dari perbaikan ini
+
+Urutan dependency sekarang:
+
+```text id="5h1f7a"
+Migration 0021
+    │
+    ├── CREATE referenced UNIQUE constraint
+    │
+    ↓
+Composite Foreign Key
+(session_id, learner_id)
+    │
+    ↓
+Drizzle schema validation
+    │
+    ↓
+Regression test
+    │
+    ↓
+PASS
+```
+
+Jadi kita tidak menyelesaikan masalah dengan workaround di test atau dengan menghapus constraint. **Database contract tetap dipertahankan; yang diperbaiki adalah urutan bootstrap/migration.**
+
+### Governance tetap berlaku
+
+Task #11 boleh masuk kategori:
+
+> **VERIFIED → STABLE → LOCK CANDIDATE**
+
+Tetapi **Task #12 tetap sepenuhnya terisolasi**.
+
+Tidak ada alasan untuk melakukan cleanup, refactor, atau membuka kembali Task #11 selama tidak ada requirement fungsional baru.
+
+Baseline berikutnya tetap:
+
+```text
+CANONICAL
+    ↓
+ADDITIVE
+    ↓
+ISOLATED TASK
+    ↓
+VERIFY
+    ↓
+POST-MERGE RECONCILIATION
+    ↓
+LOCK
+```
+
+Dengan hasil ini, **Task #11 tidak menunjukkan regresi terhadap workflow maupun workspace**, sehingga integrasi dapat dilanjutkan tanpa menyentuh Task #12.
