@@ -117,7 +117,19 @@ async function main() {
     await page.getByLabel("Follow-up note for Supervised isolation practice").fill("Schedule supervised isolation practice");
     await card.getByRole("button", { name: "Record follow-up" }).click();
     await page.getByText("Follow-up failed", { exact: true }).waitFor();
+    if (await page.getByLabel("Follow-up status for Supervised isolation practice").textContent() !== "Planned") {
+      throw new Error("The follow-up status was not preserved after the failed request.");
+    }
+    if (await page.getByLabel("Target date for Supervised isolation practice").inputValue() !== "2026-10-15") {
+      throw new Error("The follow-up target date was not preserved after the failed request.");
+    }
+    if (await page.getByLabel("Follow-up note for Supervised isolation practice").inputValue() !== "Schedule supervised isolation practice") {
+      throw new Error("The follow-up note was not preserved after the failed request.");
+    }
     await card.getByRole("button", { name: "Record follow-up" }).click();
+    await page.getByText("Follow-up recorded", { exact: true }).waitFor();
+    await card.getByText("Planned", { exact: true }).first().waitFor();
+    await card.getByText(/Target .*10\/15\/2026|Target .*15\/10\/2026/).waitFor();
     await page.getByText("Schedule supervised isolation practice", { exact: true }).waitFor();
     if (
       !submittedDrafts[0]?.idempotencyKey
