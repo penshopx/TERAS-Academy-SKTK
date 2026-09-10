@@ -17,6 +17,7 @@
     "test:remediation-idempotency-upgrade": "bash ./remediation-idempotency-upgrade.integration.test.sh",
     "test:knowledge-upgrade": "bash ./knowledge-upgrade.integration.test.sh",
     "test:competency-framework-upgrade": "bash ./competency-framework-upgrade.integration.test.sh",
+    "test:readiness-single-active-upgrade": "bash ./readiness-single-active-upgrade.integration.test.sh",
     "test:learner-diagnostic-upgrade": "bash ./learner-diagnostic-upgrade.integration.test.sh",
     "test:admin-management": "bash ./admin-management.integration.test.sh",
     "test:super-admin-provisioning-policy": "tsx ./src/super-admin-provisioning-policy.test.ts",

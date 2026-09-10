@@ -121,6 +121,7 @@ pnpm --filter @workspace/scripts run test:admin-management-upgrade
 pnpm --filter @workspace/scripts run test:remediation-idempotency-upgrade
 pnpm --filter @workspace/scripts run test:knowledge-upgrade
 pnpm --filter @workspace/scripts run test:competency-framework-upgrade
+pnpm --filter @workspace/scripts run test:readiness-single-active-upgrade
 pnpm --filter @workspace/scripts run test:admin-management
 pnpm --filter @workspace/scripts run test:deployment-hardening
 pnpm --filter @workspace/scripts run test:safety
