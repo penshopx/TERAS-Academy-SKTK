@@ -2095,6 +2095,32 @@ export type AdminReadinessExportFilters = {
   ruleVersion: number | null;
 };
 
+export type AdminReadinessExportIntegrityAlgorithm = typeof AdminReadinessExportIntegrityAlgorithm[keyof typeof AdminReadinessExportIntegrityAlgorithm];
+
+
+export const AdminReadinessExportIntegrityAlgorithm = {
+  'SHA-256': 'SHA-256',
+} as const;
+
+/**
+ * JSON.stringify of schemaVersion, exportedAt, filters, recordCount, and records in that order
+ */
+export type AdminReadinessExportIntegrityCanonicalization = typeof AdminReadinessExportIntegrityCanonicalization[keyof typeof AdminReadinessExportIntegrityCanonicalization];
+
+
+export const AdminReadinessExportIntegrityCanonicalization = {
+  'teras-readiness-export-v1-json-stringify': 'teras-readiness-export-v1-json-stringify',
+} as const;
+
+export type AdminReadinessExportIntegrity = {
+  algorithm: AdminReadinessExportIntegrityAlgorithm;
+  /** JSON.stringify of schemaVersion, exportedAt, filters, recordCount, and records in that order */
+  canonicalization: AdminReadinessExportIntegrityCanonicalization;
+  /** @pattern ^[a-f0-9]{64}$ */
+  checksum: string;
+  verificationCommand: string;
+};
+
 export interface AdminReadinessExport {
   schemaVersion: AdminReadinessExportSchemaVersion;
   exportedAt: string;
@@ -2102,6 +2128,7 @@ export interface AdminReadinessExport {
   /** @minimum 0 */
   recordCount: number;
   records: AdminReadinessEvaluation[];
+  integrity: AdminReadinessExportIntegrity;
 }
 
 export type ReadinessRuleInputAssessmentMode = typeof ReadinessRuleInputAssessmentMode[keyof typeof ReadinessRuleInputAssessmentMode];

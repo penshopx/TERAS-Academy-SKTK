@@ -1,4 +1,5 @@
 import { inArray } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import {
   db, enrollmentsTable, pathwaysTable, peopleTable, programsTable, readinessEventsTable, readinessGatesTable,
 } from "@workspace/db";
@@ -92,6 +93,20 @@ async function run() {
     assert(exported.schemaVersion === "1.0" && exported.recordCount === 2, "Export must be versioned and report its record count");
     assert(exported.records.some((record: any) => record.id === ids.eventB && record.inputEvidence.openCriticalGaps[0] === "gap-b"), "Export must include complete decision snapshots");
     assert(exported.records.some((record: any) => record.id === ids.eventC), "Export must preserve records with identical evaluation timestamps");
+    const canonicalPayload = {
+      schemaVersion: exported.schemaVersion,
+      exportedAt: exported.exportedAt,
+      filters: exported.filters,
+      recordCount: exported.recordCount,
+      records: exported.records,
+    };
+    const canonicalJson = JSON.stringify(canonicalPayload);
+    const checksum = createHash("sha256").update(canonicalJson, "utf8").digest("hex");
+    assert(exported.integrity.algorithm === "SHA-256" && exported.integrity.checksum === checksum, "Export checksum must verify its canonical payload");
+    const changedByte = canonicalJson.replace("Critical gap remains open", "Critical gap remains opfn");
+    assert(changedByte.length === canonicalJson.length && changedByte !== canonicalJson, "Checksum fixture must change exactly one byte");
+    const changedChecksum = createHash("sha256").update(changedByte, "utf8").digest("hex");
+    assert(changedChecksum !== exported.integrity.checksum, "Changing one canonical payload byte must fail checksum verification");
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     await db.delete(readinessEventsTable).where(inArray(readinessEventsTable.id, [ids.eventA, ids.eventB, ids.eventC]));

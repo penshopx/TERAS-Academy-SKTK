@@ -2,6 +2,7 @@
 // types; runtime operations are constrained by the generated Zod contracts.
 // @ts-nocheck
 import { Router, type IRouter } from "express";
+import { createHash } from "node:crypto";
 import { and, count, desc, eq, lt, or, sql } from "drizzle-orm";
 import {
   CreateAdminCohortBody, CreateAdminCohortResponse, CreateAdminEnrollmentBody, CreateAdminEnrollmentResponse,
@@ -260,7 +261,12 @@ router.get("/admin/readiness-history/export", async (req, res): Promise<void> =>
   res.setHeader("Content-Disposition", `attachment; filename="readiness-audit-${exportedAt.toISOString().slice(0, 10)}.json"`);
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  await writeExportChunk(res, `${JSON.stringify(metadata).slice(0, -1)},"records":[`);
+  const hash = createHash("sha256");
+  const writeCanonicalChunk = async (chunk: string) => {
+    hash.update(chunk, "utf8");
+    await writeExportChunk(res, chunk);
+  };
+  await writeCanonicalChunk(`${JSON.stringify(metadata).slice(0, -1)},"records":[`);
   const batchSize = 500;
   let before: { evaluatedAt: Date; id: string } | undefined;
   let exportedCount = 0;
@@ -269,14 +275,25 @@ router.get("/admin/readiness-history/export", async (req, res): Promise<void> =>
     const records = await readinessHistory(filters, { limit: batchSize, before });
     if (!records.length) break;
     for (const record of records) {
-      await writeExportChunk(res, `${first ? "" : ","}${JSON.stringify(record)}`);
+      await writeCanonicalChunk(`${first ? "" : ","}${JSON.stringify(record)}`);
       first = false;
     }
     exportedCount += records.length;
     const last = records.at(-1)!;
     before = { evaluatedAt: last.evaluatedAt, id: last.id };
   }
-  if (!res.destroyed) res.end("]}");
+  if (!res.destroyed) {
+    hash.update("]}", "utf8");
+    await writeExportChunk(res, "]");
+    const checksum = hash.digest("hex");
+    const integrity = {
+      algorithm: "SHA-256",
+      canonicalization: "teras-readiness-export-v1-json-stringify",
+      checksum,
+      verificationCommand: "node artifacts/api-server/scripts/verify-readiness-audit.mjs <readiness-audit.json>",
+    };
+    res.end(`,"integrity":${JSON.stringify(integrity)}}`);
+  }
 });
 
 router.post("/admin/claim-supabase-identity", async (req, res): Promise<void> => {

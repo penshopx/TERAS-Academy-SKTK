@@ -33,6 +33,7 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
   const [selected, setSelected] = useState<AdminReadinessEvaluation | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<unknown>(null);
+  const [lastChecksum, setLastChecksum] = useState("");
   const params = useMemo<ListAdminReadinessHistoryParams>(() => ({
     ...(learnerId ? { learnerId } : {}),
     ...(pathwayId ? { pathwayId } : {}),
@@ -58,13 +59,26 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
     setExportError(null);
     try {
       const payload = await exportAdminReadinessHistory(exportParams);
+      const filename = `readiness-audit-${new Date().toISOString().slice(0, 10)}.json`;
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `readiness-audit-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.download = filename;
       anchor.click();
       URL.revokeObjectURL(url);
+      const checksumBlob = new Blob([
+        `SHA-256 (payload canonical): ${payload.integrity.checksum}\n`,
+        `File audit: ${filename}\n`,
+        `Verifikasi: ${payload.integrity.verificationCommand}\n`,
+      ], { type: "text/plain" });
+      const checksumUrl = URL.createObjectURL(checksumBlob);
+      const checksumAnchor = document.createElement("a");
+      checksumAnchor.href = checksumUrl;
+      checksumAnchor.download = `${filename}.canonical.sha256.txt`;
+      checksumAnchor.click();
+      URL.revokeObjectURL(checksumUrl);
+      setLastChecksum(payload.integrity.checksum);
     } catch (error) {
       setExportError(error);
     } finally {
@@ -108,6 +122,11 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
           </div>
         </div>
         {exportError !== null && <p className="text-sm text-destructive" role="alert">{errorMessage(exportError)}</p>}
+        {lastChecksum && <div className="rounded-md border bg-muted/30 p-3 text-sm" data-testid="readiness-export-checksum">
+          <p className="font-medium">Checksum SHA-256 ekspor terakhir</p>
+          <code className="mt-1 block break-all text-xs text-muted-foreground">{lastChecksum}</code>
+          <p className="mt-2 text-xs text-muted-foreground">File checksum canonical ikut diunduh. Verifikasi dengan <code>node artifacts/api-server/scripts/verify-readiness-audit.mjs &lt;file.json&gt;</code>.</p>
+        </div>}
         {history.isLoading && <div className="flex min-h-24 items-center gap-2 text-sm text-muted-foreground" role="status"><Loader2 className="h-4 w-4 animate-spin" />Memuat riwayat…</div>}
         {history.error && <p className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive" role="alert">{errorMessage(history.error)}</p>}
         {!history.isLoading && !history.error && !history.data?.items.length && <p className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">Tidak ada evaluasi yang cocok dengan filter.</p>}

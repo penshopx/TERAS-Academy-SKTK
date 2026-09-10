@@ -7,6 +7,7 @@
  */
 import type { AdminReadinessEvaluation } from './adminReadinessEvaluation';
 import type { AdminReadinessExportFilters } from './adminReadinessExportFilters';
+import type { AdminReadinessExportIntegrity } from './adminReadinessExportIntegrity';
 import type { AdminReadinessExportSchemaVersion } from './adminReadinessExportSchemaVersion';
 
 export interface AdminReadinessExport {
@@ -16,4 +17,5 @@ export interface AdminReadinessExport {
   /** @minimum 0 */
   recordCount: number;
   records: AdminReadinessEvaluation[];
+  integrity: AdminReadinessExportIntegrity;
 }

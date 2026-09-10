@@ -3789,7 +3789,7 @@ components:
         total: { type: integer, minimum: 0 }
     AdminReadinessExport:
       type: object
-      required: [schemaVersion, exportedAt, filters, recordCount, records]
+      required: [schemaVersion, exportedAt, filters, recordCount, records, integrity]
       properties:
         schemaVersion: { type: string, enum: ["1.0"] }
         exportedAt: { type: string, format: date-time }
@@ -3803,6 +3803,17 @@ components:
             ruleVersion: { type: ["integer", "null"], minimum: 1 }
         recordCount: { type: integer, minimum: 0 }
         records: { type: array, items: { $ref: "#/components/schemas/AdminReadinessEvaluation" } }
+        integrity:
+          type: object
+          required: [algorithm, canonicalization, checksum, verificationCommand]
+          properties:
+            algorithm: { type: string, enum: [SHA-256] }
+            canonicalization:
+              type: string
+              description: JSON.stringify of schemaVersion, exportedAt, filters, recordCount, and records in that order
+              enum: [teras-readiness-export-v1-json-stringify]
+            checksum: { type: string, pattern: "^[a-f0-9]{64}$" }
+            verificationCommand: { type: string }
     ReadinessRuleInput:
       type: object
       required: [programId, pathwayId, sequence, code, name, requirement, assessmentMode, evidenceMode, threshold, hardGate]

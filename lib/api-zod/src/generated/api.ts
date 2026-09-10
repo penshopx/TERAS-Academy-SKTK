@@ -2438,6 +2438,7 @@ export const exportAdminReadinessHistoryResponseRecordsItemScoreMin = 0;
 export const exportAdminReadinessHistoryResponseRecordsItemScoreMax = 100;
 
 
+export const exportAdminReadinessHistoryResponseIntegrityChecksumRegExp = new RegExp('^[a-f0-9]{64}$');
 
 
 export const ExportAdminReadinessHistoryResponse = zod.object({
@@ -2479,7 +2480,13 @@ export const ExportAdminReadinessHistoryResponse = zod.object({
 }),
   "decisionReason": zod.string(),
   "evaluatedAt": zod.coerce.date()
-}))
+})),
+  "integrity": zod.object({
+  "algorithm": zod.enum(['SHA-256']),
+  "canonicalization": zod.enum(['teras-readiness-export-v1-json-stringify']).describe('JSON.stringify of schemaVersion, exportedAt, filters, recordCount, and records in that order'),
+  "checksum": zod.string().regex(exportAdminReadinessHistoryResponseIntegrityChecksumRegExp),
+  "verificationCommand": zod.string()
+})
 })
 
 
