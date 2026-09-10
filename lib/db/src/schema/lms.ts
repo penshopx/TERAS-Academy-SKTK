@@ -218,6 +218,11 @@ export const activityCompletionEventsTable = pgTable("teras_activity_completion_
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   ...eventAudit,
 }, table => [
+  foreignKey({
+    columns: [table.enrollmentId, table.learnerId],
+    foreignColumns: [enrollmentsTable.id, enrollmentsTable.learnerId],
+    name: "teras_activity_completion_enrollment_learner_fk",
+  }),
   index("teras_activity_completion_lookup_idx").on(table.activityId, table.learnerId, table.pathwayId, table.createdAt),
 ]);
 
@@ -234,6 +239,11 @@ export const outcomeVerificationEventsTable = pgTable("teras_outcome_verificatio
   reason: text("reason").notNull(),
   ...eventAudit,
 }, table => [
+  foreignKey({
+    columns: [table.enrollmentId, table.learnerId],
+    foreignColumns: [enrollmentsTable.id, enrollmentsTable.learnerId],
+    name: "teras_outcome_verification_enrollment_learner_fk",
+  }),
   index("teras_outcome_verification_lookup_idx").on(table.outcomeId, table.learnerId, table.pathwayId, table.createdAt),
 ]);
 
@@ -288,6 +298,11 @@ export const readinessTransferEventsTable = pgTable("teras_readiness_transfer_ev
   triggeredBy: text("triggered_by").notNull().references(() => peopleTable.id),
   ...eventAudit,
 }, table => [
+  foreignKey({
+    columns: [table.enrollmentId, table.learnerId],
+    foreignColumns: [enrollmentsTable.id, enrollmentsTable.learnerId],
+    name: "teras_readiness_transfer_enrollment_learner_fk",
+  }),
   index("teras_readiness_transfer_lookup_idx").on(table.learnerId, table.pathwayId, table.createdAt),
 ]);
 
@@ -308,6 +323,11 @@ export const learningTransitionEventsTable = pgTable("teras_learning_transition_
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   ...eventAudit,
 }, table => [
+  foreignKey({
+    columns: [table.enrollmentId, table.learnerId],
+    foreignColumns: [enrollmentsTable.id, enrollmentsTable.learnerId],
+    name: "teras_learning_transition_enrollment_learner_fk",
+  }),
   uniqueIndex("teras_learning_transition_idempotency_unique").on(table.idempotencyKey),
   index("teras_learning_transition_state_lookup_idx").on(table.activityId, table.learnerId, table.pathwayId, table.createdAt),
 ]);

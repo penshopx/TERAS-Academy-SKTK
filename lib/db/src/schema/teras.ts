@@ -92,6 +92,7 @@ export const enrollmentsTable = pgTable("teras_enrollments", {
   status: text("status").notNull().default("active"), ...audit,
 }, table => [
   unique("teras_enrollments_id_program_unique").on(table.id, table.programId),
+  unique("teras_enrollments_id_learner_unique").on(table.id, table.learnerId),
   index("teras_enrollments_learner_id_idx").on(table.learnerId, table.id),
 ]);
 /** Immutable administrative history; write an event for every admin mutation. */
