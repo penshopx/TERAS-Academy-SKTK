@@ -1,6 +1,6 @@
-import { AlertTriangle, ArrowUpRight, ClipboardList, ShieldAlert } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, CalendarClock, ClipboardList, ShieldAlert } from "lucide-react";
 import { getGetTrainerDashboardQueryKey, type DiagnosticRecommendation, type TrainerDiagnosticFollowUp, useRecordDiagnosticRecommendationFollowUp } from "@workspace/api-client-react";
-import { useState } from "react";
+import React, { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,29 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 
 const statusLabels = { planned: "Planned", in_progress: "In progress", completed: "Completed" } as const;
+const timingLabels = {
+  all: "All target dates",
+  overdue: "Overdue",
+  due_soon: "Due within 7 days",
+  scheduled: "Scheduled later",
+  unscheduled: "No target date",
+  completed: "Completed",
+} as const;
+
+function ReminderBadge({ recommendation }: { recommendation: DiagnosticRecommendation }) {
+  const timing = recommendation.followUpReminder?.timing;
+  if (timing !== "overdue" && timing !== "due_soon") return null;
+  return (
+    <Badge
+      variant={timing === "overdue" ? "destructive" : "secondary"}
+      className={timing === "due_soon" ? "border-amber-500/50 bg-amber-500/15 text-amber-800 dark:text-amber-200" : undefined}
+      data-testid={`follow-up-reminder-${timing}`}
+    >
+      <CalendarClock className="mr-1 h-3 w-3" />
+      {timing === "overdue" ? "Overdue" : "Due within 7 days"}
+    </Badge>
+  );
+}
 
 function RecommendationFollowUp({ recommendation }: { recommendation: DiagnosticRecommendation }) {
   const followUps = recommendation.followUps ?? [];
@@ -42,6 +65,7 @@ function RecommendationFollowUp({ recommendation }: { recommendation: Diagnostic
 
   return <div className="mt-3 space-y-3 border-t border-border pt-3">
     <div className="flex flex-wrap items-center gap-2">
+      <ReminderBadge recommendation={recommendation} />
       <Badge variant={latest?.status === "completed" ? "secondary" : "outline"}>
         {latest ? statusLabels[latest.status] : "Not planned"}
       </Badge>
@@ -76,6 +100,20 @@ function RecommendationFollowUp({ recommendation }: { recommendation: Diagnostic
 }
 
 export function DiagnosticFollowUps({ items }: { items: TrainerDiagnosticFollowUp[] }) {
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [timingFilter, setTimingFilter] = useState<keyof typeof timingLabels>("all");
+  const visibleItems = items.map((item) => ({
+    ...item,
+    recommendations: item.recommendations.filter((recommendation) => {
+      const reminder = recommendation.followUpReminder ?? { status: null, timing: "unscheduled" };
+      const statusMatches = statusFilter === "all"
+        || (statusFilter === "not_started" && reminder.status === null)
+        || reminder.status === statusFilter;
+      return statusMatches && (timingFilter === "all" || reminder.timing === timingFilter);
+    }),
+  })).filter((item) => item.baselineScore == null || item.recommendations.length > 0);
+  const visibleRecommendationCount = visibleItems.reduce((count, item) => count + item.recommendations.length, 0);
+
   return (
     <Card data-testid="trainer-diagnostic-follow-ups">
       <CardHeader>
@@ -83,7 +121,25 @@ export function DiagnosticFollowUps({ items }: { items: TrainerDiagnosticFollowU
         <p className="text-sm text-muted-foreground">Baseline diagnostic, priority gaps, and recommended learning or practice for each assigned learner pathway.</p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {items.map((item) => (
+        <div className="grid gap-2 sm:grid-cols-2" aria-label="Follow-up filters">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger aria-label="Filter recommendations by follow-up status"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="not_started">Not planned</SelectItem>
+              <SelectItem value="planned">Planned</SelectItem>
+              <SelectItem value="in_progress">In progress</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={timingFilter} onValueChange={(value) => setTimingFilter(value as keyof typeof timingLabels)}>
+            <SelectTrigger aria-label="Filter recommendations by target date"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {Object.entries(timingLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        {visibleItems.map((item) => (
           <section key={`${item.learnerId}:${item.pathwayId}`} className="rounded-lg border border-border bg-background/40 p-4" data-testid={`diagnostic-follow-up-${item.learnerId}-${item.pathwayId}`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -125,6 +181,7 @@ export function DiagnosticFollowUps({ items }: { items: TrainerDiagnosticFollowU
           </section>
         ))}
         {!items.length && <p className="text-sm text-muted-foreground">No active learner pathway assignments are available.</p>}
+        {items.length > 0 && visibleRecommendationCount === 0 && <p className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">No recommendations match these follow-up filters.</p>}
       </CardContent>
     </Card>
   );

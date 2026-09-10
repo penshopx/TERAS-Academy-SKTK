@@ -9,6 +9,21 @@ import { trainerBottlenecks } from "../lib/trainer-bottlenecks";
 
 const router: IRouter = Router();
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
+const FOLLOW_UP_DUE_SOON_DAYS = 7;
+
+export function followUpReminder(followUps: { status: string; targetAt: Date | null }[], now = new Date()) {
+  const latest = followUps[0];
+  if (!latest) return { status: null, timing: "unscheduled" as const };
+  if (latest.status === "completed") return { status: latest.status, timing: "completed" as const };
+  if (!latest.targetAt) return { status: latest.status, timing: "unscheduled" as const };
+  if (latest.targetAt.getTime() < now.getTime()) return { status: latest.status, timing: "overdue" as const };
+  const dueSoonAt = new Date(now);
+  dueSoonAt.setUTCDate(dueSoonAt.getUTCDate() + FOLLOW_UP_DUE_SOON_DAYS);
+  return {
+    status: latest.status,
+    timing: latest.targetAt.getTime() <= dueSoonAt.getTime() ? "due_soon" as const : "scheduled" as const,
+  };
+}
 
 async function appendModuleRevisionState(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], moduleId: string, learnerId: string, pathwayId: string, reviewerId: string) {
   const gaps = await tx.select().from(gapsTable).where(and(eq(gapsTable.moduleId, moduleId), eq(gapsTable.learnerId, learnerId), eq(gapsTable.pathwayId, pathwayId)));
@@ -84,12 +99,14 @@ async function diagnosticFollowUps(contexts: Awaited<ReturnType<typeof workspace
       gaps: gaps.sort((a, b) => (a.severity === "Critical" ? -1 : 0) - (b.severity === "Critical" ? -1 : 0)),
       recommendations: recommendations
         .sort((a, b) => (a.priority === "Critical" ? -1 : 0) - (b.priority === "Critical" ? -1 : 0))
-        .map((recommendation) => ({
-          ...recommendation,
-          followUps: followUps
+        .map((recommendation) => {
+          const recommendationFollowUps = followUps
             .filter((followUp) => followUp.recommendationId === recommendation.id)
-            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id))
-            .map((followUp) => ({
+            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
+          return {
+            ...recommendation,
+            followUpReminder: followUpReminder(recommendationFollowUps),
+            followUps: recommendationFollowUps.map((followUp) => ({
               id: followUp.id,
               recommendationId: followUp.recommendationId,
               trainerId: followUp.trainerId,
@@ -99,7 +116,8 @@ async function diagnosticFollowUps(contexts: Awaited<ReturnType<typeof workspace
               note: followUp.note,
               recordedAt: followUp.createdAt,
             })),
-        })),
+          };
+        }),
       safetyFindings,
     };
   }));

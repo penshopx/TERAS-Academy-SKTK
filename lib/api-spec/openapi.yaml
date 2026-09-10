@@ -2568,6 +2568,18 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DiagnosticRecommendationFollowUp"
+        followUpReminder:
+          $ref: "#/components/schemas/DiagnosticRecommendationFollowUpReminder"
+    DiagnosticRecommendationFollowUpReminder:
+      type: object
+      required: [status, timing]
+      properties:
+        status:
+          type: ["string", "null"]
+          enum: [planned, in_progress, completed, null]
+        timing:
+          type: string
+          enum: [unscheduled, scheduled, due_soon, overdue, completed]
     DiagnosticRecommendationFollowUp:
       type: object
       required: [id, recommendationId, trainerId, trainerName, status, targetAt, note, recordedAt]

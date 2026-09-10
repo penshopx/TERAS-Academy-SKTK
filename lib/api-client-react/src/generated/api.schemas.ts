@@ -132,6 +132,35 @@ export interface DiagnosticRecommendationFollowUp {
   recordedAt: string;
 }
 
+/**
+ * @nullable
+ */
+export type DiagnosticRecommendationFollowUpReminderStatus = typeof DiagnosticRecommendationFollowUpReminderStatus[keyof typeof DiagnosticRecommendationFollowUpReminderStatus] | null;
+
+
+export const DiagnosticRecommendationFollowUpReminderStatus = {
+  planned: 'planned',
+  in_progress: 'in_progress',
+  completed: 'completed',
+} as const;
+
+export type DiagnosticRecommendationFollowUpReminderTiming = typeof DiagnosticRecommendationFollowUpReminderTiming[keyof typeof DiagnosticRecommendationFollowUpReminderTiming];
+
+
+export const DiagnosticRecommendationFollowUpReminderTiming = {
+  unscheduled: 'unscheduled',
+  scheduled: 'scheduled',
+  due_soon: 'due_soon',
+  overdue: 'overdue',
+  completed: 'completed',
+} as const;
+
+export interface DiagnosticRecommendationFollowUpReminder {
+  /** @nullable */
+  status: DiagnosticRecommendationFollowUpReminderStatus;
+  timing: DiagnosticRecommendationFollowUpReminderTiming;
+}
+
 export interface DiagnosticRecommendation {
   id: string;
   /** @nullable */
@@ -145,6 +174,7 @@ export interface DiagnosticRecommendation {
   /** @nullable */
   href: string | null;
   followUps?: DiagnosticRecommendationFollowUp[];
+  followUpReminder?: DiagnosticRecommendationFollowUpReminder;
 }
 
 export type DiagnosticRecommendationFollowUpInputStatus = typeof DiagnosticRecommendationFollowUpInputStatus[keyof typeof DiagnosticRecommendationFollowUpInputStatus];

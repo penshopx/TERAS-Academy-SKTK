@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DiagnosticRecommendationFollowUp } from './diagnosticRecommendationFollowUp';
+import type { DiagnosticRecommendationFollowUpReminder } from './diagnosticRecommendationFollowUpReminder';
 
 export interface DiagnosticRecommendation {
   id: string;
@@ -20,4 +21,5 @@ export interface DiagnosticRecommendation {
   /** @nullable */
   href: string | null;
   followUps?: DiagnosticRecommendationFollowUp[];
+  followUpReminder?: DiagnosticRecommendationFollowUpReminder;
 }

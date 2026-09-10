@@ -987,7 +987,11 @@ export const CompleteDiagnosticSessionResponse = zod.object({
   "targetAt": zod.coerce.date().nullable(),
   "note": zod.string(),
   "recordedAt": zod.coerce.date()
-})).optional()
+})).optional(),
+  "followUpReminder": zod.object({
+  "status": zod.union([zod.literal('planned'),zod.literal('in_progress'),zod.literal('completed'),zod.literal(null)]).nullable(),
+  "timing": zod.enum(['unscheduled', 'scheduled', 'due_soon', 'overdue', 'completed'])
+}).optional()
 }))
 })
 
@@ -1040,7 +1044,11 @@ export const GetCompetencyProfileResponse = zod.object({
   "targetAt": zod.coerce.date().nullable(),
   "note": zod.string(),
   "recordedAt": zod.coerce.date()
-})).optional()
+})).optional(),
+  "followUpReminder": zod.object({
+  "status": zod.union([zod.literal('planned'),zod.literal('in_progress'),zod.literal('completed'),zod.literal(null)]).nullable(),
+  "timing": zod.enum(['unscheduled', 'scheduled', 'due_soon', 'overdue', 'completed'])
+}).optional()
 }))
 })
 
@@ -1119,7 +1127,11 @@ export const GetReadinessMapResponse = zod.object({
   "targetAt": zod.coerce.date().nullable(),
   "note": zod.string(),
   "recordedAt": zod.coerce.date()
-})).optional()
+})).optional(),
+  "followUpReminder": zod.object({
+  "status": zod.union([zod.literal('planned'),zod.literal('in_progress'),zod.literal('completed'),zod.literal(null)]).nullable(),
+  "timing": zod.enum(['unscheduled', 'scheduled', 'due_soon', 'overdue', 'completed'])
+}).optional()
 }))
 }),
   "readiness": zod.object({
@@ -1409,7 +1421,11 @@ export const GetTrainerDashboardResponse = zod.object({
   "targetAt": zod.coerce.date().nullable(),
   "note": zod.string(),
   "recordedAt": zod.coerce.date()
-})).optional()
+})).optional(),
+  "followUpReminder": zod.object({
+  "status": zod.union([zod.literal('planned'),zod.literal('in_progress'),zod.literal('completed'),zod.literal(null)]).nullable(),
+  "timing": zod.enum(['unscheduled', 'scheduled', 'due_soon', 'overdue', 'completed'])
+}).optional()
 })),
   "safetyFindings": zod.array(zod.object({
   "id": zod.string(),
