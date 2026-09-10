@@ -117,3 +117,15 @@ export function trackReadinessDecisionRecorded({
     outcome,
   });
 }
+
+type ReadinessAuditExportOutcome = "started" | "succeeded" | "cancelled" | "failed";
+
+export function trackReadinessAuditExport(
+  outcome: ReadinessAuditExportOutcome,
+  recordCount: number,
+): void {
+  trackEvent("readiness_audit_export", {
+    outcome,
+    record_count: recordCount,
+  });
+}

@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { trackReadinessAuditExport } from "@/lib/analytics";
 
 type Props = {
   enabled: boolean;
@@ -54,14 +55,18 @@ export async function runReadinessAuditExport({
   onLoadedBytes: (loadedBytes: number) => void;
 }): Promise<
   | { status: "success"; checksum: string; recordCount: number }
-  | { status: "cancelled" }
-  | { status: "failed"; error: unknown }
+  | { status: "cancelled"; recordCount: number }
+  | { status: "failed"; error: unknown; recordCount: number }
 > {
+  let recordCount = 0;
   try {
     const payload = await request(controller.signal, {
       onResponse: response => {
         const count = Number(response.headers.get("x-export-record-count"));
-        if (Number.isInteger(count) && count >= 0) onRecordCount(count);
+        if (Number.isInteger(count) && count >= 0) {
+          recordCount = count;
+          onRecordCount(count);
+        }
       },
       onDownloadProgress: ({ loadedBytes }) => onLoadedBytes(loadedBytes),
     });
@@ -70,9 +75,9 @@ export async function runReadinessAuditExport({
     return { status: "success", checksum: downloaded.checksum, recordCount: payload.recordCount };
   } catch (error) {
     if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
-      return { status: "cancelled" };
+      return { status: "cancelled", recordCount };
     }
-    return { status: "failed", error };
+    return { status: "failed", error, recordCount };
   }
 }
 
@@ -199,6 +204,7 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
     setExportRecordCount(null);
     setExportLoadedBytes(0);
     setExportError(null);
+    trackReadinessAuditExport("started", Math.max(0, history.data?.total ?? 0));
     const result = await runReadinessAuditExport({
       controller,
       request: (signal, callbacks) => exportAdminReadinessHistory(exportParams, { signal, ...callbacks }),
@@ -208,12 +214,15 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
     });
     try {
       if (result.status === "success") {
+        trackReadinessAuditExport("succeeded", result.recordCount);
         setLastChecksum(result.checksum);
         setExportRecordCount(result.recordCount);
         setExportStatus("success");
       } else if (result.status === "cancelled") {
+        trackReadinessAuditExport("cancelled", result.recordCount);
         setExportStatus("cancelled");
       } else {
+        trackReadinessAuditExport("failed", result.recordCount);
         setExportError(result.error);
         setExportStatus("failed");
       }

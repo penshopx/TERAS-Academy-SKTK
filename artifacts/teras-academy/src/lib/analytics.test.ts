@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   trackLearningAction,
+  trackReadinessAuditExport,
   trackReadinessDecisionRecorded,
   trackReadinessQueueOpened,
   trackResourceOpened,
@@ -132,6 +133,26 @@ test("dispatches the anonymous readiness funnel contract without learner data", 
   ]);
 });
 
+test("dispatches only export outcome and numeric record count", () => {
+  const calls: Array<{
+    name: string;
+    data?: Record<string, string | number | boolean>;
+  }> = [];
+  setTestWindow({ track: (name, data) => calls.push({ name, data }) });
+
+  trackReadinessAuditExport("started", 0);
+  trackReadinessAuditExport("succeeded", 37);
+  trackReadinessAuditExport("cancelled", 12);
+  trackReadinessAuditExport("failed", 4);
+
+  assert.deepStrictEqual(calls, [
+    { name: "readiness_audit_export", data: { outcome: "started", record_count: 0 } },
+    { name: "readiness_audit_export", data: { outcome: "succeeded", record_count: 37 } },
+    { name: "readiness_audit_export", data: { outcome: "cancelled", record_count: 12 } },
+    { name: "readiness_audit_export", data: { outcome: "failed", record_count: 4 } },
+  ]);
+});
+
 test("remains a safe no-op when the injected tracker is unavailable", () => {
   setTestWindow();
 
@@ -169,5 +190,9 @@ test("does not interrupt learning when the injected tracker throws", () => {
       resourceId: "resource-5",
       resourceType: "PDF",
     });
+  });
+
+  assert.doesNotThrow(() => {
+    trackReadinessAuditExport("succeeded", 8);
   });
 });

@@ -140,7 +140,7 @@ test("cancelling readiness export prevents downloads and reports cancellation", 
 
   controller.abort();
   const result = await resultPromise;
-  assert.deepEqual(result, { status: "cancelled" });
+  assert.deepEqual(result, { status: "cancelled", recordCount: 0 });
   assert.equal(downloads, 0);
   const markup = renderToStaticMarkup(
     <ReadinessExportFeedback status="cancelled" recordCount={null} error={null} errorMessage={String} checksum="" />,
@@ -166,6 +166,7 @@ test("readiness export runner keeps successful and failed outcomes explicit", as
 
   assert.equal(success.status, "success");
   assert.equal(failure.status, "failed");
+  assert.equal(failure.recordCount, 0);
   assert.match(failure.status === "failed" ? String(failure.error) : "", /Jaringan terputus/);
 });
 
