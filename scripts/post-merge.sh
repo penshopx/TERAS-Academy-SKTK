@@ -63,10 +63,16 @@ if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_people') IS
   # the diagnostic profile composite foreign key.
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0021_diagnostic_profile_session_learner.sql
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0022_readiness_history_indexes.sql
   # Reconcile legacy duplicate active readiness rules before Drizzle creates
   # the database-level single-active invariant.
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0023_readiness_single_active_rule.sql
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0024_diagnostic_audit_session_learner.sql
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0025_diagnostic_follow_up_reminder_deliveries.sql
 fi
 if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_content_resources') IS NOT NULL")" = "t" ]; then
   TERAS_MIGRATION_ACTOR=post-merge-upgrade \
@@ -107,13 +113,22 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0021_diagnostic_profile_session_learner.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0022_readiness_history_indexes.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0023_readiness_single_active_rule.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0024_diagnostic_audit_session_learner.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0025_diagnostic_follow_up_reminder_deliveries.sql
 if [ "$(pnpm --silent --filter @workspace/scripts run demo:fixtures-enabled)" = "1" ]; then
   pnpm --filter @workspace/scripts run seed:demo
 else
   echo "Skipping TERAS demo fixture seed; explicit safe demo fixture mode is not enabled."
 fi
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/schema-check.sql
+# API tests consume declaration output from composite workspace libraries.
+# Refresh it after merged schema changes and before any API test starts.
+pnpm run typecheck:libs
 pnpm --filter @workspace/api-server run test:resource-uri
 pnpm --filter @workspace/scripts run test:resource-uri-audit
 pnpm --filter @workspace/scripts run test:resource-uri-upgrade

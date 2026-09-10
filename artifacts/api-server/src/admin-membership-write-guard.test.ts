@@ -23,6 +23,7 @@ async function sourceFiles(directory: string): Promise<string[]> {
     if (
       ![".ts", ".js", ".mjs"].includes(extname(entry.name))
       || entry.name.endsWith(".test.ts")
+      || entry.name.endsWith(".database-test.ts")
       || entry.name.endsWith(".integration.ts")
     ) return [];
     return [path];

@@ -79,6 +79,10 @@ main().then(
   async () => { await pool.end(); },
   async error => {
     process.stderr.write(`${error instanceof Error ? error.stack : error}\n`);
+    if (error && typeof error === "object" && "cause" in error) {
+      const cause = error.cause;
+      process.stderr.write(`Cause: ${cause instanceof Error ? cause.stack : String(cause)}\n`);
+    }
     await pool.end();
     process.exitCode = 1;
   },
