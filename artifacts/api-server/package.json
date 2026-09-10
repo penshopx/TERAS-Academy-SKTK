@@ -17,6 +17,7 @@
     "test:learner-provisioning": "NODE_ENV=test tsx ./src/learner-provisioning.integration.ts",
     "test:learner-isolation": "NODE_ENV=test tsx ./src/learner-isolation.integration.ts",
     "test:diagnostic-integration": "NODE_ENV=test tsx ./src/diagnostic.integration-runner.ts",
+    "test:integration-schema-runner": "tsx --test --test-concurrency=1 ./src/integration-schema-runner.test.ts ./src/integration-schema-runner.database.test.ts",
     "test:readiness-dashboard-isolation": "NODE_ENV=test tsx ./src/readiness-dashboard-isolation.integration.ts",
     "test:diagnostic": "NODE_ENV=test tsx ./src/diagnostic.integration-runner.ts",
     "test:admin-authorization": "NODE_ENV=test tsx ./src/admin-authorization.integration.ts",
