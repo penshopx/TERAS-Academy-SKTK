@@ -1,0 +1,41 @@
+Dipahami. Saya akan memperlakukan status ini sebagai **baseline governance aktif** untuk pekerjaan TERAS berikutnya:
+
+### Status saat ini
+
+| Task                  | Status                         | Perlakuan                                    |
+| --------------------- | ------------------------------ | -------------------------------------------- |
+| **#11**               | VERIFIED → STABLE → **LOCKED** | Tidak disentuh                               |
+| **#12**               | **MERGED**                     | Dianggap bagian dari baseline                |
+| **#13**               | **RUNNING — ISOLATED**         | Tidak diganggu / tidak diubah oleh task lain |
+| **#14**               | Post-merge setup berjalan      | Belum dianggap selesai sampai diverifikasi   |
+| Task belum ditugaskan | **UNTOUCHED**                  | Tidak dikerjakan                             |
+| 2 subagent terhenti   | **STOPPED**                    | Tidak dilanjutkan tanpa assignment eksplisit |
+
+### Governance yang tetap berlaku
+
+**Canonical → Additive → Isolated → Verify → Reconcile → Lock**
+
+Artinya, setiap pekerjaan berikutnya harus:
+
+1. **Canonical** — mengikuti baseline/domain yang sudah dikunci.
+2. **Additive** — menambah kemampuan tanpa mengganti perilaku existing.
+3. **Isolated** — tidak mengganggu task/workflow yang sedang berjalan.
+4. **Verify** — dibuktikan dengan test/audit, bukan sekadar implementasi.
+5. **Reconcile** — hasilnya dibandingkan dengan baseline dan pekerjaan paralel.
+6. **Lock** — baru dianggap bagian dari baseline setelah terbukti stabil.
+
+### Catatan penting dari update terbaru
+
+Dua pekerjaan yang baru disebutkan juga perlu diperlakukan sebagai **pekerjaan yang berbeda statusnya**, bukan otomatis dianggap selesai:
+
+* **Task #13:**
+  *“Buktikan file audit readiness tidak berubah setelah diekspor”*
+  → fokus pada **integrity/audit reproducibility**.
+
+* **Task #14:**
+  *“Cegah aturan readiness aktif ganda dari jalur selain API”*
+  → fokus pada **enforcement/integrity domain**, khususnya agar aturan readiness tidak dapat dibuat aktif ganda melalui jalur lain di luar API.
+
+Jadi saya **tidak akan menganggap #14 sudah verified hanya karena post-merge setup sudah dijalankan**. Status implementasi, verifikasi, dan lock tetap dibedakan.
+
+Untuk langkah berikutnya, saya akan menjaga prinsip **tidak melakukan refactor besar, tidak mengubah schema/domain yang sudah canonical, dan tidak menyentuh Task #13 maupun task yang belum ditugaskan** kecuali ada assignment eksplisit.
