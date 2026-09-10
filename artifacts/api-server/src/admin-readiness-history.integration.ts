@@ -1,5 +1,6 @@
 import { inArray } from "drizzle-orm";
 import { createHash } from "node:crypto";
+import { get, ServerResponse } from "node:http";
 import {
   db, enrollmentsTable, pathwaysTable, peopleTable, programsTable, readinessEventsTable, readinessGatesTable,
 } from "@workspace/db";
@@ -17,6 +18,56 @@ const ids = {
   enrollmentB: id("enrollment-b"), gateA: id("gate-a"), gateB: id("gate-b"),
   eventA: id("event-a"), eventB: id("event-b"), eventC: id("event-c"),
 };
+const volumeEventIds = Array.from({ length: 1_205 }, (_, index) => id(`volume-${String(index).padStart(4, "0")}`));
+
+async function insertInBatches<T>(rows: T[], insert: (batch: T[]) => Promise<unknown>, batchSize = 200) {
+  for (let offset = 0; offset < rows.length; offset += batchSize) {
+    await insert(rows.slice(offset, offset + batchSize));
+  }
+}
+
+async function slowRequest(url: string, headers: Record<string, string>) {
+  return new Promise<{ status: number; body: string; backpressureCount: number; maxBufferedBytes: number; highWaterMark: number }>((resolve, reject) => {
+    let backpressureCount = 0;
+    let maxBufferedBytes = 0;
+    let highWaterMark = 0;
+    const originalWrite = ServerResponse.prototype.write;
+    ServerResponse.prototype.write = function (this: ServerResponse, ...args: any[]) {
+      const accepted = originalWrite.apply(this, args as any);
+      if (!accepted) backpressureCount += 1;
+      maxBufferedBytes = Math.max(maxBufferedBytes, this.writableLength);
+      highWaterMark = Math.max(highWaterMark, this.writableHighWaterMark);
+      return accepted;
+    } as typeof originalWrite;
+
+    const request = get(url, { headers }, response => {
+      const chunks: Buffer[] = [];
+      response.pause();
+      setTimeout(() => {
+        response.on("data", chunk => {
+          chunks.push(Buffer.from(chunk));
+          response.pause();
+          setTimeout(() => response.resume(), 1);
+        });
+        response.on("end", () => {
+          ServerResponse.prototype.write = originalWrite;
+          resolve({
+            status: response.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString("utf8"),
+            backpressureCount,
+            maxBufferedBytes,
+            highWaterMark,
+          });
+        });
+        response.resume();
+      }, 100);
+    });
+    request.on("error", error => {
+      ServerResponse.prototype.write = originalWrite;
+      reject(error);
+    });
+  });
+}
 
 async function run() {
   await db.insert(peopleTable).values([
@@ -107,9 +158,50 @@ async function run() {
     assert(changedByte.length === canonicalJson.length && changedByte !== canonicalJson, "Checksum fixture must change exactly one byte");
     const changedChecksum = createHash("sha256").update(changedByte, "utf8").digest("hex");
     assert(changedChecksum !== exported.integrity.checksum, "Changing one canonical payload byte must fail checksum verification");
+
+    const sharedTimestamps = [
+      new Date("2026-02-03T10:00:00Z"),
+      new Date("2026-02-02T10:00:00Z"),
+      new Date("2026-02-01T10:00:00Z"),
+    ];
+    const volumeEvents = volumeEventIds.map((eventId, index) => ({
+      id: eventId,
+      enrollmentId: ids.enrollmentA,
+      pathwayId: ids.pathwayA,
+      gateId: ids.gateA,
+      status: "Developing" as const,
+      score: 70 + (index % 10),
+      blockers: [`Volume blocker ${index}`],
+      ruleVersion: 2,
+      inputEvidence: { assessments: [], evidence: [], openCriticalGaps: [] },
+      decisionReason: `Volume decision ${index}`,
+      evaluatedAt: sharedTimestamps[index % sharedTimestamps.length],
+    }));
+    await insertInBatches(volumeEvents, batch => db.insert(readinessEventsTable).values(batch));
+
+    const originalWrite = ServerResponse.prototype.write;
+    const volumeUrl = `http://127.0.0.1:${address.port}/api/admin/readiness-history/export?learnerId=${ids.learnerA}&pathwayId=${ids.pathwayA}&status=Developing&ruleVersion=2`;
+    const slowExport = await slowRequest(volumeUrl, { "x-test-role": "admin" });
+    assert(ServerResponse.prototype.write === originalWrite, "Slow-client response instrumentation must be restored");
+    assert(slowExport.status === 200, "Large readiness export must succeed for a slow client");
+    const volumeExport = JSON.parse(slowExport.body) as any;
+    const volumeEventById = new Map(volumeEvents.map(event => [event.id, event]));
+    const expectedIds = [ids.eventA, ...volumeEventIds].sort((left, right) => {
+      const leftEvent = left === ids.eventA ? { evaluatedAt: new Date("2026-01-01T10:00:00Z"), id: left } : volumeEventById.get(left)!;
+      const rightEvent = right === ids.eventA ? { evaluatedAt: new Date("2026-01-01T10:00:00Z"), id: right } : volumeEventById.get(right)!;
+      return rightEvent.evaluatedAt.getTime() - leftEvent.evaluatedAt.getTime() || right.localeCompare(left);
+    });
+    const actualIds = volumeExport.records.map((record: any) => record.id);
+    assert(volumeExport.recordCount === expectedIds.length, "Large export count must honor every filter");
+    assert(actualIds.length === expectedIds.length && new Set(actualIds).size === expectedIds.length, "Every filtered record must appear exactly once across batch boundaries");
+    assert(actualIds.every((eventId: string, index: number) => eventId === expectedIds[index]), "Large export order must be deterministic for shared timestamps");
+    assert(volumeExport.records.every((record: any) => record.learnerId === ids.learnerA
+      && record.pathwayId === ids.pathwayA && record.status === "Developing" && record.ruleVersion === 2), "Large export must preserve all requested filters");
+    assert(slowExport.backpressureCount > 0, "A slow client must trigger server response backpressure");
+    assert(slowExport.maxBufferedBytes <= slowExport.highWaterMark + 16_384, "Server response buffering must remain bounded near its stream high-water mark");
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
-    await db.delete(readinessEventsTable).where(inArray(readinessEventsTable.id, [ids.eventA, ids.eventB, ids.eventC]));
+    await db.delete(readinessEventsTable).where(inArray(readinessEventsTable.id, [ids.eventA, ids.eventB, ids.eventC, ...volumeEventIds]));
     await db.delete(readinessGatesTable).where(inArray(readinessGatesTable.id, [ids.gateA, ids.gateB]));
     await db.delete(enrollmentsTable).where(inArray(enrollmentsTable.id, [ids.enrollmentA, ids.enrollmentB]));
     await db.delete(pathwaysTable).where(inArray(pathwaysTable.id, [ids.pathwayA, ids.pathwayB]));

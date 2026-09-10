@@ -222,9 +222,26 @@ async function readinessHistoryCount(filters: ReadinessHistoryFilters) {
 async function writeExportChunk(res: any, chunk: string) {
   if (res.write(chunk)) return;
   await new Promise<void>((resolve, reject) => {
-    res.once("drain", resolve);
-    res.once("error", reject);
-    res.once("close", resolve);
+    const cleanup = () => {
+      res.off("drain", onDrain);
+      res.off("error", onError);
+      res.off("close", onClose);
+    };
+    const onDrain = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const onClose = () => {
+      cleanup();
+      resolve();
+    };
+    res.once("drain", onDrain);
+    res.once("error", onError);
+    res.once("close", onClose);
   });
 }
 
