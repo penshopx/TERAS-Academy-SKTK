@@ -97,3 +97,6 @@ jobs:
 
       - name: Verify retry idempotency
         run: pnpm run test:browser-idempotency
+
+      - name: Verify trainer diagnostic follow-up form
+        run: pnpm --filter @workspace/api-server run test:browser-diagnostic-follow-up
