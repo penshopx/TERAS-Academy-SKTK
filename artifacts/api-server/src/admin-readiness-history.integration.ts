@@ -87,9 +87,9 @@ async function run() {
   const publicPem = activeKeyPair.publicKey.export({ type: "spki", format: "pem" }).toString();
   const privatePem = activeKeyPair.privateKey.export({ type: "pkcs8", format: "pem" }).toString();
   const retiredPublicPem = retiredKeyPair.publicKey.export({ type: "spki", format: "pem" }).toString();
+  const retiredPrivatePem = retiredKeyPair.privateKey.export({ type: "pkcs8", format: "pem" }).toString();
   process.env.TERAS_READINESS_AUDIT_SIGNING_KEYS = JSON.stringify([
-    { keyId: "teras-audit-2026-09", version: 2, active: true, publicKeyPem: publicPem, privateKeyPem: privatePem },
-    { keyId: "teras-audit-2026-01", version: 1, active: false, publicKeyPem: retiredPublicPem },
+    { keyId: "teras-audit-2026-01", version: 1, active: true, publicKeyPem: retiredPublicPem, privateKeyPem: retiredPrivatePem },
   ]);
   await db.insert(peopleTable).values([
     { id: ids.learnerA, name: "Audit Learner A", initials: "AA", role: "learner", status: "active" },
@@ -159,6 +159,18 @@ async function run() {
     const secondPage = await secondPageResponse.json() as any;
     assert(secondPage.items.length === 1 && secondPage.items[0].id !== firstPage.items[0].id, "Distinct pages must return distinct readiness events");
 
+    const retiredExportResponse = await request(`/admin/readiness-history/export?status=Not%20Ready&ruleVersion=3`, "admin");
+    const retiredExport = await retiredExportResponse.json() as any;
+    assert(retiredExportResponse.status === 200
+      && retiredExport.integrity.signature.keyId === "teras-audit-2026-01"
+      && retiredExport.integrity.signature.keyVersion === 1,
+    "Export created before rotation must identify the old active key");
+
+    process.env.TERAS_READINESS_AUDIT_SIGNING_KEYS = JSON.stringify([
+      { keyId: "teras-audit-2026-09", version: 2, active: true, publicKeyPem: publicPem, privateKeyPem: privatePem },
+      { keyId: "teras-audit-2026-01", version: 1, active: false, publicKeyPem: retiredPublicPem },
+    ]);
+
     const exportResponse = await request(`/admin/readiness-history/export?status=Not%20Ready&ruleVersion=3`, "admin");
     const exported = await exportResponse.json() as any;
     assert(exportResponse.status === 200 && exportResponse.headers.get("cache-control") === "private, no-store", "Audit export must be private and non-cacheable");
@@ -203,7 +215,15 @@ async function run() {
         return false;
       }
     };
-    assert(await runVerifier(exported), "Official verifier must accept an authentic export");
+    assert(await runVerifier(retiredExport), "Official verifier must accept an export signed before key rotation");
+    assert(await runVerifier(exported), "Official verifier must accept an export signed after key rotation");
+    const currentKeysOnly = {
+      ...publicKeys,
+      keys: publicKeys.keys.filter((key: any) => key.keyId !== "teras-audit-2026-01"),
+    };
+    await writeFile(keysPath, JSON.stringify(currentKeysOnly));
+    assert(!await runVerifier(retiredExport), "Official verifier must reject an old export when its historical public key is removed");
+    await writeFile(keysPath, JSON.stringify(publicKeys));
     const payloadTampered = structuredClone(exported);
     payloadTampered.records[0].decisionReason = `${payloadTampered.records[0].decisionReason} changed`;
     assert(!await runVerifier(payloadTampered), "Official verifier must reject a modified payload");
