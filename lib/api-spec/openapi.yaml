@@ -521,6 +521,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /trainer/evidence/{evidenceId}/review:
     post:
       operationId: reviewEvidenceByTrainer
@@ -2606,8 +2608,9 @@ components:
         recordedAt: { type: string, format: date-time }
     DiagnosticRecommendationFollowUpInput:
       type: object
-      required: [status, note]
+      required: [idempotencyKey, status, note]
       properties:
+        idempotencyKey: { type: string, minLength: 1, maxLength: 100 }
         status: { type: string, enum: [planned, in_progress, completed] }
         targetAt: { type: ["string", "null"], format: date-time }
         note: { type: string, minLength: 1, maxLength: 500 }

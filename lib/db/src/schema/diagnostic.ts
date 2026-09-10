@@ -83,12 +83,15 @@ export const diagnosticRecommendationFollowUpsTable = pgTable("teras_diagnostic_
   id: text("id").primaryKey(),
   recommendationId: text("recommendation_id").notNull().references(() => diagnosticRecommendationsTable.id, { onDelete: "cascade" }),
   trainerId: text("trainer_id").notNull().references(() => peopleTable.id),
+  idempotencyKey: text("idempotency_key"),
+  idempotencyFingerprint: text("idempotency_fingerprint"),
   status: text("status").notNull(),
   targetAt: timestamp("target_at", { withTimezone: true }),
   note: text("note").notNull(),
   ...audit,
 }, table => [
   index("teras_diagnostic_recommendation_follow_ups_recommendation_created_idx").on(table.recommendationId, table.createdAt),
+  uniqueIndex("teras_diagnostic_recommendation_follow_ups_idempotency_unique").on(table.recommendationId, table.trainerId, table.idempotencyKey),
   check("teras_diagnostic_recommendation_follow_ups_status_check", sql`${table.status} IN ('planned','in_progress','completed')`),
 ]);
 export const diagnosticFollowUpReminderDeliveriesTable = pgTable("teras_diagnostic_follow_up_reminder_deliveries", {

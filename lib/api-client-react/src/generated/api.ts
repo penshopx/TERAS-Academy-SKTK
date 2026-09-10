@@ -2356,7 +2356,7 @@ export const recordDiagnosticRecommendationFollowUp = async (recommendationId: s
 
 
 
-export const getRecordDiagnosticRecommendationFollowUpMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>,
+export const getRecordDiagnosticRecommendationFollowUpMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordDiagnosticRecommendationFollowUp>>, TError,{recommendationId: string;data: BodyType<DiagnosticRecommendationFollowUpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof recordDiagnosticRecommendationFollowUp>>, TError,{recommendationId: string;data: BodyType<DiagnosticRecommendationFollowUpInput>}, TContext> => {
 
@@ -2385,12 +2385,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type RecordDiagnosticRecommendationFollowUpMutationResult = NonNullable<Awaited<ReturnType<typeof recordDiagnosticRecommendationFollowUp>>>
     export type RecordDiagnosticRecommendationFollowUpMutationBody = BodyType<DiagnosticRecommendationFollowUpInput>
-    export type RecordDiagnosticRecommendationFollowUpMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>
+    export type RecordDiagnosticRecommendationFollowUpMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>
 
     /**
  * @summary Append a trainer follow-up to a diagnostic recommendation
  */
-export const useRecordDiagnosticRecommendationFollowUp = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>,
+export const useRecordDiagnosticRecommendationFollowUp = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordDiagnosticRecommendationFollowUp>>, TError,{recommendationId: string;data: BodyType<DiagnosticRecommendationFollowUpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof recordDiagnosticRecommendationFollowUp>>,

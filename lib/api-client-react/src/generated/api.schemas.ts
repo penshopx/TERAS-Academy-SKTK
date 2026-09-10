@@ -187,6 +187,11 @@ export const DiagnosticRecommendationFollowUpInputStatus = {
 } as const;
 
 export interface DiagnosticRecommendationFollowUpInput {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  idempotencyKey: string;
   status: DiagnosticRecommendationFollowUpInputStatus;
   /** @nullable */
   targetAt?: string | null;

@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { createHash } from "node:crypto";
 import { GetTrainerDashboardResponse, GetTrainerReviewQueueResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse } from "@workspace/api-zod";
 import { db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
@@ -10,6 +11,8 @@ import { trainerBottlenecks } from "../lib/trainer-bottlenecks";
 const router: IRouter = Router();
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const FOLLOW_UP_DUE_SOON_DAYS = 7;
+const followUpFingerprint = (value: { status: string; targetAt: string | null; note: string }) =>
+  createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 export function followUpReminder(followUps: { status: string; targetAt: Date | null }[], now = new Date()) {
   const latest = followUps[0];
@@ -170,16 +173,43 @@ router.post("/trainer/diagnostic-recommendations/:recommendationId/follow-ups", 
     return;
   }
   const [trainer] = await db.select().from(peopleTable).where(eq(peopleTable.id, trainerId));
-  const [followUp] = await db.insert(diagnosticRecommendationFollowUpsTable).values({
-    id: id("diagnostic-follow-up"),
-    recommendationId: recommendation.id,
-    trainerId,
+  const normalized = {
     status: body.data.status,
-    targetAt: body.data.targetAt ? new Date(body.data.targetAt) : null,
+    targetAt: body.data.targetAt ? new Date(body.data.targetAt).toISOString() : null,
     note: body.data.note.trim(),
-    createdBy: trainerId,
-  }).returning();
+  };
+  const fingerprint = followUpFingerprint(normalized);
+  const followUp = await db.transaction(async (tx) => {
+    const [inserted] = await tx.insert(diagnosticRecommendationFollowUpsTable).values({
+      id: id("diagnostic-follow-up"),
+      recommendationId: recommendation.id,
+      trainerId,
+      idempotencyKey: body.data.idempotencyKey,
+      idempotencyFingerprint: fingerprint,
+      status: normalized.status,
+      targetAt: normalized.targetAt ? new Date(normalized.targetAt) : null,
+      note: normalized.note,
+      createdBy: trainerId,
+    }).onConflictDoNothing({
+      target: [
+        diagnosticRecommendationFollowUpsTable.recommendationId,
+        diagnosticRecommendationFollowUpsTable.trainerId,
+        diagnosticRecommendationFollowUpsTable.idempotencyKey,
+      ],
+    }).returning();
+    if (inserted) return inserted;
+    const [existing] = await tx.select().from(diagnosticRecommendationFollowUpsTable).where(and(
+      eq(diagnosticRecommendationFollowUpsTable.recommendationId, recommendation.id),
+      eq(diagnosticRecommendationFollowUpsTable.trainerId, trainerId),
+      eq(diagnosticRecommendationFollowUpsTable.idempotencyKey, body.data.idempotencyKey),
+    )).limit(1);
+    return existing;
+  });
   if (!followUp) throw new Error("Diagnostic recommendation follow-up was not recorded");
+  if (followUp.idempotencyFingerprint !== fingerprint) {
+    res.status(409).json({ error: "The idempotency key was already used with a different follow-up draft." });
+    return;
+  }
   res.status(201).json(RecordDiagnosticRecommendationFollowUpResponse.parse({
     id: followUp.id,
     recommendationId: followUp.recommendationId,

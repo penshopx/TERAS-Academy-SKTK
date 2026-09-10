@@ -98,12 +98,33 @@ async function main() {
     await page.getByTestId("trainer-diagnostic-follow-ups").waitFor();
     await page.getByText("Supervised isolation practice", { exact: true }).waitFor();
 
+    const submittedDrafts: Array<{ idempotencyKey?: string; note?: string }> = [];
+    let disconnectFirstResponse = true;
+    await page.route("**/api/trainer/diagnostic-recommendations/*/follow-ups", async route => {
+      submittedDrafts.push(route.request().postDataJSON());
+      if (disconnectFirstResponse) {
+        disconnectFirstResponse = false;
+        await route.fetch();
+        await route.abort("connectionaborted");
+        return;
+      }
+      await route.continue();
+    });
+
     await page.getByLabel("Follow-up status for Supervised isolation practice").click();
     await page.getByRole("option", { name: "Planned", exact: true }).click();
     await page.getByLabel("Target date for Supervised isolation practice").fill("2026-10-15");
     await page.getByLabel("Follow-up note for Supervised isolation practice").fill("Schedule supervised isolation practice");
     await card.getByRole("button", { name: "Record follow-up" }).click();
+    await page.getByText("Follow-up failed", { exact: true }).waitFor();
+    await card.getByRole("button", { name: "Record follow-up" }).click();
     await page.getByText("Schedule supervised isolation practice", { exact: true }).waitFor();
+    if (
+      !submittedDrafts[0]?.idempotencyKey
+      || submittedDrafts[0].idempotencyKey !== submittedDrafts[1]?.idempotencyKey
+    ) {
+      throw new Error("Retrying the unchanged follow-up draft did not preserve its idempotency key.");
+    }
 
     await page.getByLabel("Follow-up status for Supervised isolation practice").click();
     await page.getByRole("option", { name: "In progress", exact: true }).click();
@@ -111,6 +132,12 @@ async function main() {
     await page.getByLabel("Follow-up note for Supervised isolation practice").fill("Trainer and learner started the supervised practice");
     await card.getByRole("button", { name: "Record follow-up" }).click();
     await page.getByText("Trainer and learner started the supervised practice", { exact: true }).waitFor();
+    if (
+      !submittedDrafts[2]?.idempotencyKey
+      || submittedDrafts[2].idempotencyKey === submittedDrafts[1]?.idempotencyKey
+    ) {
+      throw new Error("Changing the follow-up draft did not create a new idempotency key.");
+    }
 
     await page.reload();
     await page.getByText("Supervised isolation practice", { exact: true }).waitFor();
@@ -127,7 +154,7 @@ async function main() {
       "SELECT status, note FROM teras_diagnostic_recommendation_follow_ups WHERE recommendation_id = 'browser-follow-up-recommendation' ORDER BY created_at, id",
     );
     if (stored.rows.length !== 2 || stored.rows[0]?.status !== "planned" || stored.rows[1]?.status !== "in_progress") {
-      throw new Error("The browser form did not preserve its two append-only follow-up changes.");
+      throw new Error("The disconnected response retry duplicated a follow-up or lost the changed draft.");
     }
     process.stdout.write("browser diagnostic follow-up integration passed\n");
   } finally {

@@ -1514,11 +1514,14 @@ export const RecordDiagnosticRecommendationFollowUpParams = zod.object({
   "recommendationId": zod.coerce.string().min(1)
 })
 
+export const recordDiagnosticRecommendationFollowUpBodyIdempotencyKeyMax = 100;
+
 export const recordDiagnosticRecommendationFollowUpBodyNoteMax = 500;
 
 
 
 export const RecordDiagnosticRecommendationFollowUpBody = zod.object({
+  "idempotencyKey": zod.string().min(1).max(recordDiagnosticRecommendationFollowUpBodyIdempotencyKeyMax),
   "status": zod.enum(['planned', 'in_progress', 'completed']),
   "targetAt": zod.coerce.date().nullish(),
   "note": zod.string().min(1).max(recordDiagnosticRecommendationFollowUpBodyNoteMax)

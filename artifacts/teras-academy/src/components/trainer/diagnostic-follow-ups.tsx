@@ -20,6 +20,8 @@ const timingLabels = {
   completed: "Completed",
 } as const;
 
+const newDraftKey = () => crypto.randomUUID();
+
 function ReminderBadge({ recommendation }: { recommendation: DiagnosticRecommendation }) {
   const timing = recommendation.followUpReminder?.timing;
   if (timing !== "overdue" && timing !== "due_soon") return null;
@@ -41,6 +43,7 @@ function RecommendationFollowUp({ recommendation }: { recommendation: Diagnostic
   const [status, setStatus] = useState<keyof typeof statusLabels>(latest?.status ?? "planned");
   const [targetAt, setTargetAt] = useState(latest?.targetAt ? latest.targetAt.slice(0, 10) : "");
   const [note, setNote] = useState("");
+  const [idempotencyKey, setIdempotencyKey] = useState(newDraftKey);
   const mutation = useRecordDiagnosticRecommendationFollowUp();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -52,10 +55,11 @@ function RecommendationFollowUp({ recommendation }: { recommendation: Diagnostic
     }
     mutation.mutate({
       recommendationId: recommendation.id,
-      data: { status, note: note.trim(), targetAt: targetAt ? new Date(`${targetAt}T12:00:00Z`).toISOString() : null },
+      data: { idempotencyKey, status, note: note.trim(), targetAt: targetAt ? new Date(`${targetAt}T12:00:00Z`).toISOString() : null },
     }, {
       onSuccess: () => {
         setNote("");
+        setIdempotencyKey(newDraftKey());
         queryClient.invalidateQueries({ queryKey: getGetTrainerDashboardQueryKey() });
         toast({ title: "Follow-up recorded", description: "The recommendation history has been updated." });
       },
@@ -74,7 +78,7 @@ function RecommendationFollowUp({ recommendation }: { recommendation: Diagnostic
     </div>
     {latest && <p className="text-xs text-muted-foreground">{latest.note}</p>}
     <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <Select value={status} onValueChange={(value) => setStatus(value as keyof typeof statusLabels)}>
+      <Select value={status} onValueChange={(value) => { setStatus(value as keyof typeof statusLabels); setIdempotencyKey(newDraftKey()); }}>
         <SelectTrigger aria-label={`Follow-up status for ${recommendation.title}`}><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="planned">Planned</SelectItem>
@@ -82,9 +86,9 @@ function RecommendationFollowUp({ recommendation }: { recommendation: Diagnostic
           <SelectItem value="completed">Completed</SelectItem>
         </SelectContent>
       </Select>
-      <Input type="date" value={targetAt} onChange={(event) => setTargetAt(event.target.value)} aria-label={`Target date for ${recommendation.title}`} />
+      <Input type="date" value={targetAt} onChange={(event) => { setTargetAt(event.target.value); setIdempotencyKey(newDraftKey()); }} aria-label={`Target date for ${recommendation.title}`} />
     </div>
-    <Textarea value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} placeholder="Who will follow up, what happens next, or what was completed…" aria-label={`Follow-up note for ${recommendation.title}`} />
+    <Textarea value={note} maxLength={500} onChange={(event) => { setNote(event.target.value); setIdempotencyKey(newDraftKey()); }} placeholder="Who will follow up, what happens next, or what was completed…" aria-label={`Follow-up note for ${recommendation.title}`} />
     <Button size="sm" onClick={submit} disabled={mutation.isPending}>{mutation.isPending ? "Saving…" : "Record follow-up"}</Button>
     {followUps.length > 1 && <details>
       <summary className="cursor-pointer text-xs text-muted-foreground">View {followUps.length} recorded changes</summary>

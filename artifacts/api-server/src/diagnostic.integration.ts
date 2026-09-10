@@ -384,11 +384,14 @@ async function run() {
     const recommendation = trainerADashboard.diagnosticFollowUps[0].recommendations[0];
     assert(Array.isArray(recommendation.followUps) && recommendation.followUps.length === 0, "New recommendation unexpectedly had follow-up history");
     const readinessBeforeFollowUp = await request<any>("/readiness", {}, 200, "a");
-    await request(`/trainer/diagnostic-recommendations/${recommendation.id}/follow-ups`, { method: "POST", body: JSON.stringify({ status: "planned", targetAt: "2026-10-01T12:00:00.000Z", note: "Schedule supervised practice" }) }, 403, "trainer-b");
-    await request(`/trainer/diagnostic-recommendations/diagnostic-recommendation-historical-${suffix}/follow-ups`, { method: "POST", body: JSON.stringify({ status: "planned", note: "Must not be written" }) }, 403, "trainer-a");
-    const firstFollowUp = await request<any>(`/trainer/diagnostic-recommendations/${recommendation.id}/follow-ups`, { method: "POST", body: JSON.stringify({ status: "planned", targetAt: "2026-10-01T12:00:00.000Z", note: "Schedule supervised practice" }) }, 201, "trainer-a");
-    const secondFollowUp = await request<any>(`/trainer/diagnostic-recommendations/${recommendation.id}/follow-ups`, { method: "POST", body: JSON.stringify({ status: "in_progress", targetAt: null, note: "Practice is underway" }) }, 201, "trainer-a");
+    await request(`/trainer/diagnostic-recommendations/${recommendation.id}/follow-ups`, { method: "POST", body: JSON.stringify({ idempotencyKey: "other-trainer", status: "planned", targetAt: "2026-10-01T12:00:00.000Z", note: "Schedule supervised practice" }) }, 403, "trainer-b");
+    await request(`/trainer/diagnostic-recommendations/diagnostic-recommendation-historical-${suffix}/follow-ups`, { method: "POST", body: JSON.stringify({ idempotencyKey: "historical", status: "planned", note: "Must not be written" }) }, 403, "trainer-a");
+    const firstDraft = { idempotencyKey: "first-draft", status: "planned", targetAt: "2026-10-01T12:00:00.000Z", note: "Schedule supervised practice" };
+    const firstFollowUp = await request<any>(`/trainer/diagnostic-recommendations/${recommendation.id}/follow-ups`, { method: "POST", body: JSON.stringify(firstDraft) }, 201, "trainer-a");
+    const retriedFollowUp = await request<any>(`/trainer/diagnostic-recommendations/${recommendation.id}/follow-ups`, { method: "POST", body: JSON.stringify(firstDraft) }, 201, "trainer-a");
+    const secondFollowUp = await request<any>(`/trainer/diagnostic-recommendations/${recommendation.id}/follow-ups`, { method: "POST", body: JSON.stringify({ idempotencyKey: "changed-draft", status: "in_progress", targetAt: null, note: "Practice is underway" }) }, 201, "trainer-a");
     assert(firstFollowUp.trainerId === trainerA && firstFollowUp.trainerName === "Diagnostic Trainer A" && firstFollowUp.status === "planned", "Follow-up did not record trainer identity and status");
+    assert(retriedFollowUp.id === firstFollowUp.id, "Retrying the same follow-up draft did not return the original record");
     assert(secondFollowUp.status === "in_progress" && secondFollowUp.note === "Practice is underway", "Follow-up status change was not recorded");
     const storedFollowUps = await db.select().from(diagnosticRecommendationFollowUpsTable).where(eq(diagnosticRecommendationFollowUpsTable.recommendationId, recommendation.id));
     assert(storedFollowUps.length === 2, "Follow-up changes were not append-only");

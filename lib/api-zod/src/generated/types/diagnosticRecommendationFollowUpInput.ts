@@ -8,6 +8,11 @@
 import type { DiagnosticRecommendationFollowUpInputStatus } from './diagnosticRecommendationFollowUpInputStatus';
 
 export interface DiagnosticRecommendationFollowUpInput {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  idempotencyKey: string;
   status: DiagnosticRecommendationFollowUpInputStatus;
   /** @nullable */
   targetAt?: Date | null;
