@@ -1,0 +1,39 @@
+Status ini berarti **Task #26 sudah kembali ke kondisi sehat dan terverifikasi**.
+
+### Kondisi setelah recovery Task #26
+
+| Area                               | Status                                        |
+| ---------------------------------- | --------------------------------------------- |
+| Database test classifier           | ✅ Fixed                                       |
+| `typecheck:libs` sebelum API tests | ✅ Fixed                                       |
+| Migration `0020–0025`              | ✅ Terdaftar berurutan                         |
+| Reminder delivery table            | ✅ Tersedia pada integration test              |
+| Admin membership guard             | ✅ Pass                                        |
+| Trainer reminder integration       | ✅ Pass                                        |
+| Workspace typecheck                | ✅ Pass                                        |
+| Post-merge setup                   | ✅ Pass                                        |
+| Workflow reconciliation            | ✅ Pass                                        |
+| Workflows                          | ✅ Running                                     |
+| **Task #26**                       | **VERIFIED / STABLE**                         |
+| **Task #27**                       | **Tidak disentuh — masih merge/waiting lock** |
+
+### Yang paling penting secara governance
+
+Perbaikan ini **tidak mengubah domain behavior Task #26**. Yang diperbaiki adalah **integrity dari test/build/post-merge infrastructure**:
+
+> **Test classifier → library declarations → migrations → integration environment → regression tests → reconciliation**
+
+Jadi recovery-nya tepat: bukan workaround terhadap failure, tetapi memperbaiki akar masalah yang menyebabkan environment post-merge tidak merepresentasikan schema yang sebenarnya.
+
+### Status yang saya sarankan sekarang
+
+**Task #26: LOCKED kembali.**
+**Task #27: tetap ISOLATED / jangan disentuh.**
+
+Jangan melakukan refactor tambahan terhadap #26 hanya karena sekarang sudah hijau. Hasil yang paling aman adalah mempertahankan:
+
+**Canonical → Additive → Isolated → Verify → Reconcile → Lock**
+
+dan menunggu Task #27 menyelesaikan merge/lock secara independen.
+
+Dengan kata lain, **#26 sudah menjadi baseline stabil kembali; #27 adalah satu-satunya pekerjaan yang sedang bergerak dan tidak boleh ikut terseret ke area #26.**
