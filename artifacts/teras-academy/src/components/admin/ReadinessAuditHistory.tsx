@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   exportAdminReadinessHistory,
   getListAdminReadinessHistoryQueryKey,
@@ -8,7 +8,7 @@ import {
   type ListAdminReadinessHistoryParams,
   useListAdminReadinessHistory,
 } from "@workspace/api-client-react";
-import { Download, Loader2 } from "lucide-react";
+import { Download, Loader2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +23,11 @@ type Props = {
 };
 
 const statuses = ["Not Ready", "Developing", "Ready for Official Assessment"] as const;
+type ExportStatus = "idle" | "preparing" | "success" | "failed" | "cancelled";
+
+const formatBytes = (bytes: number) => new Intl.NumberFormat("id-ID", {
+  maximumFractionDigits: bytes >= 1_000_000 ? 1 : 0,
+}).format(bytes >= 1_000_000 ? bytes / 1_000_000 : bytes / 1_000) + (bytes >= 1_000_000 ? " MB" : " KB");
 
 export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }: Props) {
   const [learnerId, setLearnerId] = useState("");
@@ -31,9 +36,13 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
   const [ruleVersion, setRuleVersion] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<AdminReadinessEvaluation | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState<ExportStatus>("idle");
+  const [exportRecordCount, setExportRecordCount] = useState<number | null>(null);
+  const [exportLoadedBytes, setExportLoadedBytes] = useState(0);
   const [exportError, setExportError] = useState<unknown>(null);
   const [lastChecksum, setLastChecksum] = useState("");
+  const exportAbortController = useRef<AbortController | null>(null);
+  const exporting = exportStatus === "preparing";
   const params = useMemo<ListAdminReadinessHistoryParams>(() => ({
     ...(learnerId ? { learnerId } : {}),
     ...(pathwayId ? { pathwayId } : {}),
@@ -55,10 +64,21 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
   }), [learnerId, pathwayId, status, ruleVersion]);
 
   const download = async () => {
-    setExporting(true);
+    const controller = new AbortController();
+    exportAbortController.current = controller;
+    setExportStatus("preparing");
+    setExportRecordCount(null);
+    setExportLoadedBytes(0);
     setExportError(null);
     try {
-      const payload = await exportAdminReadinessHistory(exportParams);
+      const payload = await exportAdminReadinessHistory(exportParams, {
+        signal: controller.signal,
+        onResponse: response => {
+          const count = Number(response.headers.get("x-export-record-count"));
+          if (Number.isInteger(count) && count >= 0) setExportRecordCount(count);
+        },
+        onDownloadProgress: ({ loadedBytes }) => setExportLoadedBytes(loadedBytes),
+      });
       const filename = `readiness-audit-${new Date().toISOString().slice(0, 10)}.json`;
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -79,12 +99,21 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
       checksumAnchor.click();
       URL.revokeObjectURL(checksumUrl);
       setLastChecksum(payload.integrity.checksum);
+      setExportRecordCount(payload.recordCount);
+      setExportStatus("success");
     } catch (error) {
-      setExportError(error);
+      if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+        setExportStatus("cancelled");
+      } else {
+        setExportError(error);
+        setExportStatus("failed");
+      }
     } finally {
-      setExporting(false);
+      if (exportAbortController.current === controller) exportAbortController.current = null;
     }
   };
+
+  const cancelExport = () => exportAbortController.current?.abort();
 
   return <div className="space-y-4" data-testid="admin-readiness-audit-history">
     <Card>
@@ -115,13 +144,23 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
           <label className="grid gap-1 text-sm">Rule version
             <Input value={ruleVersion} onChange={event => { setRuleVersion(event.target.value); setPage(1); }} type="number" min="1" placeholder="Semua versi" data-testid="filter-readiness-rule-version" />
           </label>
-          <div className="flex items-end">
+          <div className="flex items-end gap-2">
             <Button className="w-full" variant="outline" onClick={download} disabled={exporting} data-testid="button-export-readiness-history">
-              {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}Ekspor JSON
+              {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}{exporting ? "Menyiapkan…" : "Ekspor JSON"}
             </Button>
+            {exporting && <Button variant="destructive" size="icon" onClick={cancelExport} aria-label="Batalkan ekspor" data-testid="button-cancel-readiness-export"><X className="h-4 w-4" /></Button>}
           </div>
         </div>
-        {exportError !== null && <p className="text-sm text-destructive" role="alert">{errorMessage(exportError)}</p>}
+        {exporting && <div className="rounded-md border bg-muted/30 p-3 text-sm" role="status" aria-live="polite" data-testid="readiness-export-progress">
+          <p className="font-medium">File sedang disiapkan</p>
+          <p className="mt-1 text-muted-foreground">
+            {exportRecordCount === null ? "Menghitung record sesuai filter aktif…" : `${exportRecordCount} record akan diekspor`}
+            {exportLoadedBytes > 0 ? ` · ${formatBytes(exportLoadedBytes)} diterima` : ""}
+          </p>
+        </div>}
+        {exportStatus === "failed" && exportError !== null && <p className="text-sm text-destructive" role="alert">Ekspor gagal: {errorMessage(exportError)}</p>}
+        {exportStatus === "cancelled" && <p className="rounded-md border p-3 text-sm" role="status" data-testid="readiness-export-cancelled">Ekspor dibatalkan. Tidak ada file yang diunduh.</p>}
+        {exportStatus === "success" && <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm" role="status" data-testid="readiness-export-success">Ekspor berhasil. {exportRecordCount ?? 0} record telah diunduh.</p>}
         {lastChecksum && <div className="rounded-md border bg-muted/30 p-3 text-sm" data-testid="readiness-export-checksum">
           <p className="font-medium">Checksum SHA-256 ekspor terakhir</p>
           <code className="mt-1 block break-all text-xs text-muted-foreground">{lastChecksum}</code>

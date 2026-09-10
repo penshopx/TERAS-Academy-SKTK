@@ -278,6 +278,8 @@ router.get("/admin/readiness-history/export", async (req, res): Promise<void> =>
   res.setHeader("Content-Disposition", `attachment; filename="readiness-audit-${exportedAt.toISOString().slice(0, 10)}.json"`);
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("X-Export-Record-Count", String(recordCount));
+  res.setHeader("Access-Control-Expose-Headers", "X-Export-Record-Count");
   const hash = createHash("sha256");
   const writeCanonicalChunk = async (chunk: string) => {
     hash.update(chunk, "utf8");
@@ -292,6 +294,7 @@ router.get("/admin/readiness-history/export", async (req, res): Promise<void> =>
     const records = await readinessHistory(filters, { limit: batchSize, before });
     if (!records.length) break;
     for (const record of records) {
+      if (res.destroyed) break;
       await writeCanonicalChunk(`${first ? "" : ","}${JSON.stringify(record)}`);
       first = false;
     }

@@ -1,5 +1,7 @@
 export type CustomFetchOptions = RequestInit & {
   responseType?: "json" | "text" | "blob" | "auto";
+  onResponse?: (response: Response) => void;
+  onDownloadProgress?: (progress: { loadedBytes: number; totalBytes: number | null }) => void;
 };
 
 export type ErrorType<T = unknown> = ApiError<T>;
@@ -236,8 +238,30 @@ export class ResponseParseError extends Error {
 async function parseJsonBody(
   response: Response,
   requestInfo: { method: string; url: string },
+  onDownloadProgress?: CustomFetchOptions["onDownloadProgress"],
 ): Promise<unknown> {
-  const raw = await response.text();
+  let raw: string;
+  if (onDownloadProgress && response.body && typeof response.body.getReader === "function") {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    const chunks: string[] = [];
+    const totalHeader = response.headers.get("content-length");
+    const parsedTotal = totalHeader ? Number(totalHeader) : NaN;
+    const totalBytes = Number.isFinite(parsedTotal) ? parsedTotal : null;
+    let loadedBytes = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      loadedBytes += value.byteLength;
+      chunks.push(decoder.decode(value, { stream: true }));
+      onDownloadProgress({ loadedBytes, totalBytes });
+    }
+    chunks.push(decoder.decode());
+    raw = chunks.join("");
+  } else {
+    raw = await response.text();
+  }
   const normalized = stripBom(raw);
 
   if (normalized.trim() === "") {
@@ -294,6 +318,7 @@ async function parseSuccessBody(
   response: Response,
   responseType: "json" | "text" | "blob" | "auto",
   requestInfo: { method: string; url: string },
+  onDownloadProgress?: CustomFetchOptions["onDownloadProgress"],
 ): Promise<unknown> {
   if (hasNoBody(response, requestInfo.method)) {
     return null;
@@ -304,7 +329,7 @@ async function parseSuccessBody(
 
   switch (effectiveType) {
     case "json":
-      return parseJsonBody(response, requestInfo);
+      return parseJsonBody(response, requestInfo, onDownloadProgress);
 
     case "text": {
       const text = await response.text();
@@ -327,7 +352,13 @@ export async function customFetch<T = unknown>(
   options: CustomFetchOptions = {},
 ): Promise<T> {
   input = applyBaseUrl(input);
-  const { responseType = "auto", headers: headersInit, ...init } = options;
+  const {
+    responseType = "auto",
+    headers: headersInit,
+    onResponse,
+    onDownloadProgress,
+    ...init
+  } = options;
 
   const method = resolveMethod(input, init.method);
 
@@ -361,11 +392,12 @@ export async function customFetch<T = unknown>(
   const requestInfo = { method, url: resolveUrl(input) };
 
   const response = await fetch(input, { ...init, method, headers });
+  onResponse?.(response);
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);
     throw new ApiError(response, errorData, requestInfo);
   }
 
-  return (await parseSuccessBody(response, responseType, requestInfo)) as T;
+  return (await parseSuccessBody(response, responseType, requestInfo, onDownloadProgress)) as T;
 }
