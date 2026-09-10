@@ -156,6 +156,24 @@ async function run() {
       activeReadinessVersions.length === 1 && activeReadinessVersions[0].ruleVersion === 2,
       "Only the latest concurrent readiness rule version must remain active",
     );
+    let directDuplicateRejected = false;
+    try {
+      await db.insert(readinessGatesTable).values({
+        ...readinessRule,
+        id: `direct-duplicate-readiness-${suffix}`,
+        name: "Direct duplicate active readiness rule",
+        ruleVersion: 3,
+        active: true,
+        createdBy: `direct-write-${suffix}`,
+      });
+    } catch (error) {
+      directDuplicateRejected = (error as { cause?: { code?: string }; code?: string }).cause?.code === "23505"
+        || (error as { code?: string }).code === "23505";
+    }
+    assert(
+      directDuplicateRejected,
+      "Database must reject a direct write that creates a second active readiness rule",
+    );
     const readinessRuleIds = readinessVersions.map(item => item.id);
     const readinessAudits = await db.select().from(adminAuditEventsTable)
       .where(and(

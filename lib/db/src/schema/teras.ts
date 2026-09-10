@@ -206,6 +206,9 @@ export const readinessGatesTable = pgTable("teras_readiness_gates", {
 }, table => [
   check("teras_readiness_gates_threshold_check", sql`${table.threshold} BETWEEN 0 AND 100`),
   uniqueIndex("teras_readiness_gates_rule_version_unique").on(table.pathwayId, table.code, table.ruleVersion),
+  uniqueIndex("teras_readiness_gates_one_active_unique")
+    .on(table.pathwayId, table.code)
+    .where(sql`${table.active} = true`),
 ]);
 export const readinessEventsTable = pgTable("teras_readiness_events", {
   id: text("id").primaryKey(), enrollmentId: text("enrollment_id").notNull().references(() => enrollmentsTable.id),
