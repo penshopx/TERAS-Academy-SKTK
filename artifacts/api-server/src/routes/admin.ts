@@ -172,7 +172,7 @@ async function readinessHistory(filters: ReadinessHistoryFilters, pagination?: {
   limit: number;
   offset?: number;
   before?: { evaluatedAt: Date; id: string };
-}) {
+}, executor: any = db) {
   const conditions = [
     ...readinessHistoryConditions(filters),
     pagination?.before ? or(
@@ -183,7 +183,7 @@ async function readinessHistory(filters: ReadinessHistoryFilters, pagination?: {
       ),
     ) : undefined,
   ].filter(Boolean);
-  const query = db.select({
+  const query = executor.select({
     id: readinessEventsTable.id,
     enrollmentId: readinessEventsTable.enrollmentId,
     learnerId: enrollmentsTable.learnerId,
@@ -211,9 +211,9 @@ async function readinessHistory(filters: ReadinessHistoryFilters, pagination?: {
   return pagination ? query.limit(pagination.limit).offset(pagination.offset ?? 0) : query;
 }
 
-async function readinessHistoryCount(filters: ReadinessHistoryFilters) {
+async function readinessHistoryCount(filters: ReadinessHistoryFilters, executor: any = db) {
   const conditions = readinessHistoryConditions(filters);
-  const [result] = await db.select({ total: count() })
+  const [result] = await executor.select({ total: count() })
     .from(readinessEventsTable)
     .innerJoin(enrollmentsTable, eq(enrollmentsTable.id, readinessEventsTable.enrollmentId))
     .where(conditions.length ? and(...conditions) : undefined);
@@ -270,59 +270,61 @@ router.get("/admin/readiness-history/export", async (req, res): Promise<void> =>
     res.status(503).json({ error: "Readiness audit signing is not configured" });
     return;
   }
-  const exportedAt = new Date();
-  const recordCount = await readinessHistoryCount(filters);
-  const metadata = {
-    schemaVersion: "1.0",
-    exportedAt,
-    filters: {
-      learnerId: filters.learnerId ?? null,
-      pathwayId: filters.pathwayId ?? null,
-      status: filters.status ?? null,
-      ruleVersion: filters.ruleVersion ?? null,
-    },
-    recordCount,
-  };
-  res.setHeader("Content-Disposition", `attachment; filename="readiness-audit-${exportedAt.toISOString().slice(0, 10)}.json"`);
-  res.setHeader("Cache-Control", "private, no-store");
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("X-Export-Record-Count", String(recordCount));
-  res.setHeader("Access-Control-Expose-Headers", "X-Export-Record-Count");
-  const hash = createHash("sha256");
-  const writeCanonicalChunk = async (chunk: string) => {
-    hash.update(chunk, "utf8");
-    await writeExportChunk(res, chunk);
-  };
-  await writeCanonicalChunk(`${JSON.stringify(metadata).slice(0, -1)},"records":[`);
-  const batchSize = 500;
-  let before: { evaluatedAt: Date; id: string } | undefined;
-  let exportedCount = 0;
-  let first = true;
-  while (exportedCount < recordCount && !res.destroyed) {
-    const records = await readinessHistory(filters, { limit: batchSize, before });
-    if (!records.length) break;
-    for (const record of records) {
-      if (res.destroyed) break;
-      await writeCanonicalChunk(`${first ? "" : ","}${JSON.stringify(record)}`);
-      first = false;
-    }
-    exportedCount += records.length;
-    const last = records.at(-1)!;
-    before = { evaluatedAt: last.evaluatedAt, id: last.id };
-  }
-  if (!res.destroyed) {
-    hash.update("]}", "utf8");
-    await writeExportChunk(res, "]");
-    const checksum = hash.digest("hex");
-    const integrity = {
-      algorithm: "SHA-256",
-      canonicalization: "teras-readiness-export-v1-json-stringify",
-      checksum,
-      signature: signChecksum(checksum),
-      verificationCommand: "node artifacts/api-server/scripts/verify-readiness-audit.mjs <readiness-audit.json> <public-keys.json>",
+  await db.transaction(async tx => {
+    const exportedAt = new Date();
+    const recordCount = await readinessHistoryCount(filters, tx);
+    const metadata = {
+      schemaVersion: "1.0",
+      exportedAt,
+      filters: {
+        learnerId: filters.learnerId ?? null,
+        pathwayId: filters.pathwayId ?? null,
+        status: filters.status ?? null,
+        ruleVersion: filters.ruleVersion ?? null,
+      },
+      recordCount,
     };
-    res.end(`,"integrity":${JSON.stringify(integrity)}}`);
-  }
+    res.setHeader("Content-Disposition", `attachment; filename="readiness-audit-${exportedAt.toISOString().slice(0, 10)}.json"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("X-Export-Record-Count", String(recordCount));
+    res.setHeader("Access-Control-Expose-Headers", "X-Export-Record-Count");
+    const hash = createHash("sha256");
+    const writeCanonicalChunk = async (chunk: string) => {
+      hash.update(chunk, "utf8");
+      await writeExportChunk(res, chunk);
+    };
+    await writeCanonicalChunk(`${JSON.stringify(metadata).slice(0, -1)},"records":[`);
+    const batchSize = 500;
+    let before: { evaluatedAt: Date; id: string } | undefined;
+    let exportedCount = 0;
+    let first = true;
+    while (exportedCount < recordCount && !res.destroyed) {
+      const records = await readinessHistory(filters, { limit: batchSize, before }, tx);
+      if (!records.length) break;
+      for (const record of records) {
+        if (res.destroyed) break;
+        await writeCanonicalChunk(`${first ? "" : ","}${JSON.stringify(record)}`);
+        first = false;
+      }
+      exportedCount += records.length;
+      const last = records.at(-1)!;
+      before = { evaluatedAt: last.evaluatedAt, id: last.id };
+    }
+    if (!res.destroyed) {
+      hash.update("]}", "utf8");
+      await writeExportChunk(res, "]");
+      const checksum = hash.digest("hex");
+      const integrity = {
+        algorithm: "SHA-256",
+        canonicalization: "teras-readiness-export-v1-json-stringify",
+        checksum,
+        signature: signChecksum(checksum),
+        verificationCommand: "node artifacts/api-server/scripts/verify-readiness-audit.mjs <readiness-audit.json> <public-keys.json>",
+      };
+      res.end(`,"integrity":${JSON.stringify(integrity)}}`);
+    }
+  }, { isolationLevel: "repeatable read", accessMode: "read only" });
 });
 
 router.post("/admin/claim-supabase-identity", async (req, res): Promise<void> => {

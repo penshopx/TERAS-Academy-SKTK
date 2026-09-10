@@ -22,6 +22,7 @@ const ids = {
   pathwayA: id("path-a"), pathwayB: id("path-b"), enrollmentA: id("enrollment-a"),
   enrollmentB: id("enrollment-b"), gateA: id("gate-a"), gateB: id("gate-b"),
   eventA: id("event-a"), eventB: id("event-b"), eventC: id("event-c"),
+  concurrentEvent: id("event-concurrent"),
 };
 const volumeEventIds = Array.from({ length: 1_205 }, (_, index) => id(`volume-${String(index).padStart(4, "0")}`));
 const execFileAsync = promisify(execFile);
@@ -32,15 +33,19 @@ async function insertInBatches<T>(rows: T[], insert: (batch: T[]) => Promise<unk
   }
 }
 
-async function slowRequest(url: string, headers: Record<string, string>) {
+async function slowRequest(url: string, headers: Record<string, string>, onFirstBackpressure?: () => Promise<void>) {
   return new Promise<{ status: number; body: string; backpressureCount: number; maxBufferedBytes: number; highWaterMark: number }>((resolve, reject) => {
     let backpressureCount = 0;
     let maxBufferedBytes = 0;
     let highWaterMark = 0;
+    let backpressureAction: Promise<void> | undefined;
     const originalWrite = ServerResponse.prototype.write;
     ServerResponse.prototype.write = function (this: ServerResponse, ...args: any[]) {
       const accepted = originalWrite.apply(this, args as any);
-      if (!accepted) backpressureCount += 1;
+      if (!accepted) {
+        backpressureCount += 1;
+        backpressureAction ??= onFirstBackpressure?.();
+      }
       maxBufferedBytes = Math.max(maxBufferedBytes, this.writableLength);
       highWaterMark = Math.max(highWaterMark, this.writableHighWaterMark);
       return accepted;
@@ -55,8 +60,9 @@ async function slowRequest(url: string, headers: Record<string, string>) {
           response.pause();
           setTimeout(() => response.resume(), 1);
         });
-        response.on("end", () => {
+        response.on("end", async () => {
           ServerResponse.prototype.write = originalWrite;
+          await backpressureAction;
           resolve({
             status: response.statusCode ?? 0,
             body: Buffer.concat(chunks).toString("utf8"),
@@ -232,7 +238,23 @@ async function run() {
 
     const originalWrite = ServerResponse.prototype.write;
     const volumeUrl = `http://127.0.0.1:${address.port}/api/admin/readiness-history/export?learnerId=${ids.learnerA}&pathwayId=${ids.pathwayA}&status=Developing&ruleVersion=2`;
-    const slowExport = await slowRequest(volumeUrl, { "x-test-role": "admin" });
+    let concurrentInsertCompleted = false;
+    const slowExport = await slowRequest(volumeUrl, { "x-test-role": "admin" }, async () => {
+      await db.insert(readinessEventsTable).values({
+        id: ids.concurrentEvent,
+        enrollmentId: ids.enrollmentA,
+        pathwayId: ids.pathwayA,
+        gateId: ids.gateA,
+        status: "Developing",
+        score: 99,
+        blockers: [],
+        ruleVersion: 2,
+        inputEvidence: { assessments: [], evidence: [], openCriticalGaps: [] },
+        decisionReason: "Created while the prior snapshot export is paused",
+        evaluatedAt: new Date("2026-02-04T10:00:00Z"),
+      });
+      concurrentInsertCompleted = true;
+    });
     assert(ServerResponse.prototype.write === originalWrite, "Slow-client response instrumentation must be restored");
     assert(slowExport.status === 200, "Large readiness export must succeed for a slow client");
     const volumeExport = JSON.parse(slowExport.body) as any;
@@ -243,16 +265,28 @@ async function run() {
       return rightEvent.evaluatedAt.getTime() - leftEvent.evaluatedAt.getTime() || right.localeCompare(left);
     });
     const actualIds = volumeExport.records.map((record: any) => record.id);
+    assert(concurrentInsertCompleted, "A matching readiness event must commit while the slow export is paused between batches");
     assert(volumeExport.recordCount === expectedIds.length, "Large export count must honor every filter");
     assert(actualIds.length === expectedIds.length && new Set(actualIds).size === expectedIds.length, "Every filtered record must appear exactly once across batch boundaries");
+    assert(!actualIds.includes(ids.concurrentEvent), "One export must retain its initial database snapshot when a matching event is committed between batches");
     assert(actualIds.every((eventId: string, index: number) => eventId === expectedIds[index]), "Large export order must be deterministic for shared timestamps");
     assert(volumeExport.records.every((record: any) => record.learnerId === ids.learnerA
       && record.pathwayId === ids.pathwayA && record.status === "Developing" && record.ruleVersion === 2), "Large export must preserve all requested filters");
+    const volumeCanonicalPayload = {
+      schemaVersion: volumeExport.schemaVersion,
+      exportedAt: volumeExport.exportedAt,
+      filters: volumeExport.filters,
+      recordCount: volumeExport.recordCount,
+      records: volumeExport.records,
+    };
+    const volumeChecksum = createHash("sha256").update(JSON.stringify(volumeCanonicalPayload), "utf8").digest("hex");
+    assert(volumeExport.recordCount === volumeExport.records.length
+      && volumeExport.integrity.checksum === volumeChecksum, "Snapshot recordCount, records, and checksum must describe the same immutable export payload");
     assert(slowExport.backpressureCount > 0, "A slow client must trigger server response backpressure");
     assert(slowExport.maxBufferedBytes <= slowExport.highWaterMark + 16_384, "Server response buffering must remain bounded near its stream high-water mark");
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
-    await db.delete(readinessEventsTable).where(inArray(readinessEventsTable.id, [ids.eventA, ids.eventB, ids.eventC, ...volumeEventIds]));
+    await db.delete(readinessEventsTable).where(inArray(readinessEventsTable.id, [ids.eventA, ids.eventB, ids.eventC, ids.concurrentEvent, ...volumeEventIds]));
     await db.delete(readinessGatesTable).where(inArray(readinessGatesTable.id, [ids.gateA, ids.gateB]));
     await db.delete(enrollmentsTable).where(inArray(enrollmentsTable.id, [ids.enrollmentA, ids.enrollmentB]));
     await db.delete(pathwaysTable).where(inArray(pathwaysTable.id, [ids.pathwayA, ids.pathwayB]));
