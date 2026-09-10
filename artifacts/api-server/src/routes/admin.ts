@@ -2,7 +2,7 @@
 // types; runtime operations are constrained by the generated Zod contracts.
 // @ts-nocheck
 import { Router, type IRouter } from "express";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, lt, or, sql } from "drizzle-orm";
 import {
   CreateAdminCohortBody, CreateAdminCohortResponse, CreateAdminEnrollmentBody, CreateAdminEnrollmentResponse,
   CreateAdminPathwayBody, CreateAdminPathwayResponse, CreateAdminProgramBody, CreateAdminProgramResponse,
@@ -17,7 +17,7 @@ import {
   UpdateAdminCompetencyFrameworkBody, UpdateAdminCompetencyFrameworkParams, UpdateAdminCompetencyFrameworkResponse,
   CreateAdminCompetencyUnitBody, CreateAdminCompetencyUnitResponse, UpdateAdminCompetencyUnitBody, UpdateAdminCompetencyUnitParams, UpdateAdminCompetencyUnitResponse,
   CreateAdminReadinessRuleVersionBody, CreateAdminReadinessRuleVersionResponse, ExportAdminReadinessHistoryQueryParams,
-  ExportAdminReadinessHistoryResponse, ListAdminReadinessHistoryQueryParams, ListAdminReadinessHistoryResponse,
+  ListAdminReadinessHistoryQueryParams, ListAdminReadinessHistoryResponse,
   ListAdminReadinessRulesResponse,
 } from "@workspace/api-zod";
 import {
@@ -159,14 +159,29 @@ type ReadinessHistoryFilters = {
   ruleVersion?: number;
 };
 
-async function readinessHistory(filters: ReadinessHistoryFilters) {
+const readinessHistoryConditions = (filters: ReadinessHistoryFilters) => [
+  filters.learnerId ? eq(enrollmentsTable.learnerId, filters.learnerId) : undefined,
+  filters.pathwayId ? eq(readinessEventsTable.pathwayId, filters.pathwayId) : undefined,
+  filters.status ? eq(readinessEventsTable.status, filters.status) : undefined,
+  filters.ruleVersion ? eq(readinessEventsTable.ruleVersion, filters.ruleVersion) : undefined,
+].filter(Boolean);
+
+async function readinessHistory(filters: ReadinessHistoryFilters, pagination?: {
+  limit: number;
+  offset?: number;
+  before?: { evaluatedAt: Date; id: string };
+}) {
   const conditions = [
-    filters.learnerId ? eq(enrollmentsTable.learnerId, filters.learnerId) : undefined,
-    filters.pathwayId ? eq(readinessEventsTable.pathwayId, filters.pathwayId) : undefined,
-    filters.status ? eq(readinessEventsTable.status, filters.status) : undefined,
-    filters.ruleVersion ? eq(readinessEventsTable.ruleVersion, filters.ruleVersion) : undefined,
+    ...readinessHistoryConditions(filters),
+    pagination?.before ? or(
+      lt(readinessEventsTable.evaluatedAt, pagination.before.evaluatedAt),
+      and(
+        eq(readinessEventsTable.evaluatedAt, pagination.before.evaluatedAt),
+        lt(readinessEventsTable.id, pagination.before.id),
+      ),
+    ) : undefined,
   ].filter(Boolean);
-  return db.select({
+  const query = db.select({
     id: readinessEventsTable.id,
     enrollmentId: readinessEventsTable.enrollmentId,
     learnerId: enrollmentsTable.learnerId,
@@ -190,23 +205,48 @@ async function readinessHistory(filters: ReadinessHistoryFilters) {
     .innerJoin(pathwaysTable, eq(pathwaysTable.id, readinessEventsTable.pathwayId))
     .innerJoin(readinessGatesTable, eq(readinessGatesTable.id, readinessEventsTable.gateId))
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(readinessEventsTable.evaluatedAt), desc(readinessEventsTable.createdAt));
+    .orderBy(desc(readinessEventsTable.evaluatedAt), desc(readinessEventsTable.id));
+  return pagination ? query.limit(pagination.limit).offset(pagination.offset ?? 0) : query;
+}
+
+async function readinessHistoryCount(filters: ReadinessHistoryFilters) {
+  const conditions = readinessHistoryConditions(filters);
+  const [result] = await db.select({ total: count() })
+    .from(readinessEventsTable)
+    .innerJoin(enrollmentsTable, eq(enrollmentsTable.id, readinessEventsTable.enrollmentId))
+    .where(conditions.length ? and(...conditions) : undefined);
+  return result.total;
+}
+
+async function writeExportChunk(res: any, chunk: string) {
+  if (res.write(chunk)) return;
+  await new Promise<void>((resolve, reject) => {
+    res.once("drain", resolve);
+    res.once("error", reject);
+    res.once("close", resolve);
+  });
 }
 
 router.get("/admin/readiness-history", async (req, res): Promise<void> => {
   if (!await authorizeAdmin(req, res)) return;
   const filters = parsed(ListAdminReadinessHistoryQueryParams, req.query, res);
   if (!filters) return;
-  res.json(ListAdminReadinessHistoryResponse.parse(await readinessHistory(filters)));
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? 25;
+  const [items, total] = await Promise.all([
+    readinessHistory(filters, { limit: pageSize, offset: (page - 1) * pageSize }),
+    readinessHistoryCount(filters),
+  ]);
+  res.json(ListAdminReadinessHistoryResponse.parse({ items, page, pageSize, total }));
 });
 
 router.get("/admin/readiness-history/export", async (req, res): Promise<void> => {
   if (!await authorizeAdmin(req, res)) return;
   const filters = parsed(ExportAdminReadinessHistoryQueryParams, req.query, res);
   if (!filters) return;
-  const records = await readinessHistory(filters);
   const exportedAt = new Date();
-  const payload = ExportAdminReadinessHistoryResponse.parse({
+  const recordCount = await readinessHistoryCount(filters);
+  const metadata = {
     schemaVersion: "1.0",
     exportedAt,
     filters: {
@@ -215,12 +255,28 @@ router.get("/admin/readiness-history/export", async (req, res): Promise<void> =>
       status: filters.status ?? null,
       ruleVersion: filters.ruleVersion ?? null,
     },
-    recordCount: records.length,
-    records,
-  });
+    recordCount,
+  };
   res.setHeader("Content-Disposition", `attachment; filename="readiness-audit-${exportedAt.toISOString().slice(0, 10)}.json"`);
   res.setHeader("Cache-Control", "private, no-store");
-  res.json(payload);
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  await writeExportChunk(res, `${JSON.stringify(metadata).slice(0, -1)},"records":[`);
+  const batchSize = 500;
+  let before: { evaluatedAt: Date; id: string } | undefined;
+  let exportedCount = 0;
+  let first = true;
+  while (exportedCount < recordCount && !res.destroyed) {
+    const records = await readinessHistory(filters, { limit: batchSize, before });
+    if (!records.length) break;
+    for (const record of records) {
+      await writeExportChunk(res, `${first ? "" : ","}${JSON.stringify(record)}`);
+      first = false;
+    }
+    exportedCount += records.length;
+    const last = records.at(-1)!;
+    before = { evaluatedAt: last.evaluatedAt, id: last.id };
+  }
+  if (!res.destroyed) res.end("]}");
 });
 
 router.post("/admin/claim-supabase-identity", async (req, res): Promise<void> => {

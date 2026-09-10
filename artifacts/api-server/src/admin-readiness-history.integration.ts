@@ -14,7 +14,7 @@ const ids = {
   learnerA: id("learner-a"), learnerB: id("learner-b"), program: id("program"),
   pathwayA: id("path-a"), pathwayB: id("path-b"), enrollmentA: id("enrollment-a"),
   enrollmentB: id("enrollment-b"), gateA: id("gate-a"), gateB: id("gate-b"),
-  eventA: id("event-a"), eventB: id("event-b"),
+  eventA: id("event-a"), eventB: id("event-b"), eventC: id("event-c"),
 };
 
 async function run() {
@@ -48,6 +48,12 @@ async function run() {
       inputEvidence: { assessments: [{ id: "assessment-b", score: 40, completed: true, criticalFailure: true }], evidence: [], openCriticalGaps: ["gap-b"] },
       decisionReason: "Critical safety failure", evaluatedAt: new Date("2026-01-02T10:00:00Z"),
     },
+    {
+      id: ids.eventC, enrollmentId: ids.enrollmentB, pathwayId: ids.pathwayB, gateId: ids.gateB,
+      status: "Not Ready", score: 45, blockers: ["Critical safety"], ruleVersion: 3,
+      inputEvidence: { assessments: [], evidence: [], openCriticalGaps: ["gap-c"] },
+      decisionReason: "Critical gap remains open", evaluatedAt: new Date("2026-01-02T10:00:00Z"),
+    },
   ]);
 
   const app = createIntegrationTestApp(req => {
@@ -65,20 +71,30 @@ async function run() {
     const forbidden = await request("/admin/readiness-history", "learner");
     assert(forbidden.status === 403, "Learners must not access readiness audit history");
 
-    const filteredResponse = await request(`/admin/readiness-history?learnerId=${ids.learnerA}&pathwayId=${ids.pathwayA}&status=Developing&ruleVersion=2`, "admin");
-    const filtered = await filteredResponse.json() as any[];
-    assert(filteredResponse.status === 200 && filtered.length === 1, "All readiness history filters must be applied together");
-    assert(filtered[0].id === ids.eventA && filtered[0].learnerName === "Audit Learner A", "Filtered history must preserve learner context");
-    assert(filtered[0].inputEvidence.evidence[0].requirementId === "evidence-a", "History must include the immutable evidence snapshot");
+    const filteredResponse = await request(`/admin/readiness-history?learnerId=${ids.learnerA}&pathwayId=${ids.pathwayA}&status=Developing&ruleVersion=2&page=1&pageSize=1`, "admin");
+    const filtered = await filteredResponse.json() as any;
+    assert(filteredResponse.status === 200 && filtered.items.length === 1, "All readiness history filters must be applied together");
+    assert(filtered.total === 1 && filtered.page === 1 && filtered.pageSize === 1, "History must report accurate pagination metadata");
+    assert(filtered.items[0].id === ids.eventA && filtered.items[0].learnerName === "Audit Learner A", "Filtered history must preserve learner context");
+    assert(filtered.items[0].inputEvidence.evidence[0].requirementId === "evidence-a", "History must include the immutable evidence snapshot");
+
+    const firstPageResponse = await request("/admin/readiness-history?page=1&pageSize=1", "admin");
+    const firstPage = await firstPageResponse.json() as any;
+    assert(firstPage.items.length === 1 && firstPage.total >= 2, "Page size must bound records without changing the total");
+
+    const secondPageResponse = await request("/admin/readiness-history?page=2&pageSize=1", "admin");
+    const secondPage = await secondPageResponse.json() as any;
+    assert(secondPage.items.length === 1 && secondPage.items[0].id !== firstPage.items[0].id, "Distinct pages must return distinct readiness events");
 
     const exportResponse = await request(`/admin/readiness-history/export?status=Not%20Ready&ruleVersion=3`, "admin");
     const exported = await exportResponse.json() as any;
     assert(exportResponse.status === 200 && exportResponse.headers.get("cache-control") === "private, no-store", "Audit export must be private and non-cacheable");
-    assert(exported.schemaVersion === "1.0" && exported.recordCount === 1, "Export must be versioned and report its record count");
-    assert(exported.records[0].id === ids.eventB && exported.records[0].inputEvidence.openCriticalGaps[0] === "gap-b", "Export must include complete decision snapshots");
+    assert(exported.schemaVersion === "1.0" && exported.recordCount === 2, "Export must be versioned and report its record count");
+    assert(exported.records.some((record: any) => record.id === ids.eventB && record.inputEvidence.openCriticalGaps[0] === "gap-b"), "Export must include complete decision snapshots");
+    assert(exported.records.some((record: any) => record.id === ids.eventC), "Export must preserve records with identical evaluation timestamps");
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
-    await db.delete(readinessEventsTable).where(inArray(readinessEventsTable.id, [ids.eventA, ids.eventB]));
+    await db.delete(readinessEventsTable).where(inArray(readinessEventsTable.id, [ids.eventA, ids.eventB, ids.eventC]));
     await db.delete(readinessGatesTable).where(inArray(readinessGatesTable.id, [ids.gateA, ids.gateB]));
     await db.delete(enrollmentsTable).where(inArray(enrollmentsTable.id, [ids.enrollmentA, ids.enrollmentB]));
     await db.delete(pathwaysTable).where(inArray(pathwaysTable.id, [ids.pathwayA, ids.pathwayB]));

@@ -2049,6 +2049,19 @@ export interface AdminReadinessEvaluation {
   evaluatedAt: string;
 }
 
+export interface AdminReadinessHistoryPage {
+  items: AdminReadinessEvaluation[];
+  /** @minimum 1 */
+  page: number;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  pageSize: number;
+  /** @minimum 0 */
+  total: number;
+}
+
 export type AdminReadinessExportSchemaVersion = typeof AdminReadinessExportSchemaVersion[keyof typeof AdminReadinessExportSchemaVersion];
 
 
@@ -2323,6 +2336,15 @@ status?: ListAdminReadinessHistoryStatus;
  * @minimum 1
  */
 ruleVersion?: number;
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+pageSize?: number;
 };
 
 export type ListAdminReadinessHistoryStatus = typeof ListAdminReadinessHistoryStatus[keyof typeof ListAdminReadinessHistoryStatus];

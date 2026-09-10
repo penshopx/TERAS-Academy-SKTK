@@ -56,6 +56,7 @@ export * from './adminReadinessExport';
 export * from './adminReadinessExportFilters';
 export * from './adminReadinessExportFiltersStatus';
 export * from './adminReadinessExportSchemaVersion';
+export * from './adminReadinessHistoryPage';
 export * from './adminReadinessRule';
 export * from './adminReadinessRuleAssessmentMode';
 export * from './adminReadinessRuleEvidenceMode';

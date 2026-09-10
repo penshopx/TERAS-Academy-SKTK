@@ -2352,22 +2352,35 @@ export const CreateAdminReadinessRuleVersionResponse = zod.object({
 
 
 
+export const listAdminReadinessHistoryQueryPageDefault = 1;
+
+export const listAdminReadinessHistoryQueryPageSizeDefault = 25;
+export const listAdminReadinessHistoryQueryPageSizeMax = 100;
+
 
 
 export const ListAdminReadinessHistoryQueryParams = zod.object({
   "learnerId": zod.coerce.string().min(1).optional(),
   "pathwayId": zod.coerce.string().min(1).optional(),
   "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']).optional(),
-  "ruleVersion": zod.coerce.number().int().min(1).optional()
+  "ruleVersion": zod.coerce.number().int().min(1).optional(),
+  "page": zod.coerce.number().int().min(1).default(listAdminReadinessHistoryQueryPageDefault),
+  "pageSize": zod.coerce.number().int().min(1).max(listAdminReadinessHistoryQueryPageSizeMax).default(listAdminReadinessHistoryQueryPageSizeDefault)
 })
 
-export const listAdminReadinessHistoryResponseScoreMin = 0;
-export const listAdminReadinessHistoryResponseScoreMax = 100;
+export const listAdminReadinessHistoryResponseItemsItemScoreMin = 0;
+export const listAdminReadinessHistoryResponseItemsItemScoreMax = 100;
 
 
 
+export const listAdminReadinessHistoryResponsePageSizeMax = 100;
 
-export const ListAdminReadinessHistoryResponseItem = zod.object({
+export const listAdminReadinessHistoryResponseTotalMin = 0;
+
+
+
+export const ListAdminReadinessHistoryResponse = zod.object({
+  "items": zod.array(zod.object({
   "id": zod.string(),
   "enrollmentId": zod.string(),
   "learnerId": zod.string(),
@@ -2378,7 +2391,7 @@ export const ListAdminReadinessHistoryResponseItem = zod.object({
   "gateCode": zod.string(),
   "gateName": zod.string(),
   "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']),
-  "score": zod.int().min(listAdminReadinessHistoryResponseScoreMin).max(listAdminReadinessHistoryResponseScoreMax),
+  "score": zod.int().min(listAdminReadinessHistoryResponseItemsItemScoreMin).max(listAdminReadinessHistoryResponseItemsItemScoreMax),
   "blockers": zod.array(zod.string()),
   "ruleVersion": zod.int().min(1),
   "inputEvidence": zod.object({
@@ -2396,8 +2409,11 @@ export const ListAdminReadinessHistoryResponseItem = zod.object({
 }),
   "decisionReason": zod.string(),
   "evaluatedAt": zod.coerce.date()
+})),
+  "page": zod.int().min(1),
+  "pageSize": zod.int().min(1).max(listAdminReadinessHistoryResponsePageSizeMax),
+  "total": zod.int().min(listAdminReadinessHistoryResponseTotalMin)
 })
-export const ListAdminReadinessHistoryResponse = zod.array(ListAdminReadinessHistoryResponseItem)
 
 
 /**

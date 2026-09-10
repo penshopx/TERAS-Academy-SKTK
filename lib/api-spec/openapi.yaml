@@ -884,8 +884,10 @@ paths:
         - { name: pathwayId, in: query, schema: { type: string, minLength: 1 } }
         - { name: status, in: query, schema: { type: string, enum: [Not Ready, Developing, Ready for Official Assessment] } }
         - { name: ruleVersion, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
       responses:
-        "200": { description: Filtered readiness evaluation history, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AdminReadinessEvaluation" } } } } }
+        "200": { description: Paginated filtered readiness evaluation history, content: { application/json: { schema: { $ref: "#/components/schemas/AdminReadinessHistoryPage" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -3777,6 +3779,14 @@ components:
         inputEvidence: { $ref: "#/components/schemas/ReadinessEvidenceSnapshot" }
         decisionReason: { type: string }
         evaluatedAt: { type: string, format: date-time }
+    AdminReadinessHistoryPage:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/AdminReadinessEvaluation" } }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, minimum: 0 }
     AdminReadinessExport:
       type: object
       required: [schemaVersion, exportedAt, filters, recordCount, records]

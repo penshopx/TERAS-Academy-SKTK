@@ -1,6 +1,6 @@
 import { relations, sql } from "drizzle-orm";
 import {
-  boolean, check, foreignKey, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex,
+  boolean, check, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -90,7 +90,10 @@ export const enrollmentsTable = pgTable("teras_enrollments", {
   pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id), trainerId: text("trainer_id").references(() => peopleTable.id),
   assessorId: text("assessor_id").references(() => peopleTable.id), cohortId: text("cohort_id").references(() => cohortsTable.id),
   status: text("status").notNull().default("active"), ...audit,
-}, table => [unique("teras_enrollments_id_program_unique").on(table.id, table.programId)]);
+}, table => [
+  unique("teras_enrollments_id_program_unique").on(table.id, table.programId),
+  index("teras_enrollments_learner_id_idx").on(table.learnerId, table.id),
+]);
 /** Immutable administrative history; write an event for every admin mutation. */
 export const adminAuditEventsTable = pgTable("teras_admin_audit_events", {
   id: text("id").primaryKey(), actorPersonId: text("actor_person_id").references(() => peopleTable.id),
@@ -219,6 +222,11 @@ export const readinessEventsTable = pgTable("teras_readiness_events", {
   ...audit,
 }, table => [
   check("teras_readiness_events_status_check", sql`${table.status} IN ('Not Ready', 'Developing', 'Ready for Official Assessment')`),
+  index("teras_readiness_events_evaluated_at_idx").on(table.evaluatedAt, table.id),
+  index("teras_readiness_events_enrollment_evaluated_idx").on(table.enrollmentId, table.evaluatedAt, table.id),
+  index("teras_readiness_events_pathway_evaluated_idx").on(table.pathwayId, table.evaluatedAt, table.id),
+  index("teras_readiness_events_status_evaluated_idx").on(table.status, table.evaluatedAt, table.id),
+  index("teras_readiness_events_rule_version_evaluated_idx").on(table.ruleVersion, table.evaluatedAt, table.id),
 ]);
 
 export const programRelations = relations(programsTable, ({ many }) => ({ modules: many(modulesTable), pathways: many(pathwaysTable) }));

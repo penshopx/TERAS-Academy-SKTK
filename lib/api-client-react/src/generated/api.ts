@@ -40,8 +40,8 @@ import type {
   AdminProgram,
   AdminProgramInput,
   AdminProgramUpdate,
-  AdminReadinessEvaluation,
   AdminReadinessExport,
+  AdminReadinessHistoryPage,
   AdminReadinessRule,
   AdminUser,
   AdminUserInput,
@@ -4042,9 +4042,9 @@ export const getListAdminReadinessHistoryUrl = (params?: ListAdminReadinessHisto
 /**
  * @summary List immutable readiness evaluations for audit
  */
-export const listAdminReadinessHistory = async (params?: ListAdminReadinessHistoryParams, options?: Parameters<typeof customFetch>[1]): Promise<AdminReadinessEvaluation[]> => {
+export const listAdminReadinessHistory = async (params?: ListAdminReadinessHistoryParams, options?: Parameters<typeof customFetch>[1]): Promise<AdminReadinessHistoryPage> => {
 
-  return customFetch<AdminReadinessEvaluation[]>(getListAdminReadinessHistoryUrl(params),
+  return customFetch<AdminReadinessHistoryPage>(getListAdminReadinessHistoryUrl(params),
   {
     ...options,
     method: 'GET'
