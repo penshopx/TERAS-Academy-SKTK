@@ -1,6 +1,11 @@
 import { inArray } from "drizzle-orm";
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, verify } from "node:crypto";
 import { get, ServerResponse } from "node:http";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   db, enrollmentsTable, pathwaysTable, peopleTable, programsTable, readinessEventsTable, readinessGatesTable,
 } from "@workspace/db";
@@ -19,6 +24,7 @@ const ids = {
   eventA: id("event-a"), eventB: id("event-b"), eventC: id("event-c"),
 };
 const volumeEventIds = Array.from({ length: 1_205 }, (_, index) => id(`volume-${String(index).padStart(4, "0")}`));
+const execFileAsync = promisify(execFile);
 
 async function insertInBatches<T>(rows: T[], insert: (batch: T[]) => Promise<unknown>, batchSize = 200) {
   for (let offset = 0; offset < rows.length; offset += batchSize) {
@@ -70,6 +76,15 @@ async function slowRequest(url: string, headers: Record<string, string>) {
 }
 
 async function run() {
+  const activeKeyPair = generateKeyPairSync("ed25519");
+  const retiredKeyPair = generateKeyPairSync("ed25519");
+  const publicPem = activeKeyPair.publicKey.export({ type: "spki", format: "pem" }).toString();
+  const privatePem = activeKeyPair.privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+  const retiredPublicPem = retiredKeyPair.publicKey.export({ type: "spki", format: "pem" }).toString();
+  process.env.TERAS_READINESS_AUDIT_SIGNING_KEYS = JSON.stringify([
+    { keyId: "teras-audit-2026-09", version: 2, active: true, publicKeyPem: publicPem, privateKeyPem: privatePem },
+    { keyId: "teras-audit-2026-01", version: 1, active: false, publicKeyPem: retiredPublicPem },
+  ]);
   await db.insert(peopleTable).values([
     { id: ids.learnerA, name: "Audit Learner A", initials: "AA", role: "learner", status: "active" },
     { id: ids.learnerB, name: "Audit Learner B", initials: "AB", role: "learner", status: "active" },
@@ -154,10 +169,46 @@ async function run() {
     const canonicalJson = JSON.stringify(canonicalPayload);
     const checksum = createHash("sha256").update(canonicalJson, "utf8").digest("hex");
     assert(exported.integrity.algorithm === "SHA-256" && exported.integrity.checksum === checksum, "Export checksum must verify its canonical payload");
+    assert(exported.integrity.signature.algorithm === "Ed25519"
+      && exported.integrity.signature.keyId === "teras-audit-2026-09"
+      && exported.integrity.signature.keyVersion === 2, "Export signature must identify the active versioned key");
+    assert(verify(null, Buffer.from(checksum, "hex"), activeKeyPair.publicKey, Buffer.from(exported.integrity.signature.value, "base64")), "Export signature must verify over the canonical checksum");
+    const publicKeysResponse = await request("/readiness-audit/public-keys", "learner");
+    const publicKeys = await publicKeysResponse.json() as any;
+    assert(publicKeysResponse.status === 200 && publicKeys.issuer === "TERAS", "Public verification keys must be available without admin authorization");
+    assert(publicKeys.keys.length === 2 && publicKeys.keys[0].version === 2 && publicKeys.keys[1].version === 1, "Public key history must retain key IDs and versions across rotation");
+    assert(!JSON.stringify(publicKeys).includes("PRIVATE KEY"), "Public key endpoint must never expose private key material");
     const changedByte = canonicalJson.replace("Critical gap remains open", "Critical gap remains opfn");
     assert(changedByte.length === canonicalJson.length && changedByte !== canonicalJson, "Checksum fixture must change exactly one byte");
     const changedChecksum = createHash("sha256").update(changedByte, "utf8").digest("hex");
     assert(changedChecksum !== exported.integrity.checksum, "Changing one canonical payload byte must fail checksum verification");
+    const verifierDirectory = await mkdtemp(join(tmpdir(), "teras-readiness-verifier-"));
+    const verifierPath = new URL("../scripts/verify-readiness-audit.mjs", import.meta.url);
+    const keysPath = join(verifierDirectory, "public-keys.json");
+    const exportPath = join(verifierDirectory, "export.json");
+    await writeFile(keysPath, JSON.stringify(publicKeys));
+    const runVerifier = async (document: any) => {
+      await writeFile(exportPath, JSON.stringify(document));
+      try {
+        await execFileAsync(process.execPath, [verifierPath.pathname, exportPath, keysPath]);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    assert(await runVerifier(exported), "Official verifier must accept an authentic export");
+    const payloadTampered = structuredClone(exported);
+    payloadTampered.records[0].decisionReason = `${payloadTampered.records[0].decisionReason} changed`;
+    assert(!await runVerifier(payloadTampered), "Official verifier must reject a modified payload");
+    const checksumTampered = structuredClone(exported);
+    checksumTampered.integrity.checksum = `${checksumTampered.integrity.checksum.slice(0, -1)}${checksumTampered.integrity.checksum.endsWith("0") ? "1" : "0"}`;
+    assert(!await runVerifier(checksumTampered), "Official verifier must reject a modified checksum");
+    const signatureTampered = structuredClone(exported);
+    const signatureBytes = Buffer.from(signatureTampered.integrity.signature.value, "base64");
+    signatureBytes[0] ^= 1;
+    signatureTampered.integrity.signature.value = signatureBytes.toString("base64");
+    assert(!await runVerifier(signatureTampered), "Official verifier must reject a modified signature");
+    await rm(verifierDirectory, { recursive: true, force: true });
 
     const sharedTimestamps = [
       new Date("2026-02-03T10:00:00Z"),

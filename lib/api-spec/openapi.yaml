@@ -906,6 +906,18 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { description: Audit signing key is not configured }
+  /readiness-audit/public-keys:
+    get:
+      operationId: listReadinessAuditPublicKeys
+      tags: [admin]
+      summary: List TERAS public keys for offline readiness audit verification
+      security: []
+      responses:
+        "200":
+          description: Public verification keys, including retained rotated keys
+          content: { application/json: { schema: { $ref: "#/components/schemas/ReadinessAuditPublicKeySet" } } }
+        "503": { description: Public verification keys are not configured }
   /admin/competency-frameworks:
     get:
       operationId: listAdminCompetencyFrameworks
@@ -3817,7 +3829,7 @@ components:
         records: { type: array, items: { $ref: "#/components/schemas/AdminReadinessEvaluation" } }
         integrity:
           type: object
-          required: [algorithm, canonicalization, checksum, verificationCommand]
+          required: [algorithm, canonicalization, checksum, signature, verificationCommand]
           properties:
             algorithm: { type: string, enum: [SHA-256] }
             canonicalization:
@@ -3825,7 +3837,32 @@ components:
               description: JSON.stringify of schemaVersion, exportedAt, filters, recordCount, and records in that order
               enum: [teras-readiness-export-v1-json-stringify]
             checksum: { type: string, pattern: "^[a-f0-9]{64}$" }
+            signature:
+              type: object
+              required: [algorithm, keyId, keyVersion, value, publicKeyUrl]
+              properties:
+                algorithm: { type: string, enum: [Ed25519] }
+                keyId: { type: string, minLength: 1 }
+                keyVersion: { type: integer, minimum: 1 }
+                value: { type: string, contentEncoding: base64 }
+                publicKeyUrl: { type: string, example: /api/readiness-audit/public-keys }
             verificationCommand: { type: string }
+    ReadinessAuditPublicKeySet:
+      type: object
+      required: [issuer, usage, keys]
+      properties:
+        issuer: { type: string, enum: [TERAS] }
+        usage: { type: string }
+        keys:
+          type: array
+          items:
+            type: object
+            required: [keyId, version, algorithm, publicKeyPem]
+            properties:
+              keyId: { type: string, minLength: 1 }
+              version: { type: integer, minimum: 1 }
+              algorithm: { type: string, enum: [Ed25519] }
+              publicKeyPem: { type: string }
     ReadinessRuleInput:
       type: object
       required: [programId, pathwayId, sequence, code, name, requirement, assessmentMode, evidenceMode, threshold, hardGate]

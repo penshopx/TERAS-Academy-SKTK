@@ -11,10 +11,12 @@ import storageRouter from "./storage";
 import knowledgeRouter from "./knowledge";
 import diagnosticRouter from "./diagnostic";
 import sessionRouter from "./session";
+import readinessAuditRouter from "./readiness-audit";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(readinessAuditRouter);
 router.use(sessionRouter);
 router.use(programsRouter);
 router.use(learnerRouter);

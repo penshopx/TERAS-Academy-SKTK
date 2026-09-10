@@ -32,6 +32,7 @@ import {
 import { authorizeAdmin, authorizeLocalUser, authorizeSuperAdmin, type AdminActor } from "../lib/authorization";
 import { supabaseEmailIsVerified, supabaseIdentity } from "../lib/supabase-auth";
 import { allowsSuperAdminMfa } from "@workspace/db/super-admin-mfa-policy";
+import { readinessAuditSigner } from "../lib/readiness-audit-signing";
 import {
   claimExistingSuperAdminIdentity,
   createManagedUser,
@@ -262,6 +263,13 @@ router.get("/admin/readiness-history/export", async (req, res): Promise<void> =>
   if (!await authorizeAdmin(req, res)) return;
   const filters = parsed(ExportAdminReadinessHistoryQueryParams, req.query, res);
   if (!filters) return;
+  let signChecksum: ReturnType<typeof readinessAuditSigner>;
+  try {
+    signChecksum = readinessAuditSigner();
+  } catch {
+    res.status(503).json({ error: "Readiness audit signing is not configured" });
+    return;
+  }
   const exportedAt = new Date();
   const recordCount = await readinessHistoryCount(filters);
   const metadata = {
@@ -310,7 +318,8 @@ router.get("/admin/readiness-history/export", async (req, res): Promise<void> =>
       algorithm: "SHA-256",
       canonicalization: "teras-readiness-export-v1-json-stringify",
       checksum,
-      verificationCommand: "node artifacts/api-server/scripts/verify-readiness-audit.mjs <readiness-audit.json>",
+      signature: signChecksum(checksum),
+      verificationCommand: "node artifacts/api-server/scripts/verify-readiness-audit.mjs <readiness-audit.json> <public-keys.json>",
     };
     res.end(`,"integrity":${JSON.stringify(integrity)}}`);
   }
