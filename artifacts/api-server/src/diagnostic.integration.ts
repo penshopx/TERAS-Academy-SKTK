@@ -9,7 +9,7 @@ import {
   enrollmentsTable, peopleTable, programsTable, pathwaysTable, competencyFrameworksTable,
   competencyUnitsTable, pathwayCompetencyUnitsTable, diagnosticTemplatesTable,
   diagnosticQuestionsTable,
-  readinessEventsTable,
+  modulesTable, practiceTasksTable, readinessEventsTable, readinessGatesTable,
   personRolesTable,
 } from "@workspace/db";
 import { createIntegrationTestApp } from "./integration-test-app";
@@ -65,6 +65,41 @@ async function run() {
   await db.insert(programsTable).values({ id: "solar-pv-tech", domain: "renewable", name: "Solar PV", description: "Fixture", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
   await db.insert(pathwaysTable).values({ id: "path-a", programId: "solar-pv-tech", name: "Path A", type: "standard", outcome: "Technician", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
   await db.insert(pathwaysTable).values({ id: "path-b", programId: "solar-pv-tech", name: "Path B", type: "standard", outcome: "Designer", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
+  await db.insert(readinessGatesTable).values({
+    id: "diagnostic-gate-g1",
+    programId: "solar-pv-tech",
+    pathwayId: "path-a",
+    sequence: 1,
+    code: "G1",
+    name: "Diagnostic fixture gate",
+    requirement: "Diagnostic integration baseline",
+    assessmentMode: "None",
+    evidenceMode: "None",
+    createdBy: "diagnostic-test",
+  });
+  await db.insert(modulesTable).values({
+    id: "diagnostic-module",
+    programId: "solar-pv-tech",
+    pathwayId: "path-a",
+    sequence: 1,
+    code: "DIAG",
+    name: "Diagnostic fixture module",
+    capability: "Diagnostic fixture capability",
+    evidence: "Diagnostic fixture evidence",
+    learningOutcomes: ["Complete the diagnostic fixture"],
+    theory: ["Diagnostic fixture theory"],
+    createdBy: "diagnostic-test",
+  });
+  await db.insert(practiceTasksTable).values({
+    id: "diagnostic-practice-task",
+    moduleId: "diagnostic-module",
+    title: "Diagnostic fixture practice",
+    description: "Practice fixture required by the learner dashboard.",
+    mode: "guided",
+    durationMinutes: 10,
+    output: "Fixture output",
+    createdBy: "diagnostic-test",
+  });
   await db.insert(competencyFrameworksTable).values({ id: "framework-skttk-solar-pv", code: "SKTTK", name: "SKTTK", description: "Fixture", domain: "solar", version: "1.0", status: "active", createdBy: "diagnostic-test" }).onConflictDoNothing();
   await db.insert(competencyUnitsTable).values([
     { id: "skttk-u-safe-isolation", frameworkId: "framework-skttk-solar-pv", code: "SAFE", title: "Safety", description: "Safety", sequence: 1, status: "active", createdBy: "diagnostic-test" },
