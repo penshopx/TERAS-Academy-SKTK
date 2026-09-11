@@ -66,7 +66,7 @@ test("renders a clear learner condition with explicit safety and no blockers", (
   assert.match(markup, /Learner/);
 });
 
-test("renders a blocked learner condition with safety and every blocker visible", () => {
+test("renders a blocked learner condition as not cleared with every blocker visible", () => {
   const blockers = [
     "Critical assessment failed: electrical isolation",
     "Evidence package requires revision",
@@ -84,9 +84,10 @@ test("renders a blocked learner condition with safety and every blocker visible"
     />,
   );
 
-  assert.match(markup, /SAFETY BLOCKED/);
-  assert.match(markup, /active critical assessment failure/);
-  assert.match(markup, /Critical failure/);
+  assert.match(markup, /SAFETY NOT CLEARED/);
+  assert.match(markup, /Safety status/);
+  assert.match(markup, /Safety clearance has not yet been established/);
+  assert.match(markup, /Pending/);
   assert.match(markup, /Assessor/);
   for (const blocker of blockers) {
     assert.match(markup, new RegExp(blocker));
