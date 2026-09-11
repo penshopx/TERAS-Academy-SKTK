@@ -24,14 +24,15 @@ export default function ProgramDetail() {
         <span>{program.domain}</span>
       </div>
       <div>
-        <h1 className="text-3xl md:text-4xl font-bold">{program.name}</h1>
+        <p className="mb-1 font-mono text-xs uppercase tracking-wider text-muted-foreground">Track / Role</p>
+        <h1 className="text-3xl md:text-4xl font-bold">{program.track}</h1>
         <p className="text-muted-foreground mt-1">{program.description}</p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle className="flex gap-2"><LayoutTemplate />Choose your capability pathway</CardTitle>
-          <CardDescription>Each pathway has its own curriculum, evidence, assessments, and readiness gates.</CardDescription>
+          <CardDescription>Both pathways share the Academy foundation. Their purpose, assessment, evidence, output, and KPI remain distinct.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2">
@@ -43,7 +44,7 @@ export default function ProgramDetail() {
                 className={cn("rounded-lg border p-5 text-left transition-colors", pathway.id === selected?.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50")}
               >
                 <div className="flex justify-between items-start gap-2">
-                  <Badge variant="outline">{pathway.type}</Badge>
+                  <Badge variant="outline">{pathway.purpose === "capability-development" ? "CAPABILITY DEVELOPMENT" : pathway.purpose === "pre-certification" ? "PRE-CERTIFICATION" : pathway.type}</Badge>
                   {pathway.id === dashboard?.pathway.id && <Badge variant="default" className="shrink-0"><CheckCircle2 className="mr-1 h-3 w-3" />ACTIVE</Badge>}
                 </div>
                 <div className="mt-3 font-semibold text-lg">{pathway.name}</div>

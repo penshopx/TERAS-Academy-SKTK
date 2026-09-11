@@ -1,0 +1,244 @@
+Kalau mengacu kesini,
+
+TERAS Academy — Application Architecture Map
+
+1. Entry / Academy Home
+
+Aplikasi perlu menjelaskan fungsi Academy sebagai sistem pembelajaran dan pengembangan kapabilitas yang mengubah pengetahuan menjadi kemampuan yang dapat diterapkan, diamati, dibuktikan, dan ditingkatkan. 
+
+Yang perlu terlihat:
+
+tujuan Academy
+
+pilihan pathway
+
+learning journey
+
+program/module yang tersedia
+
+status belajar peserta
+
+
+QA: harus terasa sebagai capability system, bukan sekadar katalog kursus.
+
+
+---
+
+2. Learner Profile & Registration
+
+Flow awal:
+
+Registration → Diagnostic Assessment → Pathway Assignment → Individual Learning Plan. 
+
+Maka aplikasi idealnya memiliki:
+
+Participant Profile
+
+Diagnostic Record
+
+Individual Learning Plan
+
+
+Ketiga record tersebut memang sudah ditetapkan dalam Master Architecture. 
+
+
+---
+
+3. Pathway Engine
+
+Harus ada dua jalur yang jelas:
+
+PATH A — Capability Development
+
+Tujuan: membangun kapabilitas.
+
+Output: Capability Achievement / Capability Portfolio.
+
+PATH B — Pre-Certification
+
+Tujuan: menyiapkan peserta menuju assessment sertifikasi.
+
+Output: Readiness Portfolio / Certification Readiness.
+
+Keduanya menggunakan common foundation, tetapi tujuan, assessment, evidence, output dan KPI berbeda. 
+
+Ini salah satu area yang menurut saya harus menjadi high-priority QA ketika UI aplikasinya nanti bisa kita lihat.
+
+
+---
+
+4. Learning Engine
+
+Learning modality yang ditetapkan:
+
+Self-learning / Video → Online → Classroom → Practical → Blended
+
+Tetapi prinsipnya:
+
+> Theory modality may vary; learning outcome may not.
+
+
+
+Untuk practical learning:
+
+Demonstrate → Guided Practice → Independent Practice → Feedback → Repeat/Re-practice. 
+
+Jadi aplikasi bukan hanya membutuhkan halaman “materi”, tetapi harus mampu membawa learner menuju demonstrable capability.
+
+
+---
+
+5. Curriculum Engine
+
+Baseline pertama adalah Solar PV M01–M10:
+
+M01 Fundamentals
+M02 Measurement & Interpretation
+M03 Safety & Work Practice
+M04 System Architecture
+M05 Drawing & Work Preparation
+M06 Mechanical Installation
+M07 Electrical Installation
+M08 System Configuration & Integration
+M09 Testing & Commissioning
+M10 O&M & Basic Troubleshooting. 
+
+Setiap modul memiliki Evidence ID sendiri.
+
+Ini berarti aplikasi seharusnya tidak memperlakukan M01–M10 hanya sebagai daftar video/course.
+
+
+---
+
+6. Assessment Engine
+
+Assessment memiliki tiga lapisan:
+
+Knowledge → Application → Performance
+
+Performance harus menunjukkan pekerjaan dilakukan secara benar, aman, dan konsisten.
+
+Rubric baseline:
+
+0 Not demonstrated
+1 Requires substantial assistance
+2 Meets expected standard
+3 Strong/consistent performance
+
+Dan ada Safety Gate yang bersifat non-compensable. 
+
+
+---
+
+7. Evidence Engine
+
+Ini salah satu pembeda TERAS Academy.
+
+Evidence harus:
+
+Valid → Relevant → Sufficient → Traceable
+
+Kemudian membentuk chain:
+
+Learning → Assessment → Evidence → Gap Analysis → Remediation → Re-assessment → Final Status. 
+
+Jadi aplikasi idealnya mempunyai evidence record, bukan hanya nilai/score.
+
+
+---
+
+8. Gate Engine
+
+Aplikasi perlu dapat menunjukkan readiness melalui:
+
+G1 Knowledge Ready
+G2 Safety Ready
+G3 Practical Ready
+G4 System Ready
+G5 Verification Ready
+G6 Operational / Pathway Ready. 
+
+Ini berpotensi menjadi progression logic utama aplikasi.
+
+
+---
+
+9. Gap → Remediation → Reassessment
+
+Jika learner belum mencapai requirement:
+
+Gap Analysis → Remediation → Re-assessment
+
+Remediation harus spesifik terhadap gap, bukan otomatis mengulang seluruh modul. Ini merupakan salah satu Master Design Rules yang terkunci. 
+
+
+---
+
+10. Portfolio & Final Status
+
+Untuk Path A:
+
+Capability Portfolio → Capability Achievement
+
+Untuk Path B:
+
+Competency Mapping → Gap Closure → Mock Assessment → Readiness Assessment → Certification Readiness Portfolio → External Assessment. 
+
+Aplikasi harus berhati-hati membedakan achievement internal dengan sertifikasi eksternal.
+
+
+---
+
+11. Operational Back-End
+
+Di belakang learner interface terdapat:
+
+Trainer Management
+
+Assessor Management
+
+Evidence Management
+
+QA
+
+Data & Records
+
+Version Control
+
+
+Master Architecture menetapkan 15 SOP, mulai dari registration sampai version control. 
+
+Records juga harus memiliki minimum traceability:
+
+Learner ID + Module ID + Assessment ID + Evidence ID + Trainer/Assessor ID + Date + Result + Status. 
+
+
+---
+
+Kesimpulan Application Map
+
+Secara konseptual, aplikasinya seharusnya membentuk rantai:
+
+LEARNER
+↓
+DIAGNOSTIC
+↓
+PATHWAY
+↓
+LEARNING
+↓
+PRACTICE
+↓
+ASSESSMENT
+↓
+EVIDENCE
+↓
+GATE / STATUS
+↓
+GAP → REMEDIATION → RE-ASSESSMENT
+↓
+CAPABILITY ACHIEVEMENT / CERTIFICATION READINESS
+
+Itulah struktur yang akan menjadi test model aplikasi TERAS Academy.
+
+Dan ada satu hal penting: Master Architecture tidak menetapkan bahwa UI harus berbentuk menu tertentu atau dashboard tertentu. Jadi kita tidak boleh memaksakan desain UI tertentu kepada aplikasi teman Anda. Yang kita QA adalah apakah fungsi dan hubungan antar-komponen tersebut benar-benar terimplementasi. Itu menjaga audit tetap objektif.

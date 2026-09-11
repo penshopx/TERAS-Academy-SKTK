@@ -1305,12 +1305,13 @@ x-pathway-selection-components:
       properties:
         id: { type: string }
         domain: { type: string }
+        track: { type: string }
         name: { type: string }
         description: { type: string }
         moduleCount: { type: integer }
         learnerCount: { type: integer }
         status: { type: string }
-      required: [id, domain, name, description, moduleCount, learnerCount, status]
+      required: [id, domain, track, name, description, moduleCount, learnerCount, status]
     ProgramDetail:
       allOf:
         - $ref: "#/components/schemas/ProgramSummary"
@@ -1331,8 +1332,9 @@ x-pathway-selection-components:
         id: { type: string }
         name: { type: string }
         type: { type: string }
+        purpose: { type: string, enum: [capability-development, pre-certification, unspecified] }
         outcome: { type: string }
-      required: [id, name, type, outcome]
+      required: [id, name, type, purpose, outcome]
     PathwaySelectionInput:
       type: object
       properties:
@@ -1976,21 +1978,21 @@ x-pathway-selection-components:
     AdminProgram:
       type: object
       required: [id, domain, name, description, status]
-      properties: { id: { type: string }, domain: { type: string }, name: { type: string }, description: { type: string }, status: { type: string, enum: [active, archived] } }
+      properties: { id: { type: string }, domain: { type: string }, track: { type: string }, name: { type: string }, description: { type: string }, status: { type: string, enum: [active, archived] } }
     LegacyAdminProgramInput:
       allOf: [{ $ref: "#/components/schemas/AdminProgram" }]
     LegacyAdminProgramUpdate:
       type: object
-      properties: { domain: { type: string, minLength: 1 }, name: { type: string, minLength: 1 }, description: { type: string }, status: { type: string, enum: [active, archived] } }
+      properties: { domain: { type: string, minLength: 1 }, track: { type: string, minLength: 1 }, name: { type: string, minLength: 1 }, description: { type: string }, status: { type: string, enum: [active, archived] } }
     LegacyAdminPathway:
       type: object
       required: [id, programId, name, type, outcome, status]
-      properties: { id: { type: string }, programId: { type: string }, name: { type: string }, type: { type: string }, outcome: { type: string }, status: { type: string, enum: [active, archived] } }
+      properties: { id: { type: string }, programId: { type: string }, name: { type: string }, type: { type: string }, purpose: { type: string, enum: [capability-development, pre-certification, unspecified] }, outcome: { type: string }, status: { type: string, enum: [active, archived] } }
     LegacyAdminPathwayInput:
       allOf: [{ $ref: "#/components/schemas/AdminPathway" }]
     LegacyAdminPathwayUpdate:
       type: object
-      properties: { name: { type: string, minLength: 1 }, type: { type: string, minLength: 1 }, outcome: { type: string }, status: { type: string, enum: [active, archived] } }
+      properties: { name: { type: string, minLength: 1 }, type: { type: string, minLength: 1 }, purpose: { type: string, enum: [capability-development, pre-certification, unspecified] }, outcome: { type: string }, status: { type: string, enum: [active, archived] } }
     LegacyAdminCohort:
       type: object
       required: [id, programId, name, status, startsOn, endsOn]
@@ -3188,15 +3190,15 @@ components:
     AdminProgram:
       type: object
       required: [id, domain, name, description, status]
-      properties: { id: { type: string }, domain: { type: string }, name: { type: string }, description: { type: string }, status: { type: string, enum: [active, archived] } }
+      properties: { id: { type: string }, domain: { type: string }, track: { type: string }, name: { type: string }, description: { type: string }, status: { type: string, enum: [active, archived] } }
     AdminProgramInput: { allOf: [{ $ref: "#/components/schemas/AdminProgram" }] }
-    AdminProgramUpdate: { type: object, properties: { domain: { type: string, minLength: 1 }, name: { type: string, minLength: 1 }, description: { type: string }, status: { type: string, enum: [active, archived] } } }
+    AdminProgramUpdate: { type: object, properties: { domain: { type: string, minLength: 1 }, track: { type: string, minLength: 1 }, name: { type: string, minLength: 1 }, description: { type: string }, status: { type: string, enum: [active, archived] } } }
     AdminPathway:
       type: object
       required: [id, programId, name, type, outcome, status]
-      properties: { id: { type: string }, programId: { type: string }, name: { type: string }, type: { type: string }, outcome: { type: string }, status: { type: string, enum: [active, archived] } }
+      properties: { id: { type: string }, programId: { type: string }, name: { type: string }, type: { type: string }, purpose: { type: string, enum: [capability-development, pre-certification, unspecified] }, outcome: { type: string }, status: { type: string, enum: [active, archived] } }
     AdminPathwayInput: { allOf: [{ $ref: "#/components/schemas/AdminPathway" }] }
-    AdminPathwayUpdate: { type: object, properties: { name: { type: string, minLength: 1 }, type: { type: string, minLength: 1 }, outcome: { type: string }, status: { type: string, enum: [active, archived] } } }
+    AdminPathwayUpdate: { type: object, properties: { name: { type: string, minLength: 1 }, type: { type: string, minLength: 1 }, purpose: { type: string, enum: [capability-development, pre-certification, unspecified] }, outcome: { type: string }, status: { type: string, enum: [active, archived] } } }
     AdminCohort:
       type: object
       required: [id, programId, name, status, startsOn, endsOn]
@@ -3307,12 +3309,13 @@ components:
       properties:
         id: { type: string }
         domain: { type: string }
+        track: { type: string }
         name: { type: string }
         description: { type: string }
         moduleCount: { type: integer }
         learnerCount: { type: integer }
         status: { type: string }
-      required: [id, domain, name, description, moduleCount, learnerCount, status]
+      required: [id, domain, track, name, description, moduleCount, learnerCount, status]
     ProgramDetail:
       allOf:
         - $ref: "#/components/schemas/ProgramSummary"
@@ -3333,6 +3336,7 @@ components:
         id: { type: string }
         name: { type: string }
         type: { type: string }
+        purpose: { type: string, enum: [capability-development, pre-certification, unspecified] }
         outcome: { type: string }
         moduleCount: { type: integer }
         gateCount: { type: integer }
@@ -3340,7 +3344,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ReadinessGateSummary"
-      required: [id, name, type, outcome, moduleCount, gateCount, gates]
+      required: [id, name, type, purpose, outcome, moduleCount, gateCount, gates]
     ReadinessGateSummary:
       type: object
       properties:

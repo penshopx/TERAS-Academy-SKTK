@@ -20,7 +20,7 @@ export default function Programs() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Capability Catalogue</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Available training domains and programs</p>
+        <p className="text-muted-foreground mt-1 text-sm">Implementation domains, tracks, and capability pathways</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -35,7 +35,8 @@ export default function Programs() {
                   {program.status}
                 </Badge>
               </div>
-              <CardTitle className="text-xl leading-tight">{program.name}</CardTitle>
+              <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Track / Role</div>
+              <CardTitle className="text-xl leading-tight">{program.track}</CardTitle>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
               <p className="text-sm text-muted-foreground mb-6 line-clamp-3">

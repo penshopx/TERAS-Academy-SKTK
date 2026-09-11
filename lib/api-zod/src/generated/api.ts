@@ -37,6 +37,7 @@ export const GetCurrentSessionResponse = zod.object({
 export const ListProgramsResponseItem = zod.object({
   "id": zod.string(),
   "domain": zod.string(),
+  "track": zod.string(),
   "name": zod.string(),
   "description": zod.string(),
   "moduleCount": zod.int(),
@@ -61,6 +62,7 @@ export const getProgramResponseTwoModulesItemProgressMax = 100;
 export const GetProgramResponse = zod.object({
   "id": zod.string(),
   "domain": zod.string(),
+  "track": zod.string(),
   "name": zod.string(),
   "description": zod.string(),
   "moduleCount": zod.int(),
@@ -71,6 +73,7 @@ export const GetProgramResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "type": zod.string(),
+  "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
   "outcome": zod.string(),
   "moduleCount": zod.int(),
   "gateCount": zod.int(),
@@ -142,6 +145,7 @@ export const GetLearnerDashboardResponse = zod.object({
   "program": zod.object({
   "id": zod.string(),
   "domain": zod.string(),
+  "track": zod.string(),
   "name": zod.string(),
   "description": zod.string(),
   "moduleCount": zod.int(),
@@ -152,6 +156,7 @@ export const GetLearnerDashboardResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "type": zod.string(),
+  "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
   "outcome": zod.string(),
   "moduleCount": zod.int(),
   "gateCount": zod.int(),
@@ -169,6 +174,7 @@ export const GetLearnerDashboardResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "type": zod.string(),
+  "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
   "outcome": zod.string(),
   "moduleCount": zod.int(),
   "gateCount": zod.int(),
@@ -307,6 +313,7 @@ export const SelectLearnerPathwayResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "type": zod.string(),
+  "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
   "outcome": zod.string(),
   "moduleCount": zod.int(),
   "gateCount": zod.int(),
@@ -767,6 +774,7 @@ export const GetLearnerReadinessResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "type": zod.string(),
+  "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
   "outcome": zod.string(),
   "moduleCount": zod.int(),
   "gateCount": zod.int(),
@@ -1139,6 +1147,7 @@ export const GetReadinessMapResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "type": zod.string(),
+  "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
   "outcome": zod.string(),
   "moduleCount": zod.int(),
   "gateCount": zod.int(),
@@ -1253,6 +1262,7 @@ export const GetCapabilityPassportResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "type": zod.string(),
+  "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
   "outcome": zod.string(),
   "moduleCount": zod.int(),
   "gateCount": zod.int(),
@@ -1272,6 +1282,7 @@ export const GetCapabilityPassportResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "type": zod.string(),
+  "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
   "outcome": zod.string(),
   "moduleCount": zod.int(),
   "gateCount": zod.int(),
@@ -2460,6 +2471,8 @@ export const exportAdminReadinessHistoryResponseRecordsItemScoreMax = 100;
 export const exportAdminReadinessHistoryResponseIntegrityChecksumRegExp = new RegExp('^[a-f0-9]{64}$');
 
 
+
+
 export const ExportAdminReadinessHistoryResponse = zod.object({
   "schemaVersion": zod.enum(['1.0']),
   "exportedAt": zod.coerce.date(),
@@ -2504,8 +2517,34 @@ export const ExportAdminReadinessHistoryResponse = zod.object({
   "algorithm": zod.enum(['SHA-256']),
   "canonicalization": zod.enum(['teras-readiness-export-v1-json-stringify']).describe('JSON.stringify of schemaVersion, exportedAt, filters, recordCount, and records in that order'),
   "checksum": zod.string().regex(exportAdminReadinessHistoryResponseIntegrityChecksumRegExp),
+  "signature": zod.object({
+  "algorithm": zod.enum(['Ed25519']),
+  "keyId": zod.string().min(1),
+  "keyVersion": zod.int().min(1),
+  "value": zod.string(),
+  "publicKeyUrl": zod.string()
+}),
   "verificationCommand": zod.string()
 })
+})
+
+
+/**
+ * @summary List TERAS public keys for offline readiness audit verification
+ */
+
+
+
+
+export const ListReadinessAuditPublicKeysResponse = zod.object({
+  "issuer": zod.enum(['TERAS']),
+  "usage": zod.string(),
+  "keys": zod.array(zod.object({
+  "keyId": zod.string().min(1),
+  "version": zod.int().min(1),
+  "algorithm": zod.enum(['Ed25519']),
+  "publicKeyPem": zod.string()
+}))
 })
 
 
@@ -3480,6 +3519,7 @@ export const ReplaceAdminUserRolesResponse = zod.object({
 export const ListAdminProgramsResponseItem = zod.object({
   "id": zod.string(),
   "domain": zod.string(),
+  "track": zod.string().optional(),
   "name": zod.string(),
   "description": zod.string(),
   "status": zod.enum(['active', 'archived'])
@@ -3490,6 +3530,7 @@ export const ListAdminProgramsResponse = zod.array(ListAdminProgramsResponseItem
 export const CreateAdminProgramBody = zod.object({
   "id": zod.string(),
   "domain": zod.string(),
+  "track": zod.string().optional(),
   "name": zod.string(),
   "description": zod.string(),
   "status": zod.enum(['active', 'archived'])
@@ -3498,6 +3539,7 @@ export const CreateAdminProgramBody = zod.object({
 export const CreateAdminProgramResponse = zod.object({
   "id": zod.string(),
   "domain": zod.string(),
+  "track": zod.string().optional(),
   "name": zod.string(),
   "description": zod.string(),
   "status": zod.enum(['active', 'archived'])
@@ -3512,8 +3554,10 @@ export const UpdateAdminProgramParams = zod.object({
 
 
 
+
 export const UpdateAdminProgramBody = zod.object({
   "domain": zod.string().min(1).optional(),
+  "track": zod.string().min(1).optional(),
   "name": zod.string().min(1).optional(),
   "description": zod.string().optional(),
   "status": zod.enum(['active', 'archived']).optional()
@@ -3522,6 +3566,7 @@ export const UpdateAdminProgramBody = zod.object({
 export const UpdateAdminProgramResponse = zod.object({
   "id": zod.string(),
   "domain": zod.string(),
+  "track": zod.string().optional(),
   "name": zod.string(),
   "description": zod.string(),
   "status": zod.enum(['active', 'archived'])
@@ -3533,6 +3578,7 @@ export const ListAdminPathwaysResponseItem = zod.object({
   "programId": zod.string(),
   "name": zod.string(),
   "type": zod.string(),
+  "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']).optional(),
   "outcome": zod.string(),
   "status": zod.enum(['active', 'archived'])
 })
@@ -3544,6 +3590,7 @@ export const CreateAdminPathwayBody = zod.object({
   "programId": zod.string(),
   "name": zod.string(),
   "type": zod.string(),
+  "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']).optional(),
   "outcome": zod.string(),
   "status": zod.enum(['active', 'archived'])
 })
@@ -3553,6 +3600,7 @@ export const CreateAdminPathwayResponse = zod.object({
   "programId": zod.string(),
   "name": zod.string(),
   "type": zod.string(),
+  "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']).optional(),
   "outcome": zod.string(),
   "status": zod.enum(['active', 'archived'])
 })
@@ -3569,6 +3617,7 @@ export const UpdateAdminPathwayParams = zod.object({
 export const UpdateAdminPathwayBody = zod.object({
   "name": zod.string().min(1).optional(),
   "type": zod.string().min(1).optional(),
+  "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']).optional(),
   "outcome": zod.string().optional(),
   "status": zod.enum(['active', 'archived']).optional()
 })
@@ -3578,6 +3627,7 @@ export const UpdateAdminPathwayResponse = zod.object({
   "programId": zod.string(),
   "name": zod.string(),
   "type": zod.string(),
+  "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']).optional(),
   "outcome": zod.string(),
   "status": zod.enum(['active', 'archived'])
 })

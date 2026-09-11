@@ -11,6 +11,8 @@ export interface AdminProgramUpdate {
   /** @minLength 1 */
   domain?: string;
   /** @minLength 1 */
+  track?: string;
+  /** @minLength 1 */
   name?: string;
   description?: string;
   status?: AdminProgramUpdateStatus;

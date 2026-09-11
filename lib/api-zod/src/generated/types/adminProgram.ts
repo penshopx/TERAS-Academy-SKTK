@@ -10,6 +10,7 @@ import type { AdminProgramStatus } from './adminProgramStatus';
 export interface AdminProgram {
   id: string;
   domain: string;
+  track?: string;
   name: string;
   description: string;
   status: AdminProgramStatus;

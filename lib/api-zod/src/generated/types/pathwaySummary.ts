@@ -5,12 +5,14 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { PathwaySummaryPurpose } from './pathwaySummaryPurpose';
 import type { ReadinessGateSummary } from './readinessGateSummary';
 
 export interface PathwaySummary {
   id: string;
   name: string;
   type: string;
+  purpose: PathwaySummaryPurpose;
   outcome: string;
   moduleCount: number;
   gateCount: number;

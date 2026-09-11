@@ -130,7 +130,7 @@ function PublicHome() {
                       <Zap className="h-3.5 w-3.5 text-[#00c3ff]" />
                       <p className="font-mono text-[10px] tracking-[0.2em] text-[#00c3ff]">READINESS COCKPIT</p>
                     </div>
-                    <p className="mt-2 font-bold text-lg">TERAS SKTTK · Solar PV Technician</p>
+                    <p className="mt-2 font-bold text-lg">TERAS SKTTK · Solar PV Installation</p>
                     <p className="text-sm text-white/40">ID: T-8829-PV</p>
                   </div>
                   <span className="rounded-md border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-bold text-amber-400 uppercase tracking-wider">

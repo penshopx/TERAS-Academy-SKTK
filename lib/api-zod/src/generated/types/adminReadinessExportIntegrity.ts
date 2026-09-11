@@ -7,6 +7,7 @@
  */
 import type { AdminReadinessExportIntegrityAlgorithm } from './adminReadinessExportIntegrityAlgorithm';
 import type { AdminReadinessExportIntegrityCanonicalization } from './adminReadinessExportIntegrityCanonicalization';
+import type { AdminReadinessExportIntegritySignature } from './adminReadinessExportIntegritySignature';
 
 export type AdminReadinessExportIntegrity = {
   algorithm: AdminReadinessExportIntegrityAlgorithm;
@@ -14,5 +15,6 @@ export type AdminReadinessExportIntegrity = {
   canonicalization: AdminReadinessExportIntegrityCanonicalization;
   /** @pattern ^[a-f0-9]{64}$ */
   checksum: string;
+  signature: AdminReadinessExportIntegritySignature;
   verificationCommand: string;
 };

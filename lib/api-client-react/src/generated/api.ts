@@ -109,6 +109,7 @@ import type {
   PracticeTask,
   ProgramDetail,
   ProgramSummary,
+  ReadinessAuditPublicKeySet,
   ReadinessMap,
   ReadinessRuleInput,
   ReadinessSummary,
@@ -4148,7 +4149,7 @@ export const getExportAdminReadinessHistoryQueryKey = (params?: ExportAdminReadi
     }
 
 
-export const getExportAdminReadinessHistoryQueryOptions = <TData = Awaited<ReturnType<typeof exportAdminReadinessHistory>>, TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>>(params?: ExportAdminReadinessHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportAdminReadinessHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getExportAdminReadinessHistoryQueryOptions = <TData = Awaited<ReturnType<typeof exportAdminReadinessHistory>>, TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | void>>(params?: ExportAdminReadinessHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportAdminReadinessHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -4167,19 +4168,96 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type ExportAdminReadinessHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof exportAdminReadinessHistory>>>
-export type ExportAdminReadinessHistoryQueryError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>
+export type ExportAdminReadinessHistoryQueryError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | void>
 
 
 /**
  * @summary Export filtered immutable readiness evaluations as audit-safe JSON
  */
 
-export function useExportAdminReadinessHistory<TData = Awaited<ReturnType<typeof exportAdminReadinessHistory>>, TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>>(
+export function useExportAdminReadinessHistory<TData = Awaited<ReturnType<typeof exportAdminReadinessHistory>>, TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | void>>(
  params?: ExportAdminReadinessHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportAdminReadinessHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getExportAdminReadinessHistoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListReadinessAuditPublicKeysUrl = () => {
+
+
+
+
+  return `/api/readiness-audit/public-keys`
+}
+
+/**
+ * @summary List TERAS public keys for offline readiness audit verification
+ */
+export const listReadinessAuditPublicKeys = async ( options?: Parameters<typeof customFetch>[1]): Promise<ReadinessAuditPublicKeySet> => {
+
+  return customFetch<ReadinessAuditPublicKeySet>(getListReadinessAuditPublicKeysUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListReadinessAuditPublicKeysQueryKey = () => {
+    return [
+    `/api/readiness-audit/public-keys`
+    ] as const;
+    }
+
+
+export const getListReadinessAuditPublicKeysQueryOptions = <TData = Awaited<ReturnType<typeof listReadinessAuditPublicKeys>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listReadinessAuditPublicKeys>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListReadinessAuditPublicKeysQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listReadinessAuditPublicKeys>>> = ({ signal }) => listReadinessAuditPublicKeys({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listReadinessAuditPublicKeys>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListReadinessAuditPublicKeysQueryResult = NonNullable<Awaited<ReturnType<typeof listReadinessAuditPublicKeys>>>
+export type ListReadinessAuditPublicKeysQueryError = ErrorType<void>
+
+
+/**
+ * @summary List TERAS public keys for offline readiness audit verification
+ */
+
+export function useListReadinessAuditPublicKeys<TData = Awaited<ReturnType<typeof listReadinessAuditPublicKeys>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listReadinessAuditPublicKeys>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListReadinessAuditPublicKeysQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

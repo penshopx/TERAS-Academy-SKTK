@@ -9,6 +9,7 @@
 export interface ProgramSummary {
   id: string;
   domain: string;
+  track: string;
   name: string;
   description: string;
   moduleCount: number;

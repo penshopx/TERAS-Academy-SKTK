@@ -250,6 +250,15 @@ export interface CompetencyProfile {
   recommendations: DiagnosticRecommendation[];
 }
 
+export type PathwaySummaryPurpose = typeof PathwaySummaryPurpose[keyof typeof PathwaySummaryPurpose];
+
+
+export const PathwaySummaryPurpose = {
+  'capability-development': 'capability-development',
+  'pre-certification': 'pre-certification',
+  unspecified: 'unspecified',
+} as const;
+
 export interface ReadinessGateSummary {
   id: string;
   code: string;
@@ -262,6 +271,7 @@ export interface PathwaySummary {
   id: string;
   name: string;
   type: string;
+  purpose: PathwaySummaryPurpose;
   outcome: string;
   moduleCount: number;
   gateCount: number;
@@ -1272,6 +1282,7 @@ export const AdminProgramStatus = {
 export interface AdminProgram {
   id: string;
   domain: string;
+  track?: string;
   name: string;
   description: string;
   status: AdminProgramStatus;
@@ -1291,10 +1302,21 @@ export interface AdminProgramUpdate {
   /** @minLength 1 */
   domain?: string;
   /** @minLength 1 */
+  track?: string;
+  /** @minLength 1 */
   name?: string;
   description?: string;
   status?: AdminProgramUpdateStatus;
 }
+
+export type AdminPathwayPurpose = typeof AdminPathwayPurpose[keyof typeof AdminPathwayPurpose];
+
+
+export const AdminPathwayPurpose = {
+  'capability-development': 'capability-development',
+  'pre-certification': 'pre-certification',
+  unspecified: 'unspecified',
+} as const;
 
 export type AdminPathwayStatus = typeof AdminPathwayStatus[keyof typeof AdminPathwayStatus];
 
@@ -1309,11 +1331,21 @@ export interface AdminPathway {
   programId: string;
   name: string;
   type: string;
+  purpose?: AdminPathwayPurpose;
   outcome: string;
   status: AdminPathwayStatus;
 }
 
 export type AdminPathwayInput = AdminPathway;
+
+export type AdminPathwayUpdatePurpose = typeof AdminPathwayUpdatePurpose[keyof typeof AdminPathwayUpdatePurpose];
+
+
+export const AdminPathwayUpdatePurpose = {
+  'capability-development': 'capability-development',
+  'pre-certification': 'pre-certification',
+  unspecified: 'unspecified',
+} as const;
 
 export type AdminPathwayUpdateStatus = typeof AdminPathwayUpdateStatus[keyof typeof AdminPathwayUpdateStatus];
 
@@ -1328,6 +1360,7 @@ export interface AdminPathwayUpdate {
   name?: string;
   /** @minLength 1 */
   type?: string;
+  purpose?: AdminPathwayUpdatePurpose;
   outcome?: string;
   status?: AdminPathwayUpdateStatus;
 }
@@ -1639,6 +1672,7 @@ export interface ErrorResponse {
 export interface ProgramSummary {
   id: string;
   domain: string;
+  track: string;
   name: string;
   description: string;
   moduleCount: number;
@@ -2147,12 +2181,30 @@ export const AdminReadinessExportIntegrityCanonicalization = {
   'teras-readiness-export-v1-json-stringify': 'teras-readiness-export-v1-json-stringify',
 } as const;
 
+export type AdminReadinessExportIntegritySignatureAlgorithm = typeof AdminReadinessExportIntegritySignatureAlgorithm[keyof typeof AdminReadinessExportIntegritySignatureAlgorithm];
+
+
+export const AdminReadinessExportIntegritySignatureAlgorithm = {
+  Ed25519: 'Ed25519',
+} as const;
+
+export type AdminReadinessExportIntegritySignature = {
+  algorithm: AdminReadinessExportIntegritySignatureAlgorithm;
+  /** @minLength 1 */
+  keyId: string;
+  /** @minimum 1 */
+  keyVersion: number;
+  value: string;
+  publicKeyUrl: string;
+};
+
 export type AdminReadinessExportIntegrity = {
   algorithm: AdminReadinessExportIntegrityAlgorithm;
   /** JSON.stringify of schemaVersion, exportedAt, filters, recordCount, and records in that order */
   canonicalization: AdminReadinessExportIntegrityCanonicalization;
   /** @pattern ^[a-f0-9]{64}$ */
   checksum: string;
+  signature: AdminReadinessExportIntegritySignature;
   verificationCommand: string;
 };
 
@@ -2164,6 +2216,35 @@ export interface AdminReadinessExport {
   recordCount: number;
   records: AdminReadinessEvaluation[];
   integrity: AdminReadinessExportIntegrity;
+}
+
+export type ReadinessAuditPublicKeySetIssuer = typeof ReadinessAuditPublicKeySetIssuer[keyof typeof ReadinessAuditPublicKeySetIssuer];
+
+
+export const ReadinessAuditPublicKeySetIssuer = {
+  TERAS: 'TERAS',
+} as const;
+
+export type ReadinessAuditPublicKeySetKeysItemAlgorithm = typeof ReadinessAuditPublicKeySetKeysItemAlgorithm[keyof typeof ReadinessAuditPublicKeySetKeysItemAlgorithm];
+
+
+export const ReadinessAuditPublicKeySetKeysItemAlgorithm = {
+  Ed25519: 'Ed25519',
+} as const;
+
+export type ReadinessAuditPublicKeySetKeysItem = {
+  /** @minLength 1 */
+  keyId: string;
+  /** @minimum 1 */
+  version: number;
+  algorithm: ReadinessAuditPublicKeySetKeysItemAlgorithm;
+  publicKeyPem: string;
+};
+
+export interface ReadinessAuditPublicKeySet {
+  issuer: ReadinessAuditPublicKeySetIssuer;
+  usage: string;
+  keys: ReadinessAuditPublicKeySetKeysItem[];
 }
 
 export type ReadinessRuleInputAssessmentMode = typeof ReadinessRuleInputAssessmentMode[keyof typeof ReadinessRuleInputAssessmentMode];

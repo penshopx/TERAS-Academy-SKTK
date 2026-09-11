@@ -5,6 +5,7 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { AdminPathwayUpdatePurpose } from './adminPathwayUpdatePurpose';
 import type { AdminPathwayUpdateStatus } from './adminPathwayUpdateStatus';
 
 export interface AdminPathwayUpdate {
@@ -12,6 +13,7 @@ export interface AdminPathwayUpdate {
   name?: string;
   /** @minLength 1 */
   type?: string;
+  purpose?: AdminPathwayUpdatePurpose;
   outcome?: string;
   status?: AdminPathwayUpdateStatus;
 }

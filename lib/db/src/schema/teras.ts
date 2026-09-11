@@ -46,12 +46,12 @@ export const adminAccessRequestsTable = pgTable("teras_admin_access_requests", {
   .on(table.targetPersonId, table.requestedRole)
   .where(sql`${table.status} = 'pending'`)]);
 export const programsTable = pgTable("teras_programs", {
-  id: text("id").primaryKey(), domain: text("domain").notNull(), name: text("name").notNull(),
+  id: text("id").primaryKey(), domain: text("domain").notNull(), track: text("track").notNull().default("Unspecified track"), name: text("name").notNull(),
   description: text("description").notNull(), status: text("status").notNull(), ...audit,
 });
 export const pathwaysTable = pgTable("teras_pathways", {
   id: text("id").primaryKey(), programId: text("program_id").notNull().references(() => programsTable.id),
-  name: text("name").notNull(), type: text("type").notNull(), outcome: text("outcome").notNull(), status: text("status").notNull().default("active"), ...audit,
+  name: text("name").notNull(), type: text("type").notNull(), purpose: text("purpose").notNull().default("unspecified"), outcome: text("outcome").notNull(), status: text("status").notNull().default("active"), ...audit,
 }, table => [unique("teras_pathways_id_program_unique").on(table.id, table.programId)]);
 export const cohortsTable = pgTable("teras_cohorts", {
   id: text("id").primaryKey(), programId: text("program_id").notNull().references(() => programsTable.id),

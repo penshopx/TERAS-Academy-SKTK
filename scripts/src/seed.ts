@@ -36,12 +36,14 @@ async function seed(): Promise<void> {
   }
   await db.transaction(async tx => {
   const insert = async (table: any, values: any[]) => tx.insert(table).values(values).onConflictDoNothing();
-  await insert(programsTable, [{ id:"solar-pv-tech", domain:"Renewable Energy", name:"Solar PV Technician", description:"Capability pathway for safe residential Solar PV installation.", status:"Active" }]);
+  await insert(programsTable, [{ id:"solar-pv-tech", domain:"Solar PV", track:"Solar PV Installation", name:"Solar PV Installation", description:"Capability development and pre-certification preparation for safe Solar PV installation.", status:"Active" }]);
   await insert(pathwaysTable, [
-    {id:"path-a",programId:"solar-pv-tech",name:"Path A — Installation",type:"Primary",outcome:"Install and commission residential PV systems"},
-    {id:"path-b",programId:"solar-pv-tech",name:"Path B — Design",type:"Operational",outcome:"Design, model, and assure residential PV systems"},
+    {id:"path-a",programId:"solar-pv-tech",name:"Path A — Capability Development",type:"Capability",purpose:"capability-development",outcome:"Capability Achievement supported by a traceable Capability Portfolio"},
+    {id:"path-b",programId:"solar-pv-tech",name:"Path B — Pre-Certification",type:"Pre-Certification",purpose:"pre-certification",outcome:"Certification Readiness supported by a traceable Readiness Portfolio"},
   ]);
-  await tx.update(pathwaysTable).set({type:"Operational",outcome:"Design, model, and assure residential PV systems"}).where(eq(pathwaysTable.id,"path-b"));
+  await tx.update(programsTable).set({domain:"Solar PV",track:"Solar PV Installation",name:"Solar PV Installation",description:"Capability development and pre-certification preparation for safe Solar PV installation."}).where(eq(programsTable.id,"solar-pv-tech"));
+  await tx.update(pathwaysTable).set({name:"Path A — Capability Development",type:"Capability",purpose:"capability-development",outcome:"Capability Achievement supported by a traceable Capability Portfolio"}).where(eq(pathwaysTable.id,"path-a"));
+  await tx.update(pathwaysTable).set({name:"Path B — Pre-Certification",type:"Pre-Certification",purpose:"pre-certification",outcome:"Certification Readiness supported by a traceable Readiness Portfolio"}).where(eq(pathwaysTable.id,"path-b"));
   await insert(modulesTable, [...modules, ...pathBModules].map(([id, pathwayId, code, name, capability], i) => ({id, programId:"solar-pv-tech", pathwayId, sequence:i < modules.length ? i+1 : i - modules.length + 1, code, name, capability, evidence:`${code} practical evidence`, learningOutcomes:[`Apply ${name.toLowerCase()} procedures`], theory:[`${name} guide`]})));
   await insert(coursesTable, [
     {id:"course-solar-installation",programId:"solar-pv-tech",pathwayId:"path-a",code:"SPV-INSTALL",title:"Solar PV Installation Learning Core",description:"Learning preparation linked to the existing installation capability pathway.",status:"PUBLISHED",sequence:1},
