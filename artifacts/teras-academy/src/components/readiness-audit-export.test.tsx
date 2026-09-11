@@ -27,7 +27,14 @@ const payload = {
     algorithm: "SHA-256",
     checksum,
     canonicalization: "teras-readiness-export-v1-json-stringify",
-    verificationCommand: "node verify-readiness-audit.mjs readiness-audit.json",
+    signature: {
+      algorithm: "Ed25519",
+      keyId: "teras-audit-2026-09",
+      keyVersion: 2,
+      value: "test-signature",
+      publicKeyUrl: "/api/readiness-audit/public-keys",
+    },
+    verificationCommand: "node verify-readiness-audit.mjs readiness-audit.json public-keys.json",
   },
 } as AdminReadinessExport;
 
@@ -63,7 +70,7 @@ test("readiness history export downloads the JSON and canonical checksum sidecar
     await blobs[1]!.text(),
     `SHA-256 (payload canonical): ${checksum}\n`
       + "File audit: readiness-audit-2026-09-10.json\n"
-      + "Verifikasi: node verify-readiness-audit.mjs readiness-audit.json\n",
+      + "Verifikasi: node verify-readiness-audit.mjs readiness-audit.json public-keys.json\n",
   );
 });
 
