@@ -1,5 +1,6 @@
 import {
   db,
+  diagnosticFollowUpFailureNotificationsTable,
   diagnosticFollowUpReminderDeliveriesTable,
   diagnosticProfilesTable,
   diagnosticRecommendationFollowUpsTable,
@@ -54,6 +55,14 @@ export function latestFollowUps(rows: FollowUpSnapshot[]) {
 }
 
 type ReminderEmailInput = { to: string; trainerName: string; learnerName: string; title: string; targetAt: Date; kind: ReminderKind };
+export type PermanentFailureNotificationInput = {
+  to: string;
+  trainerName: string;
+  target: string;
+  lastAttemptAt: Date;
+  reason: string;
+  idempotencyKey: string;
+};
 type ReminderPreferences = {
   emailEnabled: boolean;
   timeZone: string;
@@ -136,9 +145,136 @@ async function sendReminderEmail(input: ReminderEmailInput) {
   if (!response.ok) throw new Error(`Resend rejected the reminder with status ${response.status}`);
 }
 
+async function sendPermanentFailureNotification(input: PermanentFailureNotificationInput) {
+  const from = process.env.TERAS_NOTIFICATION_FROM;
+  if (!from) throw new Error("TERAS_NOTIFICATION_FROM is not configured");
+  const connectors = new ReplitConnectors();
+  const response = await connectors.proxy("resend", "/emails", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": input.idempotencyKey,
+    },
+    body: JSON.stringify({
+      from,
+      to: [input.to],
+      subject: `Tindakan diperlukan: pengingat trainer gagal permanen`,
+      text: [
+        "Pengingat tindak lanjut TERAS gagal permanen setelah tiga percobaan.",
+        "",
+        `Trainer: ${input.trainerName}`,
+        `Target: ${input.target}`,
+        `Percobaan terakhir: ${input.lastAttemptAt.toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`,
+        `Alasan: ${input.reason}`,
+        "",
+        "Tinjau kegagalan ini di ringkasan operasional pengelola.",
+        "Pemberitahuan ini tidak mengirim ulang email trainer dan tidak mengubah diagnostic atau readiness.",
+      ].join("\n"),
+    }),
+  });
+  if (!response.ok) throw new Error(`Resend rejected the operations notification with status ${response.status}`);
+}
+
+async function dispatchPermanentFailureNotifications(
+  now: Date,
+  sendNotification: (input: PermanentFailureNotificationInput) => Promise<void>,
+) {
+  const destination = process.env.TERAS_OPERATIONS_NOTIFICATION_EMAIL ?? process.env.TERAS_SUPER_ADMIN_OWNER_EMAIL;
+  if (!destination) {
+    logger.warn("Permanent reminder failure notification destination is not configured");
+    return { sent: 0, failed: 0 };
+  }
+
+  const permanentFailures = await db.select({
+    deliveryId: diagnosticFollowUpReminderDeliveriesTable.id,
+    trainerName: peopleTable.name,
+    target: diagnosticRecommendationsTable.title,
+    lastAttemptAt: diagnosticFollowUpReminderDeliveriesTable.lastAttemptAt,
+    failureReason: diagnosticFollowUpReminderDeliveriesTable.failureReason,
+  })
+    .from(diagnosticFollowUpReminderDeliveriesTable)
+    .innerJoin(diagnosticRecommendationFollowUpsTable, eq(diagnosticRecommendationFollowUpsTable.id, diagnosticFollowUpReminderDeliveriesTable.followUpId))
+    .innerJoin(diagnosticRecommendationsTable, eq(diagnosticRecommendationsTable.id, diagnosticRecommendationFollowUpsTable.recommendationId))
+    .innerJoin(peopleTable, eq(peopleTable.id, diagnosticFollowUpReminderDeliveriesTable.trainerId))
+    .where(eq(diagnosticFollowUpReminderDeliveriesTable.status, "permanently_failed"));
+
+  for (const failure of permanentFailures) {
+    await db.insert(diagnosticFollowUpFailureNotificationsTable).values({
+      id: `follow-up-failure-notification-${crypto.randomUUID()}`,
+      reminderDeliveryId: failure.deliveryId,
+      destination,
+      createdBy: "trainer-follow-up-reminder-scheduler",
+    }).onConflictDoNothing();
+  }
+
+  const failureByDeliveryId = new Map(permanentFailures.map(failure => [failure.deliveryId, failure]));
+  const retryBefore = new Date(now.getTime() - RETRY_AFTER_MINUTES * 60_000);
+  const candidates = await db.select().from(diagnosticFollowUpFailureNotificationsTable)
+    .where(or(
+      eq(diagnosticFollowUpFailureNotificationsTable.status, "pending"),
+      and(
+        eq(diagnosticFollowUpFailureNotificationsTable.status, "failed"),
+        lt(diagnosticFollowUpFailureNotificationsTable.attemptedAt, retryBefore),
+      ),
+      and(
+        eq(diagnosticFollowUpFailureNotificationsTable.status, "sending"),
+        lt(diagnosticFollowUpFailureNotificationsTable.attemptedAt, retryBefore),
+      ),
+    ));
+  let sent = 0;
+  let failed = 0;
+  for (const candidate of candidates) {
+    const source = failureByDeliveryId.get(candidate.reminderDeliveryId);
+    if (!source?.lastAttemptAt) continue;
+    const [claimed] = await db.update(diagnosticFollowUpFailureNotificationsTable)
+      .set({ status: "sending", attemptedAt: now, failureReason: null })
+      .where(and(
+        eq(diagnosticFollowUpFailureNotificationsTable.id, candidate.id),
+        or(
+          eq(diagnosticFollowUpFailureNotificationsTable.status, "pending"),
+          and(
+            eq(diagnosticFollowUpFailureNotificationsTable.status, "failed"),
+            lt(diagnosticFollowUpFailureNotificationsTable.attemptedAt, retryBefore),
+          ),
+          and(
+            eq(diagnosticFollowUpFailureNotificationsTable.status, "sending"),
+            lt(diagnosticFollowUpFailureNotificationsTable.attemptedAt, retryBefore),
+          ),
+        ),
+      ))
+      .returning();
+    if (!claimed) continue;
+    try {
+      await sendNotification({
+        to: claimed.destination,
+        trainerName: source.trainerName,
+        target: source.target,
+        lastAttemptAt: source.lastAttemptAt,
+        reason: safeReminderFailureReason(source.failureReason),
+        idempotencyKey: claimed.id,
+      });
+      await db.update(diagnosticFollowUpFailureNotificationsTable)
+        .set({ status: "sent", sentAt: new Date(), failureReason: null })
+        .where(eq(diagnosticFollowUpFailureNotificationsTable.id, claimed.id));
+      sent += 1;
+    } catch (error) {
+      const failureReason = error instanceof Error ? error.message.slice(0, 500) : "Unknown operations notification failure";
+      await db.update(diagnosticFollowUpFailureNotificationsTable)
+        .set({ status: "failed", failureReason })
+        .where(eq(diagnosticFollowUpFailureNotificationsTable.id, claimed.id));
+      logger.warn({ deliveryId: source.deliveryId, notificationId: claimed.id, error: failureReason }, "Permanent reminder failure notification failed");
+      failed += 1;
+    }
+  }
+  return { sent, failed };
+}
+
 export async function dispatchTrainerFollowUpReminders(
   now = new Date(),
-  options: { sendEmail?: (input: ReminderEmailInput) => Promise<void> } = {},
+  options: {
+    sendEmail?: (input: ReminderEmailInput) => Promise<void>;
+    sendPermanentFailureNotification?: (input: PermanentFailureNotificationInput) => Promise<void>;
+  } = {},
 ) {
   if (process.env.TERAS_TRAINER_REMINDER_EMAIL_ENABLED !== "true") return { sent: 0, failed: 0, skipped: "disabled" as const };
 
@@ -148,6 +284,10 @@ export async function dispatchTrainerFollowUpReminders(
       eq(diagnosticFollowUpReminderDeliveriesTable.status, "failed"),
       eq(diagnosticFollowUpReminderDeliveriesTable.attemptCount, MAX_ATTEMPTS),
     ));
+  await dispatchPermanentFailureNotifications(
+    now,
+    options.sendPermanentFailureNotification ?? sendPermanentFailureNotification,
+  );
 
   const followUps = await db.select().from(diagnosticRecommendationFollowUpsTable).orderBy(asc(diagnosticRecommendationFollowUpsTable.createdAt));
   const candidates = latestFollowUps(followUps).flatMap((followUp) => {
@@ -229,6 +369,10 @@ export async function dispatchTrainerFollowUpReminders(
       failed += 1;
     }
   }
+  await dispatchPermanentFailureNotifications(
+    now,
+    options.sendPermanentFailureNotification ?? sendPermanentFailureNotification,
+  );
   return { sent, failed };
 }
 

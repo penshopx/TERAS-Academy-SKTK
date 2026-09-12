@@ -1,6 +1,7 @@
 import { db, pool } from "@workspace/db";
 import {
   competencyFrameworksTable,
+  diagnosticFollowUpFailureNotificationsTable,
   diagnosticFollowUpReminderDeliveriesTable,
   diagnosticProfilesTable,
   diagnosticRecommendationFollowUpsTable,
@@ -38,6 +39,7 @@ async function main() {
 
   process.env.TERAS_TRAINER_REMINDER_EMAIL_ENABLED = "true";
   process.env.TERAS_NOTIFICATION_FROM = "TERAS <notifications@example.test>";
+  process.env.TERAS_OPERATIONS_NOTIFICATION_EMAIL = "operations@example.test";
   const now = new Date("2026-09-10T12:00:00.000Z");
   let sends = 0;
   const sendEmail = async () => { sends += 1; };
@@ -105,14 +107,43 @@ async function main() {
   await db.delete(enrollmentPathwayEventsTable);
   await db.delete(diagnosticFollowUpReminderDeliveriesTable);
   let failedSends = 0;
+  const operationsNotifications: unknown[] = [];
   const failingSender = async () => { failedSends += 1; throw new Error("simulated transport failure"); };
-  await dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender });
-  await dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender });
-  await dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender });
-  await dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender });
+  const captureOperationsNotification = async (input: unknown) => { operationsNotifications.push(input); };
+  await dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender, sendPermanentFailureNotification: captureOperationsNotification });
+  await dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender, sendPermanentFailureNotification: captureOperationsNotification });
+  await Promise.all([
+    dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender, sendPermanentFailureNotification: captureOperationsNotification }),
+    dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender, sendPermanentFailureNotification: captureOperationsNotification }),
+  ]);
   audit = await db.select().from(diagnosticFollowUpReminderDeliveriesTable).where(eq(diagnosticFollowUpReminderDeliveriesTable.followUpId, "follow-up"));
   if (audit[0]?.status !== "permanently_failed" || audit[0]?.attemptCount !== 3) throw new Error("Failed delivery did not become a terminal escalation after three audited attempts");
   if (failedSends !== 3) throw new Error(`Terminal delivery was attempted ${failedSends} times instead of three`);
+  if (operationsNotifications.length !== 1) throw new Error(`Permanent failure produced ${operationsNotifications.length} operations notifications instead of one`);
+  const notification = operationsNotifications[0] as any;
+  if (notification.trainerName !== "Trainer A" || notification.target !== "Supervised practice" || notification.lastAttemptAt?.toISOString() !== now.toISOString()) {
+    throw new Error("Operations notification did not identify trainer, target, and last attempt time");
+  }
+  if (notification.reason !== "Layanan email tidak dapat menyelesaikan pengiriman." || JSON.stringify(notification).includes("simulated transport failure")) {
+    throw new Error("Operations notification exposed an unsafe delivery failure reason");
+  }
+  const notificationAudit = await db.select().from(diagnosticFollowUpFailureNotificationsTable);
+  if (notificationAudit.length !== 1 || notificationAudit[0]?.status !== "sent") throw new Error("Operations notification audit was not persisted idempotently");
+  if (notification.idempotencyKey !== notificationAudit[0].id) throw new Error("Operations notification did not use its stable audit identity as the provider idempotency key");
+
+  await db.update(diagnosticFollowUpFailureNotificationsTable)
+    .set({ status: "sending", attemptedAt: new Date("2026-09-10T11:00:00.000Z"), sentAt: null })
+    .where(eq(diagnosticFollowUpFailureNotificationsTable.id, notificationAudit[0].id));
+  const recoveredNotifications: any[] = [];
+  await dispatchTrainerFollowUpReminders(new Date("2026-09-10T12:31:00.000Z"), {
+    sendEmail: async () => { throw new Error("Trainer email must not be retried while recovering the operations outbox"); },
+    sendPermanentFailureNotification: async input => { recoveredNotifications.push(input); },
+  });
+  if (recoveredNotifications.length !== 1) throw new Error("A stale operations notification claim was not recovered");
+  if (recoveredNotifications[0].idempotencyKey !== notification.idempotencyKey) throw new Error("Recovered operations notification changed its provider idempotency key");
+  const recoveredAudit = await db.select().from(diagnosticFollowUpFailureNotificationsTable);
+  if (recoveredAudit[0]?.status !== "sent" || !recoveredAudit[0].sentAt) throw new Error("Recovered operations notification did not reach a sent audit state");
+  if (failedSends !== 3) throw new Error("Recovering the operations outbox retried the trainer email");
 }
 
 main().then(
