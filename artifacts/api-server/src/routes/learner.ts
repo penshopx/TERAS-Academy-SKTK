@@ -50,29 +50,38 @@ async function currentLearningState(
 }
 async function pathwayTimeline(learnerId: string) {
   const context = await learnerContext(learnerId);
-  const [pathwayEvents, pathways] = await Promise.all([
-    db.select().from(enrollmentPathwayEventsTable).where(eq(enrollmentPathwayEventsTable.enrollmentId, context.enrollment.id)).orderBy(enrollmentPathwayEventsTable.sequence),
-    db.select().from(pathwaysTable),
-  ]);
+  const pathwayEvents = await db.select().from(enrollmentPathwayEventsTable)
+    .where(eq(enrollmentPathwayEventsTable.enrollmentId, context.enrollment.id))
+    .orderBy(enrollmentPathwayEventsTable.sequence);
   const pathwayIds = [...new Set([context.enrollment.pathwayId, context.pathway.id, ...pathwayEvents.map(event => event.pathwayId)])];
-  const [diagnosticSessions, diagnosticProfiles, diagnosticGaps, diagnosticRecommendations, transitions, learningLinks, practices, evidence, reviews, assessmentAttempts, reassessmentLinks, remediationEvents, remediationActivities, remediationPlans, gaps, readinessEvents] = await Promise.all([
-    db.select().from(diagnosticSessionsTable).where(and(eq(diagnosticSessionsTable.learnerId, learnerId), inArray(diagnosticSessionsTable.pathwayId, pathwayIds))),
+  const [pathways, diagnosticSessions, diagnosticProfiles, transitions, learningLinks, practices, evidence, assessmentAttempts, reassessmentLinks, gaps, readinessEvents] = await Promise.all([
+    db.select().from(pathwaysTable).where(inArray(pathwaysTable.id, pathwayIds)),
+    db.select().from(diagnosticSessionsTable).where(and(eq(diagnosticSessionsTable.learnerId, learnerId), eq(diagnosticSessionsTable.enrollmentId, context.enrollment.id), inArray(diagnosticSessionsTable.pathwayId, pathwayIds))),
     db.select().from(diagnosticProfilesTable).where(and(eq(diagnosticProfilesTable.learnerId, learnerId), inArray(diagnosticProfilesTable.pathwayId, pathwayIds))),
-    db.select().from(diagnosticGapsTable),
-    db.select().from(diagnosticRecommendationsTable),
-    db.select().from(learningTransitionEventsTable).where(and(eq(learningTransitionEventsTable.learnerId, learnerId), inArray(learningTransitionEventsTable.pathwayId, pathwayIds))),
+    db.select().from(learningTransitionEventsTable).where(and(eq(learningTransitionEventsTable.learnerId, learnerId), eq(learningTransitionEventsTable.enrollmentId, context.enrollment.id), inArray(learningTransitionEventsTable.pathwayId, pathwayIds))),
     db.select().from(learningRecordLinksTable).where(and(eq(learningRecordLinksTable.learnerId, learnerId), inArray(learningRecordLinksTable.pathwayId, pathwayIds))),
     db.select().from(practiceAttemptsTable).where(and(eq(practiceAttemptsTable.learnerId, learnerId), inArray(practiceAttemptsTable.pathwayId, pathwayIds))),
     db.select().from(evidenceTable).where(and(eq(evidenceTable.learnerId, learnerId), inArray(evidenceTable.pathwayId, pathwayIds))),
-    db.select().from(evidenceReviewsTable),
     db.select().from(assessmentAttemptsTable).where(and(eq(assessmentAttemptsTable.learnerId, learnerId), inArray(assessmentAttemptsTable.pathwayId, pathwayIds))),
     db.select().from(reassessmentLinksTable).where(and(eq(reassessmentLinksTable.learnerId, learnerId), inArray(reassessmentLinksTable.pathwayId, pathwayIds))),
-    db.select().from(remediationEventsTable),
-    db.select().from(remediationActivitiesTable),
-    db.select().from(remediationPlansTable),
     db.select().from(gapsTable).where(and(eq(gapsTable.learnerId, learnerId), inArray(gapsTable.pathwayId, pathwayIds))),
     db.select().from(readinessEventsTable).where(and(eq(readinessEventsTable.enrollmentId, context.enrollment.id), inArray(readinessEventsTable.pathwayId, pathwayIds))),
   ]);
+  const profileIds = diagnosticProfiles.map(profile => profile.id);
+  const evidenceIds = evidence.map(item => item.id);
+  const gapIds = gaps.map(gap => gap.id);
+  const [diagnosticGaps, diagnosticRecommendations, reviews, remediationPlans] = await Promise.all([
+    db.select().from(diagnosticGapsTable).where(inArray(diagnosticGapsTable.profileId, profileIds)),
+    db.select().from(diagnosticRecommendationsTable).where(inArray(diagnosticRecommendationsTable.profileId, profileIds)),
+    db.select().from(evidenceReviewsTable).where(inArray(evidenceReviewsTable.evidenceId, evidenceIds)),
+    db.select().from(remediationPlansTable).where(inArray(remediationPlansTable.gapId, gapIds)),
+  ]);
+  const planIds = remediationPlans.map(plan => plan.id);
+  const remediationActivities = await db.select().from(remediationActivitiesTable)
+    .where(inArray(remediationActivitiesTable.planId, planIds));
+  const activityIds = remediationActivities.map(activity => activity.id);
+  const remediationEvents = await db.select().from(remediationEventsTable)
+    .where(inArray(remediationEventsTable.activityId, activityIds));
   const map = new Map(pathways.map(pathway => [pathway.id, pathway]));
   const original = map.get(context.enrollment.pathwayId) ?? context.pathway;
   type TimelineRecord = { id: string; pathwayId: string; label: string; description: string; status: string; date: Date; href: string | null; refs?: Record<string, string[]> };

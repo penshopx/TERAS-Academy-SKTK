@@ -142,6 +142,7 @@ export const enrollmentPathwayEventsTable = pgTable("teras_enrollment_pathway_ev
   ...audit,
 }, table => [
   uniqueIndex("teras_enrollment_pathway_events_sequence_unique").on(table.enrollmentId, table.sequence),
+  index("teras_enrollment_pathway_events_timeline_idx").on(table.enrollmentId, table.createdAt, table.id),
   foreignKey({columns:[table.enrollmentId,table.programId],foreignColumns:[enrollmentsTable.id,enrollmentsTable.programId],name:"teras_pathway_events_enrollment_program_fk"}),
   foreignKey({columns:[table.pathwayId,table.programId],foreignColumns:[pathwaysTable.id,pathwaysTable.programId],name:"teras_pathway_events_pathway_program_fk"}),
 ]);
@@ -151,7 +152,7 @@ export const practiceAttemptsTable = pgTable("teras_practice_attempts", {
   id: text("id").primaryKey(), taskId: text("task_id").notNull().references(() => practiceTasksTable.id),
   learnerId: text("learner_id").notNull().references(() => peopleTable.id), pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id), reflection: text("reflection").notNull(),
   outputSummary: text("output_summary").notNull(), status: text("status").notNull(), feedback: text("feedback"), ...audit,
-});
+}, table => [index("teras_practice_attempts_timeline_idx").on(table.learnerId, table.pathwayId, table.createdAt, table.id)]);
 /** Trainer feedback is an immutable event, separate from the learner's submitted attempt. */
 export const practiceReviewsTable = pgTable("teras_practice_reviews", {
   id: text("id").primaryKey(), attemptId: text("attempt_id").notNull().references(() => practiceAttemptsTable.id),
@@ -162,19 +163,25 @@ export const evidenceTable = pgTable("teras_evidence", {
   id: text("id").primaryKey(), learnerId: text("learner_id").notNull().references(() => peopleTable.id),
   pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id), moduleId: text("module_id").notNull().references(() => modulesTable.id), taskId: text("task_id").notNull().references(() => practiceTasksTable.id),
   title: text("title").notNull(), type: text("type").notNull(), description: text("description").notNull(), fileName: text("file_name"), ...audit,
-});
+}, table => [index("teras_evidence_timeline_idx").on(table.learnerId, table.pathwayId, table.createdAt, table.id)]);
 export const evidenceReviewsTable = pgTable("teras_evidence_reviews", {
   id: text("id").primaryKey(), evidenceId: text("evidence_id").notNull().references(() => evidenceTable.id),
   reviewerId: text("reviewer_id").references(() => peopleTable.id), status: text("status").notNull(),
   comment: text("comment"), quality: jsonb("quality").$type<{ valid: boolean; relevant: boolean; sufficient: boolean; traceable: boolean }>().notNull(),
   idempotencyKey: text("idempotency_key"), idempotencyFingerprint: text("idempotency_fingerprint"), ...audit,
-}, table => [uniqueIndex("teras_evidence_reviews_idempotency_unique").on(table.evidenceId, table.reviewerId, table.idempotencyKey)]);
+}, table => [
+  uniqueIndex("teras_evidence_reviews_idempotency_unique").on(table.evidenceId, table.reviewerId, table.idempotencyKey),
+  index("teras_evidence_reviews_parent_timeline_idx").on(table.evidenceId, table.createdAt, table.id),
+]);
 export const assessmentAttemptsTable = pgTable("teras_assessment_attempts", {
   id: text("id").primaryKey(), assessmentId: text("assessment_id").notNull().references(() => assessmentsTable.id),
   learnerId: text("learner_id").notNull().references(() => peopleTable.id), pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id), number: integer("number").notNull(),
   assessorId: text("assessor_id").references(() => peopleTable.id), status: text("status").notNull(),
   decision: text("decision"), decisionRationale: text("decision_rationale"), ...audit,
-}, table => [uniqueIndex("teras_assessment_attempts_assessment_learner_pathway_number_unique").on(table.assessmentId, table.learnerId, table.pathwayId, table.number)]);
+}, table => [
+  uniqueIndex("teras_assessment_attempts_assessment_learner_pathway_number_unique").on(table.assessmentId, table.learnerId, table.pathwayId, table.number),
+  index("teras_assessment_attempts_timeline_idx").on(table.learnerId, table.pathwayId, table.createdAt, table.id),
+]);
 export const criterionObservationsTable = pgTable("teras_criterion_observations", {
   id: text("id").primaryKey(), attemptId: text("attempt_id").notNull().references(() => assessmentAttemptsTable.id),
   criterionId: text("criterion_id").notNull().references(() => assessmentCriteriaTable.id), score: integer("score").notNull(),
@@ -185,22 +192,25 @@ export const gapsTable = pgTable("teras_gaps", {
   pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id), moduleId: text("module_id").references(() => modulesTable.id), capability: text("capability").notNull(), criterion: text("criterion").notNull(),
   severity: text("severity").notNull(), priority: text("priority").notNull(), diagnosis: text("diagnosis").notNull(),
   gate: text("gate").notNull(), recommendedAction: text("recommended_action").notNull(), ...audit,
-});
+}, table => [index("teras_gaps_learner_pathway_idx").on(table.learnerId, table.pathwayId, table.id)]);
 export const gapEventsTable = pgTable("teras_gap_events", {
   id: text("id").primaryKey(), gapId: text("gap_id").notNull().references(() => gapsTable.id), status: text("status").notNull(), ...audit,
 });
 export const remediationPlansTable = pgTable("teras_remediation_plans", {
   id: text("id").primaryKey(), gapId: text("gap_id").notNull().references(() => gapsTable.id), title: text("title").notNull(),
   description: text("description").notNull(), dueLabel: text("due_label"), ...audit,
-});
+}, table => [index("teras_remediation_plans_gap_idx").on(table.gapId, table.id)]);
 export const remediationActivitiesTable = pgTable("teras_remediation_activities", {
   id: text("id").primaryKey(), planId: text("plan_id").notNull().references(() => remediationPlansTable.id),
   title: text("title").notNull(), description: text("description").notNull(), type: text("type").notNull(), ...audit,
-});
+}, table => [index("teras_remediation_activities_plan_idx").on(table.planId, table.id)]);
 export const remediationEventsTable = pgTable("teras_remediation_events", {
   id: text("id").primaryKey(), activityId: text("activity_id").notNull().references(() => remediationActivitiesTable.id),
   status: text("status").notNull(), idempotencyKey: text("idempotency_key"), idempotencyFingerprint: text("idempotency_fingerprint"), ...audit,
-}, table => [uniqueIndex("teras_remediation_events_idempotency_unique").on(table.idempotencyKey)]);
+}, table => [
+  uniqueIndex("teras_remediation_events_idempotency_unique").on(table.idempotencyKey),
+  index("teras_remediation_events_parent_timeline_idx").on(table.activityId, table.createdAt, table.id),
+]);
 export const readinessGatesTable = pgTable("teras_readiness_gates", {
   id: text("id").primaryKey(), programId: text("program_id").notNull().references(() => programsTable.id),
   pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id),

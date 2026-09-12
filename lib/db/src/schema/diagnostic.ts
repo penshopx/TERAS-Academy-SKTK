@@ -97,6 +97,7 @@ export const diagnosticGapsTable = pgTable("teras_diagnostic_gaps", {
   frameworkId: text("framework_id").notNull().references(() => competencyFrameworksTable.id), unitCode: text("unit_code").notNull().default(""), unitTitle: text("unit_title").notNull().default(""), diagnosis: text("diagnosis").notNull(), severity: text("severity").notNull(),
   provenance: jsonb("provenance").$type<DiagnosticProvenance>(), ...audit,
 }, table => [
+  index("teras_diagnostic_gaps_profile_idx").on(table.profileId, table.id),
   check("teras_diagnostic_gaps_provenance_check", sql`
     ${table.provenance} IS NULL OR (
       ${table.provenance}->>'sessionId' <> ''
@@ -124,7 +125,7 @@ export const diagnosticRecommendationsTable = pgTable("teras_diagnostic_recommen
   id: text("id").primaryKey(), profileId: text("profile_id").notNull().references(() => diagnosticProfilesTable.id, { onDelete: "cascade" }), competencyUnitId: text("competency_unit_id").references(() => competencyUnitsTable.id),
   frameworkId: text("framework_id").notNull().references(() => competencyFrameworksTable.id), unitCode: text("unit_code").notNull().default(""), unitTitle: text("unit_title").notNull().default(""), moduleId: text("module_id").references(() => modulesTable.id), practiceTaskId: text("practice_task_id").references(() => practiceTasksTable.id), evidenceRequirementId: text("evidence_requirement_id").references(() => evidenceRequirementsTable.id),
   simulationId: text("simulation_id"), safetyRuleId: text("safety_rule_id"), kind: text("kind").notNull(), title: text("title").notNull(), rationale: text("rationale").notNull(), priority: text("priority").notNull(), href: text("href"), ...audit,
-});
+}, table => [index("teras_diagnostic_recommendations_profile_idx").on(table.profileId, table.id)]);
 export const diagnosticRecommendationFollowUpsTable = pgTable("teras_diagnostic_recommendation_follow_ups", {
   id: text("id").primaryKey(),
   recommendationId: text("recommendation_id").notNull().references(() => diagnosticRecommendationsTable.id, { onDelete: "cascade" }),

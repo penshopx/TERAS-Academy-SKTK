@@ -274,6 +274,7 @@ export const learningRecordLinksTable = pgTable("teras_learning_record_links", {
   ...eventAudit,
 }, table => [
   index("teras_learning_record_links_pathway_activity_created_idx").on(table.pathwayId, table.activityId, table.createdAt),
+  index("teras_learning_record_links_timeline_idx").on(table.learnerId, table.pathwayId, table.createdAt, table.id),
 ]);
 
 export const reassessmentLinksTable = pgTable("teras_reassessment_links", {
@@ -289,6 +290,7 @@ export const reassessmentLinksTable = pgTable("teras_reassessment_links", {
   ...eventAudit,
 }, table => [
   uniqueIndex("teras_reassessment_links_attempt_unique").on(table.reassessmentAttemptId),
+  index("teras_reassessment_links_timeline_idx").on(table.learnerId, table.pathwayId, table.createdAt, table.id),
 ]);
 
 export const readinessTransferEventsTable = pgTable("teras_readiness_transfer_events", {
@@ -349,6 +351,7 @@ export const learningTransitionEventsTable = pgTable("teras_learning_transition_
   }),
   uniqueIndex("teras_learning_transition_idempotency_unique").on(table.idempotencyKey),
   index("teras_learning_transition_state_lookup_idx").on(table.activityId, table.learnerId, table.pathwayId, table.createdAt),
+  index("teras_learning_transition_timeline_idx").on(table.learnerId, table.enrollmentId, table.pathwayId, table.createdAt, table.id),
 ]);
 
 /**
