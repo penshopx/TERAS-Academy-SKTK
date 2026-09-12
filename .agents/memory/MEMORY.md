@@ -32,3 +32,4 @@
 - [Operational recommendation follow-ups](operational-recommendation-follow-ups.md) — keep trainer action history append-only and separate from diagnostic and readiness decisions.
 - [Integration governance](integration-governance.md) — inspect and map to canonical systems before additive work; verify each merge in isolation before locking it.
 - [Append-only mutation retries](append-only-mutation-retries.md) — idempotency must cover both the immutable record and every transition appended in the same transaction.
+- [Causal parent ownership](causal-parent-ownership.md) — keep learner ownership and transitive parent identity immutable so validated causal links cannot drift across learners.

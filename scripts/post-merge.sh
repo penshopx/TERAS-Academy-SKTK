@@ -93,6 +93,10 @@ if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_people') IS
   # remediation transitions.
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0031_trainer_review_idempotency.sql
+  # Reject legacy cross-learner causal chains before installing ownership
+  # enforcement on both causal junction tables.
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0032_learning_record_link_ownership.sql
 fi
 if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_content_resources') IS NOT NULL")" = "t" ]; then
   TERAS_MIGRATION_ACTOR=post-merge-upgrade \
@@ -150,6 +154,8 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0030_trainer_reminder_permanent_failures.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0031_trainer_review_idempotency.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0032_learning_record_link_ownership.sql
 if [ "$(pnpm --silent --filter @workspace/scripts run demo:fixtures-enabled)" = "1" ]; then
   pnpm --filter @workspace/scripts run seed:demo
 else
@@ -175,6 +181,7 @@ pnpm --filter @workspace/api-server run test:knowledge-lifecycle
 pnpm --filter @workspace/api-server run test:pathway-isolation
 pnpm --filter @workspace/api-server run test:safety-blockers
 pnpm --filter @workspace/api-server run test:lms-event-ownership
+pnpm --filter @workspace/api-server run test:causal-link-ownership
 pnpm --filter @workspace/api-server run test:admin-management
 pnpm --filter @workspace/api-server run test:competency
 pnpm --filter @workspace/api-server run test:course-authoring
