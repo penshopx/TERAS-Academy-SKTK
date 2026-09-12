@@ -75,12 +75,18 @@ test("stale or missing queue links clear the selected detail safely", () => {
   });
 });
 
-test("permanent trainer reminder failures activate the admin alarm, but an empty list does not", () => {
+test("only open permanent trainer reminder failures activate the admin alarm", () => {
   assert.equal(hasPermanentReminderEscalations({ failedTrainerReminders: [] }), false);
   assert.equal(hasPermanentReminderEscalations({ failedTrainerReminders: [{
     id: "delivery-1", trainerId: "trainer-1", trainerName: "Trainer Satu", target: "Inspeksi inverter",
     targetAt: "2030-01-10T00:00:00.000Z", lastAttemptAt: "2030-01-09T03:00:00.000Z", reason: "Layanan email tidak dapat menyelesaikan pengiriman.",
+    status: "open", resolution: null,
   }] }), true);
+  assert.equal(hasPermanentReminderEscalations({ failedTrainerReminders: [{
+    id: "delivery-2", trainerId: "trainer-1", trainerName: "Trainer Satu", target: "Inspeksi inverter",
+    targetAt: "2030-01-10T00:00:00.000Z", lastAttemptAt: "2030-01-09T03:00:00.000Z", reason: "Layanan email tidak dapat menyelesaikan pengiriman.",
+    status: "resolved", resolution: { id: "resolution-1", reminderDeliveryId: "delivery-2", note: "Sudah dihubungi", resolvedByPersonId: "admin-1", resolvedAt: "2030-01-09T05:00:00.000Z" },
+  }] }), false);
 });
 
 test("admin summary renders every safe permanent-failure detail for the manager", async () => {
@@ -90,4 +96,7 @@ test("admin summary renders every safe permanent-failure detail for the manager"
   assert.match(source, /item\.target/);
   assert.match(source, /item\.lastAttemptAt/);
   assert.match(source, /item\.reason/);
+  assert.match(source, /useResolveAdminReminderEscalation/);
+  assert.match(source, /input-reminder-resolution-note/);
+  assert.match(source, /admin-resolved-trainer-reminders/);
 });

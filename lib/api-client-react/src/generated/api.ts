@@ -43,6 +43,8 @@ import type {
   AdminReadinessExport,
   AdminReadinessHistoryPage,
   AdminReadinessRule,
+  AdminReminderEscalationResolution,
+  AdminReminderEscalationResolutionInput,
   AdminUser,
   AdminUserInput,
   AdminUserUpdate,
@@ -5317,6 +5319,78 @@ export function useGetAdminOperationalSummary<TData = Awaited<ReturnType<typeof 
 
 
 
+
+export const getResolveAdminReminderEscalationUrl = (reminderDeliveryId: string,) => {
+
+
+
+
+  return `/api/admin/reminder-escalations/${reminderDeliveryId}/resolution`
+}
+
+/**
+ * @summary Mark a permanently failed trainer reminder escalation as handled
+ */
+export const resolveAdminReminderEscalation = async (reminderDeliveryId: string,
+    adminReminderEscalationResolutionInput: AdminReminderEscalationResolutionInput, options?: Parameters<typeof customFetch>[1]): Promise<AdminReminderEscalationResolution> => {
+
+  return customFetch<AdminReminderEscalationResolution>(getResolveAdminReminderEscalationUrl(reminderDeliveryId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(adminReminderEscalationResolutionInput)
+  }
+);}
+
+
+
+
+
+export const getResolveAdminReminderEscalationMutationOptions = <TError = ErrorType<BadRequestResponse | NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveAdminReminderEscalation>>, TError,{reminderDeliveryId: string;data: BodyType<AdminReminderEscalationResolutionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resolveAdminReminderEscalation>>, TError,{reminderDeliveryId: string;data: BodyType<AdminReminderEscalationResolutionInput>}, TContext> => {
+
+const mutationKey = ['resolveAdminReminderEscalation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resolveAdminReminderEscalation>>, {reminderDeliveryId: string;data: BodyType<AdminReminderEscalationResolutionInput>}> = (props) => {
+          const {reminderDeliveryId,data} = props ?? {};
+
+          return  resolveAdminReminderEscalation(reminderDeliveryId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResolveAdminReminderEscalationMutationResult = NonNullable<Awaited<ReturnType<typeof resolveAdminReminderEscalation>>>
+    export type ResolveAdminReminderEscalationMutationBody = BodyType<AdminReminderEscalationResolutionInput>
+    export type ResolveAdminReminderEscalationMutationError = ErrorType<BadRequestResponse | NotFoundResponse | ConflictResponse>
+
+    /**
+ * @summary Mark a permanently failed trainer reminder escalation as handled
+ */
+export const useResolveAdminReminderEscalation = <TError = ErrorType<BadRequestResponse | NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveAdminReminderEscalation>>, TError,{reminderDeliveryId: string;data: BodyType<AdminReminderEscalationResolutionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resolveAdminReminderEscalation>>,
+        TError,
+        {reminderDeliveryId: string;data: BodyType<AdminReminderEscalationResolutionInput>},
+        TContext
+      > => {
+      return useMutation(getResolveAdminReminderEscalationMutationOptions(options));
+    }
 
 export const getGetAdminLearnerDashboardProjectionUrl = () => {
 

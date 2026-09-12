@@ -160,6 +160,17 @@ export const diagnosticFollowUpFailureNotificationsTable = pgTable("teras_diagno
   uniqueIndex("teras_diagnostic_follow_up_failure_notification_delivery_unique").on(table.reminderDeliveryId),
   check("teras_diagnostic_follow_up_failure_notification_status_check", sql`${table.status} IN ('pending','sending','sent','failed')`),
 ]);
+export const diagnosticFollowUpReminderResolutionsTable = pgTable("teras_diagnostic_follow_up_reminder_resolutions", {
+  id: text("id").primaryKey(),
+  reminderDeliveryId: text("reminder_delivery_id").notNull().references(() => diagnosticFollowUpReminderDeliveriesTable.id, { onDelete: "cascade" }),
+  note: text("note").notNull(),
+  resolvedByPersonId: text("resolved_by_person_id").notNull().references(() => peopleTable.id),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }).notNull().defaultNow(),
+  ...audit,
+}, table => [
+  uniqueIndex("teras_diagnostic_follow_up_reminder_resolution_delivery_unique").on(table.reminderDeliveryId),
+  check("teras_diagnostic_follow_up_reminder_resolution_note_check", sql`length(trim(${table.note})) > 0`),
+]);
 export const trainerReminderPreferencesTable = pgTable("teras_trainer_reminder_preferences", {
   id: text("id").primaryKey(),
   trainerId: text("trainer_id").notNull().references(() => peopleTable.id, { onDelete: "cascade" }),

@@ -1332,6 +1332,22 @@ export type AdminOperationalSummaryIncompleteAssignments = {
   total: number;
 };
 
+export type AdminOperationalSummaryFailedTrainerRemindersItemStatus = typeof AdminOperationalSummaryFailedTrainerRemindersItemStatus[keyof typeof AdminOperationalSummaryFailedTrainerRemindersItemStatus];
+
+
+export const AdminOperationalSummaryFailedTrainerRemindersItemStatus = {
+  open: 'open',
+  resolved: 'resolved',
+} as const;
+
+export interface AdminReminderEscalationResolution {
+  id: string;
+  reminderDeliveryId: string;
+  note: string;
+  resolvedByPersonId: string;
+  resolvedAt: string;
+}
+
 export type AdminOperationalSummaryFailedTrainerRemindersItem = {
   id: string;
   trainerId: string;
@@ -1340,6 +1356,8 @@ export type AdminOperationalSummaryFailedTrainerRemindersItem = {
   targetAt: string;
   lastAttemptAt: string;
   reason: string;
+  status: AdminOperationalSummaryFailedTrainerRemindersItemStatus;
+  resolution: AdminReminderEscalationResolution | null;
 };
 
 export interface AdminOperationalSummary {
@@ -1350,6 +1368,15 @@ export interface AdminOperationalSummary {
   bottleneck: AdminOperationalBottleneck;
   actions: AdminOperationalAction[];
   generatedAt: string;
+}
+
+export interface AdminReminderEscalationResolutionInput {
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     * @pattern \S
+     */
+  note: string;
 }
 
 export type AdminUserInputStatus = typeof AdminUserInputStatus[keyof typeof AdminUserInputStatus];

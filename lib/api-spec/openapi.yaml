@@ -1072,6 +1072,27 @@ paths:
                 $ref: "#/components/schemas/AdminOperationalSummary"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/reminder-escalations/{reminderDeliveryId}/resolution:
+    post:
+      operationId: resolveAdminReminderEscalation
+      tags: [admin]
+      summary: Mark a permanently failed trainer reminder escalation as handled
+      parameters:
+        - name: reminderDeliveryId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminReminderEscalationResolutionInput"
+      responses:
+        "201": { description: Append-only escalation resolution, content: { application/json: { schema: { $ref: "#/components/schemas/AdminReminderEscalationResolution" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /admin/projections/learner-dashboard:
     get:
       operationId: getAdminLearnerDashboardProjection
@@ -3310,7 +3331,7 @@ components:
           type: array
           items:
             type: object
-            required: [id, trainerId, trainerName, target, targetAt, lastAttemptAt, reason]
+            required: [id, trainerId, trainerName, target, targetAt, lastAttemptAt, reason, status, resolution]
             properties:
               id: { type: string }
               trainerId: { type: string }
@@ -3319,6 +3340,11 @@ components:
               targetAt: { type: string, format: date-time }
               lastAttemptAt: { type: string, format: date-time }
               reason: { type: string }
+              status: { type: string, enum: [open, resolved] }
+              resolution:
+                anyOf:
+                  - $ref: "#/components/schemas/AdminReminderEscalationResolution"
+                  - type: "null"
         queues:
           type: array
           items: { $ref: "#/components/schemas/AdminOperationalQueue" }
@@ -3328,6 +3354,21 @@ components:
           type: array
           items: { $ref: "#/components/schemas/AdminOperationalAction" }
         generatedAt: { type: string, format: date-time }
+    AdminReminderEscalationResolutionInput:
+      type: object
+      additionalProperties: false
+      required: [note]
+      properties:
+        note: { type: string, minLength: 1, maxLength: 2000, pattern: '\S' }
+    AdminReminderEscalationResolution:
+      type: object
+      required: [id, reminderDeliveryId, note, resolvedByPersonId, resolvedAt]
+      properties:
+        id: { type: string }
+        reminderDeliveryId: { type: string }
+        note: { type: string }
+        resolvedByPersonId: { type: string }
+        resolvedAt: { type: string, format: date-time }
     AdminUserInput:
       type: object
       required: [id, name, initials, status, roles]

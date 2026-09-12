@@ -5,6 +5,8 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { AdminOperationalSummaryFailedTrainerRemindersItemStatus } from './adminOperationalSummaryFailedTrainerRemindersItemStatus';
+import type { AdminReminderEscalationResolution } from './adminReminderEscalationResolution';
 
 export type AdminOperationalSummaryFailedTrainerRemindersItem = {
   id: string;
@@ -14,4 +16,6 @@ export type AdminOperationalSummaryFailedTrainerRemindersItem = {
   targetAt: Date;
   lastAttemptAt: Date;
   reason: string;
+  status: AdminOperationalSummaryFailedTrainerRemindersItemStatus;
+  resolution: AdminReminderEscalationResolution | null;
 };

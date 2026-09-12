@@ -15,6 +15,7 @@ import {
   getListAdminKnowledgeArticlesQueryKey, getListAdminKnowledgeNotFoundTopicsQueryKey, useCreateAdminKnowledgeArticle, useListAdminKnowledgeArticles, useListAdminKnowledgeNotFoundTopics, usePublishAdminKnowledgeArticle, useUpdateAdminKnowledgeArticle,
   getListAdminCompetencyFrameworksQueryKey, useListAdminCompetencyFrameworks, useCreateAdminCompetencyFramework, useCreateAdminCompetencyUnit, useUpdateAdminCompetencyUnit,
   getListAdminReadinessRulesQueryKey, useCreateAdminReadinessRuleVersion, useListAdminReadinessRules,
+  useResolveAdminReminderEscalation,
 } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -322,11 +324,18 @@ type AdminTab = "summary" | "users" | "programs" | "pathways" | "cohorts" | "enr
 type SummaryQuery = { data?: AdminOperationalSummary; isLoading: boolean; error: unknown };
 
 export function hasPermanentReminderEscalations(summary?: Pick<AdminOperationalSummary, "failedTrainerReminders">) {
-  return Boolean(summary?.failedTrainerReminders.length);
+  return Boolean(summary?.failedTrainerReminders.some(item => item.status === "open"));
 }
 
 function OperationalSummary({ summary, selectedQueue, filters, onFilterChange, onOpenQueue, onOpenTab }: { summary: SummaryQuery; selectedQueue: QueueId | null; filters: QueueFilters; onFilterChange: (key: QueueFilterKey, value: string) => void; onOpenQueue: (queue: QueueId) => void; onOpenTab: (tab: AdminTab) => void }) {
+  const client = useQueryClient();
+  const { toast } = useToast();
+  const [resolvingReminderId, setResolvingReminderId] = useState<string | null>(null);
+  const [resolutionNote, setResolutionNote] = useState("");
+  const resolveReminder = useResolveAdminReminderEscalation();
   const activeQueue = summary.data?.queues.find(queue => queue.id === selectedQueue);
+  const openReminders = summary.data?.failedTrainerReminders.filter(item => item.status === "open") ?? [];
+  const resolvedReminders = summary.data?.failedTrainerReminders.filter(item => item.status === "resolved") ?? [];
   const filterOptions = activeQueue ? {
     learner: uniqueQueueOptions(activeQueue.items, "learnerId", "learnerName"),
     pathway: uniqueQueueOptions(activeQueue.items, "pathwayId", "pathwayName"),
@@ -335,7 +344,23 @@ function OperationalSummary({ summary, selectedQueue, filters, onFilterChange, o
   } : null;
   const filteredItems = activeQueue ? filterQueueItems(activeQueue.items, filters) : [];
   const hasFilters = queueFilterKeys.some(key => filters[key]);
-  return <State loading={summary.isLoading} error={summary.error} empty={!summary.data}>
+  const submitResolution = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!resolvingReminderId || !resolutionNote.trim()) return;
+    resolveReminder.mutate({ reminderDeliveryId: resolvingReminderId, data: { note: resolutionNote.trim() } }, {
+      onSuccess: async () => {
+        setResolvingReminderId(null);
+        setResolutionNote("");
+        await Promise.all([
+          client.invalidateQueries({ queryKey: getGetAdminOperationalSummaryQueryKey() }),
+          client.invalidateQueries({ queryKey: getListAdminAuditEventsQueryKey() }),
+        ]);
+        toast({ title: "Eskalasi ditandai selesai", description: "Catatan, aktor, dan waktu penyelesaian telah disimpan." });
+      },
+      onError: error => toast({ variant: "destructive", title: "Gagal menyelesaikan eskalasi", description: adminErrorMessage(error) }),
+    });
+  };
+  return <><State loading={summary.isLoading} error={summary.error} empty={!summary.data}>
     {summary.data && <div className="space-y-6" data-testid="admin-operational-summary">
       <section aria-labelledby="platform-pulse-title">
         <div className="mb-3 flex items-center justify-between gap-3"><div><h2 id="platform-pulse-title" className="text-lg font-semibold">Kondisi platform</h2><p className="text-sm text-muted-foreground">Snapshot operasional dari data aktif.</p></div><span className="text-xs text-muted-foreground">Diperbarui {auditTime(summary.data.generatedAt)}</span></div>
@@ -343,8 +368,14 @@ function OperationalSummary({ summary, selectedQueue, filters, onFilterChange, o
       </section>
       {hasPermanentReminderEscalations(summary.data) && <section id="failed-trainer-reminders" aria-labelledby="failed-trainer-reminders-title" role="alert" data-testid="admin-failed-trainer-reminders">
         <Card className="border-destructive/60 bg-destructive/5">
-          <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle id="failed-trainer-reminders-title" className="flex items-center gap-2 text-destructive"><AlertTriangle className="h-5 w-5" />Pengingat trainer gagal permanen</CardTitle><p className="mt-1 text-sm text-muted-foreground">Pengiriman telah dihentikan setelah tiga percobaan. Tindak lanjuti target ini secara manual.</p></div><Badge variant="destructive" className="text-sm">{summary.data.failedTrainerReminders.length}</Badge></div></CardHeader>
-          <CardContent><div className="divide-y">{summary.data.failedTrainerReminders.map(item => <article key={item.id} className="grid gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-[1fr_auto] md:items-start" data-testid={`failed-trainer-reminder-${item.id}`}><div><p className="font-semibold">{item.target}</p><p className="mt-1 text-sm">Trainer: <strong>{item.trainerName}</strong></p><p className="mt-1 text-sm text-muted-foreground">Target {auditTime(item.targetAt)} · Percobaan terakhir {auditTime(item.lastAttemptAt)}</p><p className="mt-2 text-sm text-destructive">{item.reason}</p></div><Badge variant="outline" className="border-destructive/40 text-destructive">Perlu tindakan</Badge></article>)}</div></CardContent>
+          <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle id="failed-trainer-reminders-title" className="flex items-center gap-2 text-destructive"><AlertTriangle className="h-5 w-5" />Pengingat trainer gagal permanen</CardTitle><p className="mt-1 text-sm text-muted-foreground">Pengiriman telah dihentikan setelah tiga percobaan. Tindak lanjuti target ini secara manual.</p></div><Badge variant="destructive" className="text-sm">{openReminders.length}</Badge></div></CardHeader>
+          <CardContent><div className="divide-y">{openReminders.map(item => <article key={item.id} className="grid gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-[1fr_auto] md:items-start" data-testid={`failed-trainer-reminder-${item.id}`}><div><p className="font-semibold">{item.target}</p><p className="mt-1 text-sm">Trainer: <strong>{item.trainerName}</strong></p><p className="mt-1 text-sm text-muted-foreground">Target {auditTime(item.targetAt)} · Percobaan terakhir {auditTime(item.lastAttemptAt)}</p><p className="mt-2 text-sm text-destructive">{item.reason}</p></div><div className="flex flex-col items-end gap-2"><Badge variant="outline" className="border-destructive/40 text-destructive">Perlu tindakan</Badge><Button size="sm" onClick={() => { setResolvingReminderId(item.id); setResolutionNote(""); }} data-testid={`button-resolve-reminder-${item.id}`}>Tandai ditangani</Button></div></article>)}</div></CardContent>
+        </Card>
+      </section>}
+      {resolvedReminders.length > 0 && <section aria-labelledby="resolved-trainer-reminders-title" data-testid="admin-resolved-trainer-reminders">
+        <Card>
+          <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle id="resolved-trainer-reminders-title">Eskalasi pengingat selesai</CardTitle><p className="mt-1 text-sm text-muted-foreground">Riwayat penanganan manual tetap tersimpan tanpa mengubah delivery asli.</p></div><Badge variant="secondary">{resolvedReminders.length}</Badge></div></CardHeader>
+          <CardContent><div className="divide-y">{resolvedReminders.map(item => <article key={item.id} className="grid gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-[1fr_auto] md:items-start" data-testid={`resolved-trainer-reminder-${item.id}`}><div><p className="font-semibold">{item.target}</p><p className="mt-1 text-sm">Trainer: <strong>{item.trainerName}</strong></p><p className="mt-1 text-sm text-muted-foreground">Percobaan terakhir {auditTime(item.lastAttemptAt)}</p>{item.resolution && <div className="mt-3 rounded-md bg-muted/50 p-3 text-sm"><p>{item.resolution.note}</p><p className="mt-1 text-xs text-muted-foreground">Ditangani {auditTime(item.resolution.resolvedAt)} · Aktor {item.resolution.resolvedByPersonId}</p></div>}</div><Badge variant="secondary">Selesai</Badge></article>)}</div></CardContent>
         </Card>
       </section>}
       <div className="grid gap-4 xl:grid-cols-[1.15fr_.85fr]">
@@ -358,7 +389,15 @@ function OperationalSummary({ summary, selectedQueue, filters, onFilterChange, o
       {activeQueue && <Card data-testid={`admin-queue-detail-${activeQueue.id}`}><CardHeader><CardTitle>{activeQueue.label}</CardTitle><p className="text-sm text-muted-foreground">{activeQueue.description}</p></CardHeader><CardContent className="space-y-5">{activeQueue.items.length > 0 && filterOptions && <div className="grid gap-3 rounded-lg border bg-muted/20 p-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Filter antrean"><QueueFilter label="Learner" value={filters.learner} options={filterOptions.learner} onChange={value => onFilterChange("learner", value)} /><QueueFilter label="Pathway" value={filters.pathway} options={filterOptions.pathway} onChange={value => onFilterChange("pathway", value)} /><QueueFilter label="Trainer" value={filters.trainer} options={filterOptions.trainer} onChange={value => onFilterChange("trainer", value)} /><QueueFilter label="Assessor" value={filters.assessor} options={filterOptions.assessor} onChange={value => onFilterChange("assessor", value)} /></div>}{filteredItems.length ? <><p className="text-sm text-muted-foreground" aria-live="polite">Menampilkan {filteredItems.length} dari {activeQueue.items.length} item.</p><div className="divide-y">{filteredItems.map(item => <article key={item.id} className="grid gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-[1fr_auto] md:items-center"><div><div className="flex flex-wrap items-center gap-2"><strong>{item.title}</strong><Badge variant="outline">{item.status}</Badge></div><p className="mt-1 text-sm text-muted-foreground">{item.learnerName} · {item.pathwayName}</p><p className="mt-1 text-xs text-muted-foreground">Trainer: {item.trainerName ?? "Belum ditugaskan"} · Assessor: {item.assessorName ?? "Belum ditugaskan"}</p></div><Button size="sm" variant="outline" onClick={() => onOpenTab("enrollments")}>Kelola enrollment</Button></article>)}</div></> : <div className="rounded-md border border-dashed p-8 text-center" role="status"><p className="font-medium">{hasFilters ? "Tidak ada item yang cocok" : "Antrean ini kosong"}</p><p className="mt-1 text-sm text-muted-foreground">{hasFilters ? "Ubah atau hapus filter untuk melihat item antrean lainnya." : "Tidak ada item yang membutuhkan tindak lanjut saat ini."}</p>{hasFilters && <Button variant="outline" size="sm" className="mt-4" onClick={() => queueFilterKeys.forEach(key => onFilterChange(key, ""))}>Hapus semua filter</Button>}</div>}</CardContent></Card>}
       <Card><CardHeader><CardTitle>Tindakan berikutnya</CardTitle></CardHeader><CardContent>{summary.data.actions.length ? <div className="divide-y">{summary.data.actions.map(action => <div key={action.id} className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"><div className="flex gap-3"><Badge variant={action.urgency === "critical" ? "destructive" : action.urgency === "attention" ? "default" : "secondary"} className="h-fit">{action.count}</Badge><div><p className="font-medium">{action.label}</p><p className="text-sm text-muted-foreground">{action.description}</p></div></div><Button size="sm" variant="outline" onClick={() => action.id === "review-failed-trainer-reminders" ? document.getElementById("failed-trainer-reminders")?.scrollIntoView({ behavior: "smooth", block: "start" }) : action.id.startsWith("resolve-") ? onOpenQueue(action.id.replace("resolve-", "") as QueueId) : onOpenTab(action.targetTab)}>Buka</Button></div>)}</div> : <p className="text-sm text-muted-foreground">Tidak ada tindakan mendesak. Semua assignment dan antrean lifecycle dalam kondisi bersih.</p>}</CardContent></Card>
     </div>}
-  </State>;
+  </State><Dialog open={resolvingReminderId !== null} onOpenChange={open => { if (!open && !resolveReminder.isPending) { setResolvingReminderId(null); setResolutionNote(""); } }}>
+    <DialogContent>
+      <DialogHeader><DialogTitle>Tandai eskalasi sudah ditangani</DialogTitle><DialogDescription>Tambahkan catatan audit tentang tindakan manual yang sudah dilakukan. Delivery kegagalan asli tidak akan diubah.</DialogDescription></DialogHeader>
+      <form onSubmit={submitResolution} className="grid gap-4">
+        <label className="grid gap-2 text-sm font-medium">Catatan penanganan<Textarea value={resolutionNote} onChange={event => setResolutionNote(event.target.value)} required minLength={1} maxLength={2000} placeholder="Contoh: Trainer dihubungi melalui telepon dan target dikonfirmasi." data-testid="input-reminder-resolution-note" /></label>
+        <DialogFooter><Button type="button" variant="outline" onClick={() => { setResolvingReminderId(null); setResolutionNote(""); }} disabled={resolveReminder.isPending}>Batal</Button><Button type="submit" disabled={resolveReminder.isPending || !resolutionNote.trim()} data-testid="button-submit-reminder-resolution">{resolveReminder.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Simpan penyelesaian"}</Button></DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog></>;
 }
 
 function uniqueQueueOptions<T, IdKey extends keyof T, LabelKey extends keyof T>(items: T[], idKey: IdKey, labelKey: LabelKey, nullLabel?: string) {

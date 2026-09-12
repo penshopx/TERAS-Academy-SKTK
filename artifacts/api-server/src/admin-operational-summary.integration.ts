@@ -1,7 +1,7 @@
 import { createIntegrationTestApp } from "./integration-test-app";
 import {
-  assessmentAttemptsTable, assessmentsTable, db, enrollmentsTable, evidenceReviewsTable, evidenceTable,
-  competencyFrameworksTable, diagnosticFollowUpReminderDeliveriesTable, diagnosticProfilesTable,
+  adminAuditEventsTable, assessmentAttemptsTable, assessmentsTable, db, enrollmentsTable, evidenceReviewsTable, evidenceTable,
+  competencyFrameworksTable, diagnosticFollowUpReminderDeliveriesTable, diagnosticFollowUpReminderResolutionsTable, diagnosticProfilesTable,
   diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSessionsTable,
   diagnosticTemplatesTable,
   gapsTable, modulesTable, pathwaysTable, peopleTable, personRolesTable, practiceAttemptsTable,
@@ -24,15 +24,17 @@ const ids = {
   activeActivity: id("active-activity"), inactiveActivity: id("inactive-activity"),
   inactiveReassessment: id("inactive-reassessment"), pendingAfterRemediation: id("pending-after-remediation"),
   trainer: id("trainer"), framework: id("framework"), template: id("template"), session: id("session"),
-  profile: id("profile"), recommendation: id("recommendation"), followUp: id("follow-up"), failedDelivery: id("failed-delivery"),
+  profile: id("profile"), recommendation: id("recommendation"), followUp: id("follow-up"), failedDelivery: id("failed-delivery"), admin: id("admin"),
 };
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 
 async function run() {
-  const app = createIntegrationTestApp(() => ({ userId: id("admin"), role: "admin" }));
+  const app = createIntegrationTestApp(() => ({ userId: ids.admin, role: null }));
   const server = await new Promise<ReturnType<typeof app.listen>>(resolve => { const listener = app.listen(0, () => resolve(listener)); });
   const address = server.address(); assert(address && typeof address !== "string", "Test server did not bind");
   try {
+    await db.insert(peopleTable).values({ id: ids.admin, name: "Summary Admin", initials: "SA", email: null, role: "admin", organization: null, status: "active", authProvider: "supabase", authSubject: ids.admin });
+    await db.insert(personRolesTable).values({ personId: ids.admin, role: "admin" });
     const baselineResponse = await fetch(`http://127.0.0.1:${address.port}/api/admin/summary`);
     const baseline = await baselineResponse.json() as any;
     assert(baselineResponse.status === 200, "Baseline summary request failed");
@@ -40,9 +42,12 @@ async function run() {
     await db.insert(peopleTable).values([
       { id: ids.activeLearner, name: "Active Summary Learner", initials: "AS", email: null, role: "learner", organization: null, status: "active" },
       { id: ids.inactiveLearner, name: "Inactive Summary Learner", initials: "IS", email: null, role: "learner", organization: null, status: "active" },
-      { id: ids.trainer, name: "Summary Trainer", initials: "ST", email: "trainer@example.test", role: "trainer", organization: null, status: "active" },
+      { id: ids.trainer, name: "Summary Trainer", initials: "ST", email: `trainer-${suffix}@example.test`, role: "trainer", organization: null, status: "active" },
     ]);
-    await db.insert(personRolesTable).values([{ personId: ids.activeLearner, role: "learner" }, { personId: ids.inactiveLearner, role: "learner" }]);
+    await db.insert(personRolesTable).values([
+      { personId: ids.activeLearner, role: "learner" },
+      { personId: ids.inactiveLearner, role: "learner" },
+    ]);
     await db.insert(programsTable).values({ id: ids.program, domain: "Summary test", name: "Summary test", description: "Summary isolation", status: "active" });
     await db.insert(pathwaysTable).values([
       { id: ids.activePath, programId: ids.program, name: "Active path", type: "test", outcome: "test", status: "active" },
@@ -60,7 +65,7 @@ async function run() {
     await db.insert(diagnosticRecommendationFollowUpsTable).values({ id: ids.followUp, recommendationId: ids.recommendation, trainerId: ids.trainer, status: "planned", targetAt: new Date("2030-01-10T00:00:00Z"), note: "test" });
     await db.insert(diagnosticFollowUpReminderDeliveriesTable).values({
       id: ids.failedDelivery, followUpId: ids.followUp, trainerId: ids.trainer, channel: "email", reminderKind: "due_soon",
-      destination: "trainer@example.test", status: "permanently_failed", attemptCount: 3,
+      destination: `trainer-${suffix}@example.test`, status: "permanently_failed", attemptCount: 3,
       lastAttemptAt: new Date("2030-01-09T03:00:00Z"), failureReason: "secret transport detail: smtp.example.test",
     });
     await db.insert(modulesTable).values([
@@ -121,6 +126,26 @@ async function run() {
     assert(reminderFailure?.lastAttemptAt === "2030-01-09T03:00:00.000Z", "Permanent reminder failure must expose the last attempt time");
     assert(reminderFailure?.reason === "Layanan email tidak dapat menyelesaikan pengiriman.", "Admin summary must redact raw transport failure details");
     assert(!JSON.stringify(reminderFailure).includes("smtp.example.test"), "Admin summary leaked a raw transport failure reason");
+    assert(reminderFailure?.status === "open" && reminderFailure?.resolution === null, "New permanent failure must be an open escalation");
+
+    const resolutionResponse = await fetch(`http://127.0.0.1:${address.port}/api/admin/reminder-escalations/${ids.failedDelivery}/resolution`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: "Handled through a verified manual call." }),
+    });
+    const resolution = await resolutionResponse.json() as any;
+    assert(resolutionResponse.status === 201, "Admin could not resolve reminder escalation");
+    assert(resolution.note === "Handled through a verified manual call." && resolution.resolvedByPersonId === ids.admin && resolution.resolvedAt, "Resolution must preserve note, actor, and time");
+    const duplicateResolution = await fetch(`http://127.0.0.1:${address.port}/api/admin/reminder-escalations/${ids.failedDelivery}/resolution`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: "Overwrite attempt" }),
+    });
+    assert(duplicateResolution.status === 409, "Append-only resolution must reject replacement");
+    const [originalDelivery] = await db.select().from(diagnosticFollowUpReminderDeliveriesTable).where(inArray(diagnosticFollowUpReminderDeliveriesTable.id, [ids.failedDelivery]));
+    assert(originalDelivery.status === "permanently_failed" && originalDelivery.failureReason === "secret transport detail: smtp.example.test", "Resolution must not mutate the original delivery audit");
+    const resolvedSummary = await (await fetch(`http://127.0.0.1:${address.port}/api/admin/summary`)).json() as any;
+    const resolvedFailure = resolvedSummary.failedTrainerReminders.find((item: any) => item.id === ids.failedDelivery);
+    assert(resolvedFailure?.status === "resolved" && resolvedFailure.resolution?.resolvedByPersonId === ids.admin, "Summary must distinguish resolved escalation with its history");
+    const baselineOpenFailureCount = baseline.actions?.find((item: any) => item.id === "review-failed-trainer-reminders")?.count ?? 0;
+    const resolvedOpenFailureCount = resolvedSummary.actions?.find((item: any) => item.id === "review-failed-trainer-reminders")?.count ?? 0;
+    assert(resolvedOpenFailureCount === baselineOpenFailureCount, "Resolved escalation must leave the open action count");
 
     await db.insert(remediationEventsTable).values({ id: id("active-rem-completed"), activityId: ids.activeActivity, status: "Completed" });
     await db.insert(assessmentAttemptsTable).values({
@@ -140,6 +165,7 @@ async function run() {
     assert(completedRemediationCounts.reassessment === baselineCounts.reassessment + 1, "Pending reassessment must remain queued after remediation completes");
     assert(completedRemediationCounts.assessment === baselineCounts.assessment + 1, "Pending reassessment attempt must remain in the assessment queue");
   } finally {
+    await db.delete(diagnosticFollowUpReminderResolutionsTable).where(inArray(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, [ids.failedDelivery]));
     await db.delete(diagnosticFollowUpReminderDeliveriesTable).where(inArray(diagnosticFollowUpReminderDeliveriesTable.id, [ids.failedDelivery]));
     await db.delete(diagnosticRecommendationFollowUpsTable).where(inArray(diagnosticRecommendationFollowUpsTable.id, [ids.followUp]));
     await db.delete(diagnosticRecommendationsTable).where(inArray(diagnosticRecommendationsTable.id, [ids.recommendation]));
@@ -162,8 +188,9 @@ async function run() {
     await db.delete(pathwaysTable).where(inArray(pathwaysTable.id, [ids.activePath, ids.inactivePath]));
     await db.delete(competencyFrameworksTable).where(inArray(competencyFrameworksTable.id, [ids.framework]));
     await db.delete(programsTable).where(inArray(programsTable.id, [ids.program]));
-    await db.delete(personRolesTable).where(inArray(personRolesTable.personId, [ids.activeLearner, ids.inactiveLearner]));
-    await db.delete(peopleTable).where(inArray(peopleTable.id, [ids.activeLearner, ids.inactiveLearner, ids.trainer]));
+    await db.delete(adminAuditEventsTable).where(inArray(adminAuditEventsTable.actorPersonId, [ids.admin]));
+    await db.delete(personRolesTable).where(inArray(personRolesTable.personId, [ids.activeLearner, ids.inactiveLearner, ids.admin]));
+    await db.delete(peopleTable).where(inArray(peopleTable.id, [ids.activeLearner, ids.inactiveLearner, ids.trainer, ids.admin]));
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
 }

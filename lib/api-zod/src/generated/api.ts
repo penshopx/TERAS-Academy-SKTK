@@ -3867,7 +3867,15 @@ export const GetAdminOperationalSummaryResponse = zod.object({
   "target": zod.string(),
   "targetAt": zod.coerce.date(),
   "lastAttemptAt": zod.coerce.date(),
-  "reason": zod.string()
+  "reason": zod.string(),
+  "status": zod.enum(['open', 'resolved']),
+  "resolution": zod.union([zod.object({
+  "id": zod.string(),
+  "reminderDeliveryId": zod.string(),
+  "note": zod.string(),
+  "resolvedByPersonId": zod.string(),
+  "resolvedAt": zod.coerce.date()
+}),zod.null()])
 })),
   "queues": zod.array(zod.object({
   "id": zod.enum(['evidence', 'assessment', 'remediation', 'reassessment']),
@@ -3910,6 +3918,35 @@ export const GetAdminOperationalSummaryResponse = zod.object({
 
 
 /**
+ * @summary Mark a permanently failed trainer reminder escalation as handled
+ */
+
+
+
+export const ResolveAdminReminderEscalationParams = zod.object({
+  "reminderDeliveryId": zod.coerce.string().min(1)
+})
+
+export const resolveAdminReminderEscalationBodyNoteMax = 2000;
+
+
+export const resolveAdminReminderEscalationBodyNoteRegExp = new RegExp('\\S');
+
+
+export const ResolveAdminReminderEscalationBody = zod.object({
+  "note": zod.string().min(1).max(resolveAdminReminderEscalationBodyNoteMax).regex(resolveAdminReminderEscalationBodyNoteRegExp)
+})
+
+export const ResolveAdminReminderEscalationResponse = zod.object({
+  "id": zod.string(),
+  "reminderDeliveryId": zod.string(),
+  "note": zod.string(),
+  "resolvedByPersonId": zod.string(),
+  "resolvedAt": zod.coerce.date()
+})
+
+
+/**
  * Does not establish learner identity or permit learner mutations.
  * @summary Read-only aggregate learner dashboard for an administrator
  */
@@ -3948,7 +3985,15 @@ export const GetAdminLearnerDashboardProjectionResponse = zod.object({
   "target": zod.string(),
   "targetAt": zod.coerce.date(),
   "lastAttemptAt": zod.coerce.date(),
-  "reason": zod.string()
+  "reason": zod.string(),
+  "status": zod.enum(['open', 'resolved']),
+  "resolution": zod.union([zod.object({
+  "id": zod.string(),
+  "reminderDeliveryId": zod.string(),
+  "note": zod.string(),
+  "resolvedByPersonId": zod.string(),
+  "resolvedAt": zod.coerce.date()
+}),zod.null()])
 })),
   "queues": zod.array(zod.object({
   "id": zod.enum(['evidence', 'assessment', 'remediation', 'reassessment']),
@@ -4029,7 +4074,15 @@ export const GetAdminTrainerDashboardProjectionResponse = zod.object({
   "target": zod.string(),
   "targetAt": zod.coerce.date(),
   "lastAttemptAt": zod.coerce.date(),
-  "reason": zod.string()
+  "reason": zod.string(),
+  "status": zod.enum(['open', 'resolved']),
+  "resolution": zod.union([zod.object({
+  "id": zod.string(),
+  "reminderDeliveryId": zod.string(),
+  "note": zod.string(),
+  "resolvedByPersonId": zod.string(),
+  "resolvedAt": zod.coerce.date()
+}),zod.null()])
 })),
   "queues": zod.array(zod.object({
   "id": zod.enum(['evidence', 'assessment', 'remediation', 'reassessment']),
@@ -4110,7 +4163,15 @@ export const GetAdminAssessorDashboardProjectionResponse = zod.object({
   "target": zod.string(),
   "targetAt": zod.coerce.date(),
   "lastAttemptAt": zod.coerce.date(),
-  "reason": zod.string()
+  "reason": zod.string(),
+  "status": zod.enum(['open', 'resolved']),
+  "resolution": zod.union([zod.object({
+  "id": zod.string(),
+  "reminderDeliveryId": zod.string(),
+  "note": zod.string(),
+  "resolvedByPersonId": zod.string(),
+  "resolvedAt": zod.coerce.date()
+}),zod.null()])
 })),
   "queues": zod.array(zod.object({
   "id": zod.enum(['evidence', 'assessment', 'remediation', 'reassessment']),

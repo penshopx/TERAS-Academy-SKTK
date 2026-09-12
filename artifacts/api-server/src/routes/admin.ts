@@ -20,6 +20,7 @@ import {
   CreateAdminReadinessRuleVersionBody, CreateAdminReadinessRuleVersionResponse, ExportAdminReadinessHistoryQueryParams,
   ListAdminReadinessHistoryQueryParams, ListAdminReadinessHistoryResponse,
   ListAdminReadinessRulesResponse,
+  ResolveAdminReminderEscalationBody, ResolveAdminReminderEscalationParams, ResolveAdminReminderEscalationResponse,
 } from "@workspace/api-zod";
 import {
   adminAccessRequestsTable, adminAuditEventsTable, assessmentAttemptsTable, cohortsTable, db, enrollmentsTable, evidenceReviewsTable,
@@ -28,7 +29,7 @@ import {
   competencyFrameworksTable, competencyUnitsTable, pathwayCompetencyUnitsTable, competencyUnitOutcomesTable,
   competencyUnitPracticeTasksTable, competencyUnitEvidenceRequirementsTable, competencyUnitSimulationsTable, competencyUnitSafetyRulesTable,
   readinessEventsTable, readinessGatesTable,
-  diagnosticFollowUpReminderDeliveriesTable, diagnosticRecommendationFollowUpsTable,
+  diagnosticFollowUpReminderDeliveriesTable, diagnosticFollowUpReminderResolutionsTable, diagnosticRecommendationFollowUpsTable,
   diagnosticRecommendationsTable,
 } from "@workspace/db";
 import { authorizeAdmin, authorizeLocalUser, authorizeSuperAdmin, type AdminActor } from "../lib/authorization";
@@ -128,6 +129,56 @@ async function readOnlyDashboardProjection() {
 router.get("/admin/access", async (req, res): Promise<void> => {
   if (!await authorizeAdmin(req, res)) return;
   res.json(GetAdminAccessResponse.parse({ authorized: true }));
+});
+
+router.post("/admin/reminder-escalations/:reminderDeliveryId/resolution", async (req, res): Promise<void> => {
+  const actor = await authorizeAdmin(req, res);
+  const params = parsed(ResolveAdminReminderEscalationParams, req.params, res);
+  const input = parsed(ResolveAdminReminderEscalationBody, req.body, res);
+  if (!actor || !params || !input) return;
+  if (!actor.personId) {
+    res.status(403).json({ error: "A local administrator identity is required to audit this resolution" });
+    return;
+  }
+  try {
+    const result = await db.transaction(async tx => {
+      const [delivery] = await tx.select({ id: diagnosticFollowUpReminderDeliveriesTable.id, status: diagnosticFollowUpReminderDeliveriesTable.status })
+        .from(diagnosticFollowUpReminderDeliveriesTable)
+        .where(eq(diagnosticFollowUpReminderDeliveriesTable.id, params.reminderDeliveryId))
+        .for("update");
+      if (!delivery || delivery.status !== "permanently_failed") return { kind: "not_found" as const };
+      const [existingResolution] = await tx.select({ id: diagnosticFollowUpReminderResolutionsTable.id })
+        .from(diagnosticFollowUpReminderResolutionsTable)
+        .where(eq(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, delivery.id))
+        .limit(1);
+      if (existingResolution) return { kind: "already_resolved" as const };
+      const [resolution] = await tx.insert(diagnosticFollowUpReminderResolutionsTable).values({
+        id: crypto.randomUUID(),
+        reminderDeliveryId: delivery.id,
+        note: input.note.trim(),
+        resolvedByPersonId: actor.personId,
+        resolvedAt: new Date(),
+        createdBy: `supabase:${actor.authSubject}`,
+      }).returning();
+      await audit(tx, actor, "resolve", "trainer_reminder_escalation", delivery.id, null, resolution);
+      return { kind: "created" as const, value: resolution };
+    });
+    if (result.kind === "not_found") {
+      res.status(404).json({ error: "Open reminder escalation not found" });
+      return;
+    }
+    if (result.kind === "already_resolved") {
+      res.status(409).json({ error: "Reminder escalation has already been resolved" });
+      return;
+    }
+    res.status(201).json(ResolveAdminReminderEscalationResponse.parse(result.value));
+  } catch (error) {
+    if (conflict(error)) {
+      res.status(409).json({ error: "Reminder escalation has already been resolved" });
+      return;
+    }
+    throw error;
+  }
 });
 
 router.get("/admin/readiness-rules", async (req, res): Promise<void> => {
@@ -398,11 +449,16 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
       targetAt: diagnosticRecommendationFollowUpsTable.targetAt,
       lastAttemptAt: diagnosticFollowUpReminderDeliveriesTable.lastAttemptAt,
       failureReason: diagnosticFollowUpReminderDeliveriesTable.failureReason,
+      resolutionId: diagnosticFollowUpReminderResolutionsTable.id,
+      resolutionNote: diagnosticFollowUpReminderResolutionsTable.note,
+      resolvedByPersonId: diagnosticFollowUpReminderResolutionsTable.resolvedByPersonId,
+      resolvedAt: diagnosticFollowUpReminderResolutionsTable.resolvedAt,
     })
       .from(diagnosticFollowUpReminderDeliveriesTable)
       .innerJoin(diagnosticRecommendationFollowUpsTable, eq(diagnosticRecommendationFollowUpsTable.id, diagnosticFollowUpReminderDeliveriesTable.followUpId))
       .innerJoin(diagnosticRecommendationsTable, eq(diagnosticRecommendationsTable.id, diagnosticRecommendationFollowUpsTable.recommendationId))
       .innerJoin(peopleTable, eq(peopleTable.id, diagnosticFollowUpReminderDeliveriesTable.trainerId))
+      .leftJoin(diagnosticFollowUpReminderResolutionsTable, eq(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, diagnosticFollowUpReminderDeliveriesTable.id))
       .where(eq(diagnosticFollowUpReminderDeliveriesTable.status, "permanently_failed"))
       .orderBy(desc(diagnosticFollowUpReminderDeliveriesTable.lastAttemptAt)),
   ]);
@@ -479,9 +535,18 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
       target: row.target,
       targetAt: row.targetAt,
       lastAttemptAt: row.lastAttemptAt,
-      reason: safeReminderFailureReason(row.failureReason),
+       reason: safeReminderFailureReason(row.failureReason),
+       status: row.resolutionId ? "resolved" : "open",
+       resolution: row.resolutionId ? {
+         id: row.resolutionId,
+         reminderDeliveryId: row.id,
+         note: row.resolutionNote,
+         resolvedByPersonId: row.resolvedByPersonId,
+         resolvedAt: row.resolvedAt,
+       } : null,
     }];
   });
+  const openFailedTrainerReminders = failedTrainerReminders.filter(reminder => reminder.status === "open");
   const queues = [
     { id: "evidence", label: "Evidence menunggu review", count: evidenceItems.length, description: "Evidence dengan review terbaru masih Under review.", targetTab: "enrollments", items: evidenceItems },
     { id: "assessment", label: "Assessment menunggu keputusan", count: assessmentItems.length, description: "Attempt terbaru belum memiliki keputusan assessor.", targetTab: "enrollments", items: assessmentItems },
@@ -493,7 +558,7 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
     ? { stage: largestQueue.id, label: largestQueue.label, count: largestQueue.count, description: `Tahap ${largestQueue.label.toLowerCase()} adalah antrean lifecycle terbesar saat ini.`, targetTab: "enrollments" as const }
     : { stage: "clear" as const, label: "Tidak ada antrean lifecycle", count: 0, description: "Tidak ada pekerjaan lifecycle yang tertahan saat ringkasan dibuat.", targetTab: "enrollments" as const };
   const actions = [
-    ...(failedTrainerReminders.length ? [{ id: "review-failed-trainer-reminders", label: "Periksa pengingat trainer yang gagal", description: `${failedTrainerReminders.length} pengingat telah berhenti setelah tiga percobaan dan perlu ditangani pengelola.`, count: failedTrainerReminders.length, targetTab: "enrollments" as const, urgency: "critical" as const }] : []),
+    ...(openFailedTrainerReminders.length ? [{ id: "review-failed-trainer-reminders", label: "Periksa pengingat trainer yang gagal", description: `${openFailedTrainerReminders.length} pengingat telah berhenti setelah tiga percobaan dan perlu ditangani pengelola.`, count: openFailedTrainerReminders.length, targetTab: "enrollments" as const, urgency: "critical" as const }] : []),
     ...(trainerMissing ? [{ id: "assign-trainers", label: "Lengkapi assignment trainer", description: `${trainerMissing} enrollment aktif belum memiliki trainer.`, count: trainerMissing, targetTab: "enrollments" as const, urgency: "critical" as const }] : []),
     ...(assessorMissing ? [{ id: "assign-assessors", label: "Lengkapi assignment assessor", description: `${assessorMissing} enrollment aktif belum memiliki assessor.`, count: assessorMissing, targetTab: "enrollments" as const, urgency: "critical" as const }] : []),
     ...queues.filter(queue => queue.count > 0).map(queue => ({ id: `resolve-${queue.id}`, label: `Tindak lanjuti ${queue.label.toLowerCase()}`, description: queue.description, count: queue.count, targetTab: "enrollments" as const, urgency: queue.count === largestQueue.count ? "attention" as const : "normal" as const })),
