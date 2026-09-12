@@ -7,7 +7,10 @@ WITH ranked_active_rules AS (
     rule.id,
     row_number() OVER (
       PARTITION BY rule.pathway_id, rule.code
-      ORDER BY rule.rule_version DESC, rule.created_at DESC, rule.id DESC
+      ORDER BY
+        rule.rule_version DESC,
+        rule.created_at DESC,
+        rule.id COLLATE "C" DESC
     ) AS active_rank
   FROM teras_readiness_gates AS rule
   WHERE rule.active = true

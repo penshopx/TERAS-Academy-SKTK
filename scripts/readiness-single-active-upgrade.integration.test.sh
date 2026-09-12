@@ -34,8 +34,8 @@ VALUES
   ('other-path', 'path-b', 'SAFETY', 1, true, '2026-01-01T00:00:00Z'),
   ('created-earlier', 'path-created-at', 'SAFETY', 7, true, '2026-04-01T00:00:00Z'),
   ('created-later', 'path-created-at', 'SAFETY', 7, true, '2026-05-01T00:00:00Z'),
-  ('id-a', 'path-id', 'SAFETY', 9, true, '2026-06-01T00:00:00Z'),
-  ('id-z', 'path-id', 'SAFETY', 9, true, '2026-06-01T00:00:00Z');
+  ('id-Z', 'path-id', 'SAFETY', 9, true, '2026-06-01T00:00:00Z'),
+  ('id-a', 'path-id', 'SAFETY', 9, true, '2026-06-01T00:00:00Z');
 SQL
 
 export PGOPTIONS="-c search_path=$schema"
@@ -54,8 +54,8 @@ state="$(psql "$DATABASE_URL" -Atqc "
     count(*) FILTER (WHERE id = 'created-later' AND active),
     count(*) FILTER (WHERE id = 'created-earlier' AND NOT active),
     count(*) FILTER (WHERE pathway_id = 'path-id' AND code = 'SAFETY' AND active),
-    count(*) FILTER (WHERE id = 'id-z' AND active),
-    count(*) FILTER (WHERE id = 'id-a' AND NOT active)
+    count(*) FILTER (WHERE id = 'id-a' AND active),
+    count(*) FILTER (WHERE id = 'id-Z' AND NOT active)
   FROM teras_readiness_gates
 ")"
 if [ "$state" != "1|1|2|2|1|1|1|1|1|1" ]; then
