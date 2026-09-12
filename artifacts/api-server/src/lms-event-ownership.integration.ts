@@ -18,6 +18,31 @@ const contextMigration = await readFile(
   "utf8",
 );
 const client = new Client({ connectionString: databaseUrl });
+const pathwayClient = new Client({
+  connectionString: databaseUrl,
+  application_name: "lms-event-ownership-pathway-race",
+});
+const eventClient = new Client({
+  connectionString: databaseUrl,
+  application_name: "lms-event-ownership-event-race",
+});
+
+async function waitForEnrollmentLockWait() {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const waiting = await client.query<{ waiting: boolean }>(`
+      SELECT EXISTS (
+        SELECT 1
+        FROM pg_stat_activity
+        WHERE application_name = 'lms-event-ownership-event-race'
+          AND wait_event_type = 'Lock'
+      ) AS waiting
+    `);
+    if (waiting.rows[0]?.waiting) return;
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  assert.fail("event transaction did not wait for the enrollment row lock");
+}
 
 async function assertOwnershipRejected(sql: string, values: unknown[], constraint: string) {
   await assert.rejects(
@@ -55,7 +80,7 @@ async function assertHistoryRejected(sql: string, values: unknown[], constraint:
   );
 }
 
-await client.connect();
+await Promise.all([client.connect(), pathwayClient.connect(), eventClient.connect()]);
 try {
   await client.query(`
     INSERT INTO teras_enrollments
@@ -73,7 +98,9 @@ try {
       ('ownership-activity-b', 'ownership-lesson-b', 'ownership-program-b', 'ownership-pathway-b',
        'lesson', 'Activity B', 'Context B', 1),
       ('ownership-activity-a-switch', 'ownership-lesson-a-switch', 'ownership-program-a', 'ownership-pathway-a-switch',
-       'lesson', 'Activity A switch', 'Second pathway in program A', 1)
+       'lesson', 'Activity A switch', 'Second pathway in program A', 1),
+      ('ownership-activity-b-switch', 'ownership-lesson-b-switch', 'ownership-program-b', 'ownership-pathway-b-switch',
+       'lesson', 'Activity B switch', 'Second pathway in program B', 1)
   `);
   await client.query(`
     INSERT INTO teras_learning_outcomes
@@ -363,7 +390,58 @@ try {
     "teras_enrollment_pathway_history_guard",
   );
 
+  await pathwayClient.query("BEGIN");
+  await pathwayClient.query(`
+    INSERT INTO teras_enrollment_pathway_events
+      (id, enrollment_id, pathway_id, program_id, sequence)
+    VALUES
+      ('ownership-pathway-selection-race', 'ownership-enrollment-b',
+       'ownership-pathway-b-switch', 'ownership-program-b', 1)
+  `);
+
+  await eventClient.query("BEGIN");
+  const concurrentEvent = eventClient.query(`
+    INSERT INTO teras_activity_completion_events
+      (id, activity_id, learner_id, enrollment_id, pathway_id, status, actor_id)
+    VALUES
+      ('context-concurrent-pathway-selection', 'ownership-activity-b-switch',
+       'ownership-learner-b', 'ownership-enrollment-b', 'ownership-pathway-b-switch',
+       'completed', 'ownership-actor')
+  `);
+  await waitForEnrollmentLockWait();
+  await pathwayClient.query("COMMIT");
+  await concurrentEvent;
+  await eventClient.query("COMMIT");
+
+  const concurrentAudit = await client.query<{
+    selection_created_at: Date;
+    event_created_at: Date;
+    pathway_id: string;
+  }>(`
+    SELECT
+      selection.created_at AS selection_created_at,
+      event.created_at AS event_created_at,
+      event.pathway_id
+    FROM teras_enrollment_pathway_events selection
+    JOIN teras_activity_completion_events event
+      ON event.enrollment_id = selection.enrollment_id
+    WHERE selection.id = 'ownership-pathway-selection-race'
+      AND event.id = 'context-concurrent-pathway-selection'
+  `);
+  assert.equal(concurrentAudit.rows.length, 1);
+  assert.equal(concurrentAudit.rows[0]?.pathway_id, "ownership-pathway-b-switch");
+  assert.ok(
+    concurrentAudit.rows[0]!.selection_created_at <= concurrentAudit.rows[0]!.event_created_at,
+    "the committed pathway selection must precede the concurrent event in audit time",
+  );
+
+  await client.query(contextMigration);
+
   console.info("LMS event ownership integration test passed");
 } finally {
-  await client.end();
+  await Promise.allSettled([
+    pathwayClient.query("ROLLBACK"),
+    eventClient.query("ROLLBACK"),
+  ]);
+  await Promise.all([client.end(), pathwayClient.end(), eventClient.end()]);
 }

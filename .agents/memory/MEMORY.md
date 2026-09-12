@@ -35,3 +35,4 @@
 - [Retryable trainer revisions](retryable-trainer-revisions.md) — keep needs-revision practice items actionable so post-commit response loss can be retried after reload.
 - [Causal parent ownership](causal-parent-ownership.md) — keep learner ownership and transitive parent identity immutable so validated causal links cannot drift across learners.
 - [Drizzle empty database tests](drizzle-empty-database-tests.md) — clean-bootstrap tests need a disposable database because Drizzle 0.31 introspects public despite search_path.
+- [Post-lock snapshots](post-lock-snapshots.md) — read mutable audit context in a new statement after a contended row lock so READ COMMITTED sees the winner.

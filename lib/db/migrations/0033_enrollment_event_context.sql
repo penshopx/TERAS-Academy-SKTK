@@ -243,6 +243,14 @@ DECLARE
   effective_pathway_id text;
   event_program_id text;
 BEGIN
+  -- Acquire the shared enrollment lock before reading pathway history. Under
+  -- READ COMMITTED, the following statement gets a fresh snapshot after any
+  -- concurrent pathway-selection transaction releases this lock.
+  PERFORM 1
+  FROM teras_enrollments enrollment
+  WHERE enrollment.id = NEW.enrollment_id
+  FOR UPDATE;
+
   SELECT enrollment.program_id,
          COALESCE((
            SELECT selection.pathway_id
@@ -254,8 +262,7 @@ BEGIN
          ), enrollment.pathway_id)
   INTO enrollment_program_id, effective_pathway_id
   FROM teras_enrollments enrollment
-  WHERE enrollment.id = NEW.enrollment_id
-  FOR UPDATE;
+  WHERE enrollment.id = NEW.enrollment_id;
 
   event_program_id := to_jsonb(NEW)->>'program_id';
   IF effective_pathway_id IS NULL
