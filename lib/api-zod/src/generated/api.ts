@@ -4406,6 +4406,36 @@ export const CreateAdminProgramResponse = zod.object({
 })
 
 
+/**
+ * @summary Inspect active canonical modules and read-only legacy mappings
+ */
+export const getAdminModuleCatalogueResponseCanonicalModulesItemCodeRegExp = new RegExp('^M(0[1-9]|10)$');
+export const getAdminModuleCatalogueResponseLegacyModulesItemLegacyCodeRegExp = new RegExp('^B0[1-8]$');
+export const getAdminModuleCatalogueResponseLegacyModulesItemTargetCodeRegExp = new RegExp('^M(0[1-9]|10)$');
+export const getAdminModuleCatalogueResponseLegacyModulesMin = 8;
+export const getAdminModuleCatalogueResponseLegacyModulesMax = 8;
+
+
+
+export const GetAdminModuleCatalogueResponse = zod.object({
+  "canonicalModules": zod.array(zod.object({
+  "id": zod.string(),
+  "code": zod.string().regex(getAdminModuleCatalogueResponseCanonicalModulesItemCodeRegExp),
+  "name": zod.string(),
+  "status": zod.string()
+})),
+  "legacyModules": zod.array(zod.object({
+  "legacyCode": zod.string().regex(getAdminModuleCatalogueResponseLegacyModulesItemLegacyCodeRegExp),
+  "legacyName": zod.string().nullable(),
+  "retiredStatus": zod.enum(['retired']),
+  "mappingStatus": zod.enum(['mapped', 'missing', 'incomplete']),
+  "targetCode": zod.string().regex(getAdminModuleCatalogueResponseLegacyModulesItemTargetCodeRegExp).nullable(),
+  "targetName": zod.string().nullable(),
+  "note": zod.string().nullable()
+})).min(getAdminModuleCatalogueResponseLegacyModulesMin).max(getAdminModuleCatalogueResponseLegacyModulesMax)
+})
+
+
 export const UpdateAdminProgramParams = zod.object({
   "programId": zod.coerce.string()
 })

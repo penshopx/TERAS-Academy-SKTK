@@ -1245,6 +1245,57 @@ export interface AdminUser {
   roles: AdminUserRolesItem[];
 }
 
+export interface AdminCanonicalModule {
+  id: string;
+  /** @pattern ^M(0[1-9]|10)$ */
+  code: string;
+  name: string;
+  status: string;
+}
+
+export type AdminLegacyModuleMappingRetiredStatus = typeof AdminLegacyModuleMappingRetiredStatus[keyof typeof AdminLegacyModuleMappingRetiredStatus];
+
+
+export const AdminLegacyModuleMappingRetiredStatus = {
+  retired: 'retired',
+} as const;
+
+export type AdminLegacyModuleMappingMappingStatus = typeof AdminLegacyModuleMappingMappingStatus[keyof typeof AdminLegacyModuleMappingMappingStatus];
+
+
+export const AdminLegacyModuleMappingMappingStatus = {
+  mapped: 'mapped',
+  missing: 'missing',
+  incomplete: 'incomplete',
+} as const;
+
+export interface AdminLegacyModuleMapping {
+  /** @pattern ^B0[1-8]$ */
+  legacyCode: string;
+  /** @nullable */
+  legacyName: string | null;
+  retiredStatus: AdminLegacyModuleMappingRetiredStatus;
+  mappingStatus: AdminLegacyModuleMappingMappingStatus;
+  /**
+     * @nullable
+     * @pattern ^M(0[1-9]|10)$
+     */
+  targetCode: string | null;
+  /** @nullable */
+  targetName: string | null;
+  /** @nullable */
+  note: string | null;
+}
+
+export interface AdminModuleCatalogue {
+  canonicalModules: AdminCanonicalModule[];
+  /**
+     * @minItems 8
+     * @maxItems 8
+     */
+  legacyModules: AdminLegacyModuleMapping[];
+}
+
 export type AdminAccessRequestRequestedRole = typeof AdminAccessRequestRequestedRole[keyof typeof AdminAccessRequestRequestedRole];
 
 

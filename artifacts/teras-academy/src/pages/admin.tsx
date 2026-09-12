@@ -4,9 +4,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import {
-  type AdminOperationalSummary,
+  type AdminModuleCatalogue, type AdminOperationalSummary,
   getGetAdminAccessQueryKey, getGetAdminOperationalSummaryQueryKey, getGetCurrentSessionQueryKey, getListAdminAccessRequestsQueryKey, getListAdminAuditEventsQueryKey, getListAdminCohortsQueryKey, getListAdminEnrollmentsQueryKey,
   getListAdminPathwaysQueryKey, getListAdminProgramsQueryKey, getListAdminUsersQueryKey,
+  getGetAdminModuleCatalogueQueryKey, useGetAdminModuleCatalogue,
   useCreateAdminCohort, useCreateAdminEnrollment, useCreateAdminPathway, useCreateAdminProgram,
   useApproveAdminAccessRequest, useCreateAdminAccessRequest, useCreateAdminUser, useGetAdminAccess, useGetAdminOperationalSummary, useGetCurrentSession, useListAdminAccessRequests, useListAdminAuditEvents, useListAdminCohorts, useListAdminEnrollments,
   useListAdminPathways, useListAdminPrograms, useListAdminUsers, useReplaceAdminUserRoles,
@@ -117,6 +118,56 @@ function State({ loading, error, empty, children }: { loading: boolean; error: u
   return <>{children}</>;
 }
 
+function ModuleCatalogue({ catalogue }: { catalogue: ReturnType<typeof useGetAdminModuleCatalogue<AdminModuleCatalogue>> }) {
+  const incompleteCount = catalogue.data?.legacyModules.filter(module => module.mappingStatus !== "mapped").length ?? 0;
+  return <Card data-testid="admin-module-catalogue">
+    <CardHeader>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <CardTitle>Katalog modul dan referensi legacy</CardTitle>
+          <p className="mt-2 max-w-3xl text-sm text-muted-foreground">M01–M10 adalah baseline canonical aktif. B01–B08 hanya ditampilkan sebagai histori read-only untuk audit dan penyelesaian referensi lama; catatan ini bukan kurikulum aktif.</p>
+        </div>
+        <Badge variant={incompleteCount ? "destructive" : "outline"}>{incompleteCount ? `${incompleteCount} mapping perlu ditinjau` : "Semua mapping lengkap"}</Badge>
+      </div>
+    </CardHeader>
+    <CardContent>
+      <State loading={catalogue.isLoading} error={catalogue.error} empty={!catalogue.data}>
+        <section aria-labelledby="canonical-modules-title">
+          <h3 id="canonical-modules-title" className="font-semibold">Baseline canonical aktif</h3>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            {catalogue.data?.canonicalModules.map(module => <div key={module.id} className="rounded-md border border-primary/20 bg-primary/5 p-3" data-testid={`canonical-module-${module.code}`}>
+              <div className="flex items-center justify-between gap-2"><strong className="font-mono text-primary">{module.code}</strong><Badge>{module.status}</Badge></div>
+              <p className="mt-2 text-sm font-medium">{module.name}</p>
+            </div>)}
+          </div>
+        </section>
+        <section className="mt-6 border-t pt-6" aria-labelledby="legacy-modules-title">
+          <h3 id="legacy-modules-title" className="font-semibold">Catatan legacy yang dihentikan</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Mapping di bawah tidak dapat diubah dari halaman ini.</p>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {catalogue.data?.legacyModules.map(module => {
+              const complete = module.mappingStatus === "mapped";
+              return <div key={module.legacyCode} className="rounded-md border p-4" data-testid={`legacy-module-${module.legacyCode}`}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <strong className="font-mono">{module.legacyCode}</strong>
+                  <Badge variant="secondary">{module.retiredStatus}</Badge>
+                  <Badge variant={complete ? "outline" : "destructive"}>{complete ? "mapped" : module.mappingStatus === "missing" ? "mapping hilang" : "mapping tidak lengkap"}</Badge>
+                </div>
+                <p className="mt-2 text-sm font-medium">{module.legacyName ?? "Nama modul legacy tidak tersedia"}</p>
+                <div className="mt-3 flex items-center gap-2 rounded bg-muted/50 p-3 text-sm">
+                  <span className="font-mono text-muted-foreground">{module.legacyCode}</span><ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {module.targetCode ? <span><strong className="font-mono text-primary">{module.targetCode}</strong> · {module.targetName ?? "Nama target tidak tersedia"}</span> : <span className="font-medium text-destructive">Target canonical tidak tersedia</span>}
+                </div>
+                {module.note && <p className="mt-2 text-xs text-muted-foreground">{module.note}</p>}
+              </div>;
+            })}
+          </div>
+        </section>
+      </State>
+    </CardContent>
+  </Card>;
+}
+
 export default function Admin() {
   const client = useQueryClient(); const { toast } = useToast();
   const [tab, setTab] = useState<"summary" | "users" | "programs" | "pathways" | "cohorts" | "enrollments" | "knowledge" | "competencies" | "readiness" | "readinessAudit" | "audit">("summary");
@@ -131,6 +182,7 @@ export default function Admin() {
   const assignableRoles = roles;
   const users = useListAdminUsers({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getListAdminUsersQueryKey() } });
   const programs = useListAdminPrograms({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getListAdminProgramsQueryKey() } });
+  const moduleCatalogue = useGetAdminModuleCatalogue<AdminModuleCatalogue>({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getGetAdminModuleCatalogueQueryKey() } });
   const pathways = useListAdminPathways({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getListAdminPathwaysQueryKey() } });
   const cohorts = useListAdminCohorts({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getListAdminCohortsQueryKey() } });
   const enrollments = useListAdminEnrollments({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getListAdminEnrollmentsQueryKey() } });
@@ -295,7 +347,7 @@ export default function Admin() {
     <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Bagian administrasi">{tabs.map(([id, label]) => <Button key={id} role="tab" aria-selected={tab === id} variant={tab === id ? "default" : "outline"} onClick={() => openTab(id)} data-testid={`button-admin-tab-${id}`}>{label}</Button>)}</div>
     {tab === "summary" && <OperationalSummary summary={summary} selectedQueue={selectedQueue} filters={queueFilters} onFilterChange={updateQueueFilter} onOpenQueue={openQueue} onOpenTab={openTab} />}
     {tab === "users" && <><Card><CardHeader><CardTitle>Ajukan promosi admin</CardTitle></CardHeader><CardContent><form className="flex flex-wrap gap-3" onSubmit={event => { event.preventDefault(); const values = new FormData(event.currentTarget); createAccessRequest.mutate({ data: { targetPersonId: String(values.get("targetPersonId")), requestedRole: "admin", reason: String(values.get("reason")) } }, { onSuccess: () => { event.currentTarget.reset(); saved("Permintaan promosi admin dikirim."); } }); }}><select name="targetPersonId" required className="h-10 rounded-md border bg-background px-3"><option value="">Pilih pengguna</option>{users.data?.filter(user => !user.roles.includes("admin") && !user.roles.includes("super_admin")).map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select><Input name="reason" required placeholder="Alasan promosi" /><Button type="submit" disabled={createAccessRequest.isPending}>Ajukan</Button></form></CardContent></Card>{isSuperAdmin && <Card><CardHeader><CardTitle>Persetujuan akses administratif</CardTitle></CardHeader><CardContent><State loading={accessRequests.isLoading} error={accessRequests.error} empty={!accessRequests.data?.filter(request => request.status === "pending").length}>{accessRequests.data?.filter(request => request.status === "pending").map(request => <div key={request.id} className="flex items-center justify-between border-b py-3 text-sm"><span>Target {request.targetPersonId} meminta <strong>{request.requestedRole}</strong>{request.reason ? ` · ${request.reason}` : ""}</span><span className="flex gap-2"><Button size="sm" onClick={() => approveRequest.mutate({ requestId: request.id }, { onSuccess: () => invalidate(getListAdminAccessRequestsQueryKey(), getListAdminUsersQueryKey(), getListAdminAuditEventsQueryKey()) })}>Setujui</Button><Button size="sm" variant="outline" onClick={() => rejectRequest.mutate({ requestId: request.id }, { onSuccess: () => invalidate(getListAdminAccessRequestsQueryKey(), getListAdminAuditEventsQueryKey()) })}>Tolak</Button></span></div>)}</State></CardContent></Card>}<Card><CardHeader><CardTitle className="flex items-center gap-2"><Plus className="h-4 w-4" />Tambah pengguna</CardTitle></CardHeader><CardContent><Form {...form}><form onSubmit={form.handleSubmit(submitUser)} className="grid gap-4 md:grid-cols-6"><FormField control={form.control} name="name" render={({ field }) => <FormItem><FormLabel>Nama</FormLabel><FormControl><Input {...field} data-testid="input-admin-user-name" /></FormControl><FormMessage /></FormItem>} /><FormField control={form.control} name="email" render={({ field }) => <FormItem><FormLabel>Email</FormLabel><FormControl><Input {...field} type="email" data-testid="input-admin-user-email" /></FormControl><FormMessage /></FormItem>} /><FormField control={form.control} name="organization" render={({ field }) => <FormItem><FormLabel>Organisasi</FormLabel><FormControl><Input {...field} data-testid="input-admin-user-organization" /></FormControl><FormMessage /></FormItem>} /><FormField control={form.control} name="authProvider" render={({ field }) => <FormItem><FormLabel>Provider autentikasi</FormLabel><FormControl><Input {...field} data-testid="input-admin-user-auth-provider" /></FormControl><FormMessage /></FormItem>} /><FormField control={form.control} name="authSubject" render={({ field }) => <FormItem><FormLabel>Subject autentikasi</FormLabel><FormControl><Input {...field} data-testid="input-admin-user-auth-subject" /></FormControl><p className="text-xs text-muted-foreground">Subject dari provider untuk binding identitas, bukan credential.</p><FormMessage /></FormItem>} /><div><label className="text-sm font-medium">Peran</label><div className="mt-2 flex flex-wrap gap-3">{assignableRoles.map(role => <FormField key={role} control={form.control} name="roles" render={({ field }) => <label className="flex items-center gap-1 text-sm"><Checkbox checked={field.value.includes(role)} onCheckedChange={checked => field.onChange(checked ? [...field.value, role] : field.value.filter(x => x !== role))} data-testid={`checkbox-role-${role}`} />{role}</label>} />)}</div>{form.formState.errors.roles?.message && <p className="mt-1 text-sm text-destructive" role="alert">{form.formState.errors.roles.message}</p>}</div><Button type="submit" disabled={createUser.isPending || rolesMutation.isPending} data-testid="button-create-user">{createUser.isPending ? <Loader2 className="animate-spin" /> : "Simpan pengguna"}</Button></form></Form></CardContent></Card><State loading={users.isLoading} error={users.error} empty={!users.data?.length}><div className="grid gap-3">{users.data?.filter(u => isSuperAdmin || !u.roles.some(r => r === "admin" || r === "super_admin")).map(u => <Card key={u.id} data-testid={`row-admin-user-${u.id}`}><CardContent className="flex flex-wrap items-center justify-between gap-3 p-4"><div><strong>{u.name}</strong><p className="text-sm text-muted-foreground">{u.email || "Tanpa email"} · {u.organization || "—"}</p></div><div className="flex items-center gap-2"><Badge variant={u.status === "active" ? "default" : "secondary"}>{u.status}</Badge>{u.roles.map(r => <Badge key={r} variant="outline">{r}</Badge>)}<Button size="sm" variant="outline" onClick={() => setEditing({ kind: "user", item: { ...u } })} data-testid={`button-edit-user-${u.id}`}>Edit</Button><Button size="sm" variant="outline" disabled={u.status === "inactive"} onClick={() => setConfirm({ kind: "user", id: u.id, label: u.name })} data-testid={`button-deactivate-user-${u.id}`}>Nonaktifkan</Button></div></CardContent></Card>)}</div></State></>}
-    {tab === "programs" && <EntitySection title="Program baru" onSubmit={e => quickCreate(e, "program")} fields={[field("name", "Nama program"), field("domain", "Domain"), field("description", "Deskripsi")]} loading={programs.isLoading} error={programs.error} items={programs.data?.map(x => ({ ...x, detail: `${x.domain} · ${x.description}`, kind: "program" as const }))} onEdit={x => setEditing({ kind: "program", item: x })} onArchive={x => setConfirm({ kind: "program", id: x.id, label: x.name })} />}
+    {tab === "programs" && <><EntitySection title="Program baru" onSubmit={e => quickCreate(e, "program")} fields={[field("name", "Nama program"), field("domain", "Domain"), field("description", "Deskripsi")]} loading={programs.isLoading} error={programs.error} items={programs.data?.map(x => ({ ...x, detail: `${x.domain} · ${x.description}`, kind: "program" as const }))} onEdit={x => setEditing({ kind: "program", item: x })} onArchive={x => setConfirm({ kind: "program", id: x.id, label: x.name })} /><ModuleCatalogue catalogue={moduleCatalogue} /></>}
     {tab === "pathways" && <EntitySection title="Pathway baru" onSubmit={e => quickCreate(e, "pathway")} fields={[field("programId", "ID program"), field("name", "Nama"), field("type", "Tipe"), field("outcome", "Outcome")]} loading={pathways.isLoading} error={pathways.error} items={pathways.data?.map(x => ({ ...x, detail: `${x.type} · ${x.outcome}`, kind: "pathway" as const }))} onEdit={x => setEditing({ kind: "pathway", item: x })} onArchive={x => setConfirm({ kind: "pathway", id: x.id, label: x.name })} />}
     {tab === "cohorts" && <EntitySection title="Cohort baru" onSubmit={e => quickCreate(e, "cohort")} fields={[field("programId", "ID program"), field("name", "Nama cohort"), <Input key="startsOn" name="startsOn" type="date" data-testid="input-admin-startsOn" />, <Input key="endsOn" name="endsOn" type="date" data-testid="input-admin-endsOn" />]} loading={cohorts.isLoading} error={cohorts.error} items={cohorts.data?.map(x => ({ ...x, detail: `${x.startsOn || "—"} sampai ${x.endsOn || "—"}`, kind: "cohort" as const }))} onEdit={x => setEditing({ kind: "cohort", item: x })} onArchive={x => setConfirm({ kind: "cohort", id: x.id, label: x.name })} />}
     {tab === "enrollments" && <><EntitySection title="Enrollment baru" onSubmit={e => quickCreate(e, "enrollment")} fields={["learnerId", "programId", "pathwayId", "trainerId", "assessorId", "cohortId"].map(n => field(n, `ID ${n.replace("Id", "")}`, ["trainerId", "assessorId", "cohortId"].includes(n) === false))} loading={enrollments.isLoading} error={enrollments.error} items={enrollments.data?.map(x => ({ ...x, name: x.learnerId, detail: `Program ${x.programId} · Pathway ${x.pathwayId}`, kind: "enrollment" as const }))} onEdit={x => setEditing({ kind: "enrollment", item: x })} onArchive={x => setConfirm({ kind: "enrollment", id: x.id, label: x.name })} /></>}

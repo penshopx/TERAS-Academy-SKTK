@@ -1211,6 +1211,15 @@ paths:
       tags: [admin]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AdminProgramInput" } } } }
       responses: { "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/AdminProgram" } } } }, "409": { $ref: "#/components/responses/Conflict" } }
+  /admin/module-catalogue:
+    get:
+      operationId: getAdminModuleCatalogue
+      tags: [admin, programs]
+      summary: Inspect active canonical modules and read-only legacy mappings
+      responses:
+        "200": { description: Canonical and legacy module catalogue, content: { application/json: { schema: { $ref: "#/components/schemas/AdminModuleCatalogue" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /admin/programs/{programId}:
     patch:
       operationId: updateAdminProgram
@@ -3355,6 +3364,37 @@ components:
       type: object
       required: [id, name, initials, email, organization, authProvider, authSubject, clerkUserId, status, roles]
       properties: { id: { type: string }, name: { type: string }, initials: { type: string }, email: { type: ["string", "null"] }, organization: { type: ["string", "null"] }, authProvider: { type: ["string", "null"] }, authSubject: { type: ["string", "null"] }, clerkUserId: { type: ["string", "null"], description: Legacy read-only identity history. }, status: { type: string, enum: [active, inactive] }, roles: { type: array, items: { type: string, enum: [super_admin, admin, trainer, assessor, learner] } } }
+    AdminCanonicalModule:
+      type: object
+      required: [id, code, name, status]
+      properties:
+        id: { type: string }
+        code: { type: string, pattern: "^M(0[1-9]|10)$" }
+        name: { type: string }
+        status: { type: string }
+    AdminLegacyModuleMapping:
+      type: object
+      required: [legacyCode, legacyName, retiredStatus, mappingStatus, targetCode, targetName, note]
+      properties:
+        legacyCode: { type: string, pattern: "^B0[1-8]$" }
+        legacyName: { type: ["string", "null"] }
+        retiredStatus: { type: string, enum: [retired] }
+        mappingStatus: { type: string, enum: [mapped, missing, incomplete] }
+        targetCode: { type: ["string", "null"], pattern: "^M(0[1-9]|10)$" }
+        targetName: { type: ["string", "null"] }
+        note: { type: ["string", "null"] }
+    AdminModuleCatalogue:
+      type: object
+      required: [canonicalModules, legacyModules]
+      properties:
+        canonicalModules:
+          type: array
+          items: { $ref: "#/components/schemas/AdminCanonicalModule" }
+        legacyModules:
+          type: array
+          minItems: 8
+          maxItems: 8
+          items: { $ref: "#/components/schemas/AdminLegacyModuleMapping" }
     AdminAccessRequest:
       type: object
       required: [id, requesterPersonId, targetPersonId, requestedRole, status, reason, reviewNote, reviewedByPersonId, reviewedAt, createdAt]

@@ -1,9 +1,49 @@
 import { Router, type IRouter } from "express";
-import { GetModuleParams, GetModuleResponse, GetProgramParams, GetProgramResponse, ListPracticeTasksResponse, ListProgramsResponse } from "@workspace/api-zod";
+import { GetAdminModuleCatalogueResponse, GetModuleParams, GetModuleResponse, GetProgramParams, GetProgramResponse, ListPracticeTasksResponse, ListProgramsResponse } from "@workspace/api-zod";
 import { assessmentSummary, baselineForModule, catalogue, learnerContext, moduleSummary, pathwaySummary, progressByModule, selectedBaselineModuleIds } from "../lib/teras";
-import { authorizeLearner } from "../lib/authorization";
+import { authorizeAdmin, authorizeLearner } from "../lib/authorization";
 
 const router: IRouter = Router();
+const legacyModuleCodes = ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08"] as const;
+
+export function adminModuleCatalogue(source: Awaited<ReturnType<typeof catalogue>>) {
+  const canonicalModules = source.baselineModules
+    .filter(module => /^M(0[1-9]|10)$/.test(module.code))
+    .sort((a, b) => a.sequence - b.sequence)
+    .map(module => ({ id: module.id, code: module.code, name: module.name, status: module.status }));
+
+  const legacyModules = legacyModuleCodes.map(legacyCode => {
+    const legacyModule = source.modules.find(module => module.code === legacyCode);
+    const mappings = legacyModule
+      ? source.legacyMappings.filter(item => item.legacyModuleId === legacyModule.id)
+      : [];
+    const mapping = mappings.length === 1 ? mappings[0] : undefined;
+    const target = mapping
+      ? source.baselineModules.find(module => module.id === mapping.baselineModuleId)
+      : undefined;
+    const mappingStatus = mappings.length === 0 ? "missing" : mappings.length !== 1 || !legacyModule || !target ? "incomplete" : "mapped";
+    return {
+      legacyCode,
+      legacyName: legacyModule?.name ?? null,
+      retiredStatus: "retired",
+      mappingStatus,
+      targetCode: target?.code ?? null,
+      targetName: target?.name ?? null,
+      note: mapping?.note ?? null,
+    };
+  });
+
+  return { canonicalModules, legacyModules };
+}
+
+router.get("/admin/module-catalogue", async (req, res): Promise<void> => {
+  if (!await authorizeAdmin(req, res)) return;
+  const response = adminModuleCatalogue(await catalogue());
+  const incompleteCount = response.legacyModules.filter(module => module.mappingStatus !== "mapped").length;
+  if (incompleteCount) req.log.warn({ incompleteCount }, "Legacy module catalogue contains missing or incomplete mappings");
+  res.json(GetAdminModuleCatalogueResponse.parse(response));
+});
+
 router.get("/programs", async (req, res): Promise<void> => {
   req.log.info("Listing programs");
   const { programs, modules, enrollments } = await catalogue();

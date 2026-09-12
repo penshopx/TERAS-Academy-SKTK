@@ -100,3 +100,14 @@ test("admin summary renders every safe permanent-failure detail for the manager"
   assert.match(source, /input-reminder-resolution-note/);
   assert.match(source, /admin-resolved-trainer-reminders/);
 });
+
+test("admin programme catalogue separates canonical modules from read-only legacy mappings", async () => {
+  const source = await readFile(new URL("../pages/admin.tsx", import.meta.url), "utf8");
+  assert.match(source, /useGetAdminModuleCatalogue/);
+  assert.match(source, /Baseline canonical aktif/);
+  assert.match(source, /Catatan legacy yang dihentikan/);
+  assert.match(source, /bukan kurikulum aktif/);
+  assert.match(source, /mapping hilang/);
+  assert.match(source, /mapping tidak lengkap/);
+  assert.match(source, /Target canonical tidak tersedia/);
+});

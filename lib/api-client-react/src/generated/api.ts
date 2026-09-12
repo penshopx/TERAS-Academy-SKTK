@@ -33,6 +33,7 @@ import type {
   AdminEnrollment,
   AdminEnrollmentInput,
   AdminEnrollmentUpdate,
+  AdminModuleCatalogue,
   AdminOperationalSummary,
   AdminPathway,
   AdminPathwayInput,
@@ -6259,6 +6260,83 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getCreateAdminProgramMutationOptions(options));
     }
+
+export const getGetAdminModuleCatalogueUrl = () => {
+
+
+
+
+  return `/api/admin/module-catalogue`
+}
+
+/**
+ * @summary Inspect active canonical modules and read-only legacy mappings
+ */
+export const getAdminModuleCatalogue = async ( options?: Parameters<typeof customFetch>[1]): Promise<AdminModuleCatalogue> => {
+
+  return customFetch<AdminModuleCatalogue>(getGetAdminModuleCatalogueUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminModuleCatalogueQueryKey = () => {
+    return [
+    `/api/admin/module-catalogue`
+    ] as const;
+    }
+
+
+export const getGetAdminModuleCatalogueQueryOptions = <TData = Awaited<ReturnType<typeof getAdminModuleCatalogue>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminModuleCatalogue>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminModuleCatalogueQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminModuleCatalogue>>> = ({ signal }) => getAdminModuleCatalogue({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminModuleCatalogue>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminModuleCatalogueQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminModuleCatalogue>>>
+export type GetAdminModuleCatalogueQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse>
+
+
+/**
+ * @summary Inspect active canonical modules and read-only legacy mappings
+ */
+
+export function useGetAdminModuleCatalogue<TData = Awaited<ReturnType<typeof getAdminModuleCatalogue>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminModuleCatalogue>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminModuleCatalogueQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getUpdateAdminProgramUrl = (programId: string,) => {
 
