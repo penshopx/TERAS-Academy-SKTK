@@ -36,7 +36,7 @@ type Passport = {
   achievements: Array<{ capability: string; status: string }>;
   timeline: Array<{ id: string; pathwayId: string | null; pathwayName: string | null; label: string }>;
 };
-type Journey = Array<{ id: string; status: string }>;
+type Journey = Array<{ id: string; status: string; causalReferences?: Record<string, string[]> }>;
 
 const marker = "Safety blocker integration verification";
 
@@ -321,6 +321,9 @@ async function run() {
     const m03History = await db.select().from(assessmentAttemptsTable).where(eq(assessmentAttemptsTable.assessmentId, "assessment-m03"));
     assert(m03History.length === 3 && m03History.some((attempt) => attempt.decision === "Not competent") && m03History.some((attempt) => attempt.decision === "Competent" && attempt.decisionRationale === `${marker}: passing reassessment`), "Assessment attempt history was not immutable in the database");
     const cleared = await request<Readiness>("/readiness", "learner");
+    const persistedReadinessIds = (await db.select().from(readinessEventsTable))
+      .filter(event => ["gate-g1", "gate-g2"].includes(event.gateId))
+      .map(event => event.id);
     const clearedG1 = cleared.gates.find((gate) => gate.code === "G1");
     const clearedG2 = cleared.gates.find((gate) => gate.code === "G2");
     assert(
@@ -346,7 +349,10 @@ async function run() {
       evidenceHistory.length > 0 && gaps.length > 0 && remediationHistoryView.length > 0,
       "Learner evidence, gap, or remediation history disappeared",
     );
-    assert(journey.some((step) => step.id === "journey-current"), "Learner journey did not expose its current readiness gate");
+    assert(
+      journey.some((step) => step.causalReferences?.readinessEventIds?.some(id => persistedReadinessIds.includes(id))),
+      "Learner journey did not expose a persisted readiness gate event",
+    );
     const pathATimeline = passport.timeline.find((step) => step.pathwayId === "path-a");
     const pathBTimeline = passport.timeline.find((step) => step.pathwayId === "path-b");
     assert(

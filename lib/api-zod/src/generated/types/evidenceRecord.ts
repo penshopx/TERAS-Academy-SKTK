@@ -5,6 +5,7 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { CausalReferences } from './causalReferences';
 import type { EvidenceQuality } from './evidenceQuality';
 
 export interface EvidenceRecord {
@@ -29,4 +30,5 @@ export interface EvidenceRecord {
   /** @nullable */
   fileName: string | null;
   quality: EvidenceQuality;
+  causalReferences?: CausalReferences;
 }

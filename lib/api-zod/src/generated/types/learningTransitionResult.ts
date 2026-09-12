@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { LearningState } from './learningState';
+import type { LearningTransitionReferences } from './learningTransitionReferences';
 import type { LearningTransitionResultStatus } from './learningTransitionResultStatus';
 
 export interface LearningTransitionResult {
@@ -18,4 +19,5 @@ export interface LearningTransitionResult {
   toState: LearningState;
   idempotent: boolean;
   recordedAt: Date;
+  references: LearningTransitionReferences;
 }

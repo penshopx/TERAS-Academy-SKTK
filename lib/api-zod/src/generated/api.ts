@@ -93,7 +93,8 @@ export const GetProgramResponse = zod.object({
   "output": zod.string(),
   "kpi": zod.string(),
   "portfolio": zod.string()
-}).optional()
+}).optional(),
+  "terminalPortfolio": zod.enum(['Capability Portfolio', 'Certification Readiness Portfolio'])
 })),
   "modules": zod.array(zod.object({
   "id": zod.string(),
@@ -203,7 +204,8 @@ export const GetLearnerDashboardResponse = zod.object({
   "output": zod.string(),
   "kpi": zod.string(),
   "portfolio": zod.string()
-}).optional()
+}).optional(),
+  "terminalPortfolio": zod.enum(['Capability Portfolio', 'Certification Readiness Portfolio'])
 }),
   "capabilityProgress": zod.int().min(getLearnerDashboardResponseCapabilityProgressMin).max(getLearnerDashboardResponseCapabilityProgressMax),
   "readiness": zod.object({
@@ -229,7 +231,8 @@ export const GetLearnerDashboardResponse = zod.object({
   "output": zod.string(),
   "kpi": zod.string(),
   "portfolio": zod.string()
-}).optional()
+}).optional(),
+  "terminalPortfolio": zod.enum(['Capability Portfolio', 'Certification Readiness Portfolio'])
 }),
   "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']),
   "score": zod.int().min(getLearnerDashboardResponseReadinessScoreMin).max(getLearnerDashboardResponseReadinessScoreMax),
@@ -241,13 +244,31 @@ export const GetLearnerDashboardResponse = zod.object({
   "id": zod.string(),
   "score": zod.int(),
   "completed": zod.boolean(),
-  "criticalFailure": zod.boolean()
+  "criticalFailure": zod.boolean(),
+  "assessmentAttemptId": zod.string().nullish(),
+  "criterionIds": zod.array(zod.string()).optional()
 })),
   "evidence": zod.array(zod.object({
   "requirementId": zod.string(),
-  "satisfied": zod.boolean()
+  "satisfied": zod.boolean(),
+  "evidenceIds": zod.array(zod.string()).optional(),
+  "evidenceReviewIds": zod.array(zod.string()).optional()
 })),
-  "openCriticalGaps": zod.array(zod.string())
+  "openCriticalGaps": zod.array(zod.string()),
+  "gates": zod.array(zod.object({
+  "gateId": zod.string(),
+  "gapIds": zod.array(zod.string()),
+  "criterionIds": zod.array(zod.string()),
+  "assessmentAttemptIds": zod.array(zod.string()),
+  "evidenceIds": zod.array(zod.string()),
+  "evidenceReviewIds": zod.array(zod.string()),
+  "remediationPlanIds": zod.array(zod.string()),
+  "reassessmentAttemptIds": zod.array(zod.string()),
+  "learningRecordLinkIds": zod.array(zod.string()).optional(),
+  "diagnosticProfileIds": zod.array(zod.string()).optional(),
+  "diagnosticGapIds": zod.array(zod.string()).optional(),
+  "diagnosticRecommendationIds": zod.array(zod.string()).optional()
+})).optional()
 }),
   "currentGate": zod.object({
   "id": zod.string(),
@@ -432,7 +453,8 @@ export const SelectLearnerPathwayResponse = zod.object({
   "output": zod.string(),
   "kpi": zod.string(),
   "portfolio": zod.string()
-}).optional()
+}).optional(),
+  "terminalPortfolio": zod.enum(['Capability Portfolio', 'Certification Readiness Portfolio'])
 }),
   "programId": zod.string(),
   "selectedAt": zod.coerce.date()
@@ -450,7 +472,8 @@ export const GetLearnerJourneyResponseItem = zod.object({
   "description": zod.string(),
   "status": zod.string(),
   "date": zod.coerce.date().nullable(),
-  "href": zod.string().nullable()
+  "href": zod.string().nullable(),
+  "causalReferences": zod.record(zod.string(), zod.array(zod.string())).optional()
 })
 export const GetLearnerJourneyResponse = zod.array(GetLearnerJourneyResponseItem)
 
@@ -497,7 +520,8 @@ export const GetLearnerLearningPlanResponseItem = zod.object({
   "priority": zod.string(),
   "reason": zod.string(),
   "estimatedMinutes": zod.int(),
-  "status": zod.string()
+  "status": zod.string(),
+  "causalReferences": zod.record(zod.string(), zod.array(zod.string())).optional()
 })
 export const GetLearnerLearningPlanResponse = zod.array(GetLearnerLearningPlanResponseItem)
 
@@ -568,7 +592,9 @@ export const GetModuleResponse = zod.object({
   "status": zod.string(),
   "score": zod.int().min(getModuleResponseAssessmentScoreMin).max(getModuleResponseAssessmentScoreMax),
   "attemptCount": zod.int(),
-  "criticalFailure": zod.boolean()
+  "criticalFailure": zod.boolean(),
+  "latestAttemptId": zod.string().nullish(),
+  "criterionIds": zod.array(zod.string()).optional()
 }),
   "evidenceRequirement": zod.object({
   "id": zod.string(),
@@ -633,7 +659,8 @@ export const CreatePracticeAttemptResponse = zod.object({
   "description": zod.string(),
   "href": zod.string().nullable()
 }),
-  "feedback": zod.string().nullable()
+  "feedback": zod.string().nullable(),
+  "causalReferences": zod.record(zod.string(), zod.array(zod.string())).optional()
 })
 
 
@@ -661,7 +688,8 @@ export const ListEvidenceResponseItem = zod.object({
   "relevant": zod.boolean(),
   "sufficient": zod.boolean(),
   "traceable": zod.boolean()
-})
+}),
+  "causalReferences": zod.record(zod.string(), zod.array(zod.string())).optional()
 })
 export const ListEvidenceResponse = zod.array(ListEvidenceResponseItem)
 
@@ -709,7 +737,8 @@ export const CreateEvidenceResponse = zod.object({
   "relevant": zod.boolean(),
   "sufficient": zod.boolean(),
   "traceable": zod.boolean()
-})
+}),
+  "causalReferences": zod.record(zod.string(), zod.array(zod.string())).optional()
 })
 
 
@@ -729,7 +758,9 @@ export const ListAssessmentsResponseItem = zod.object({
   "status": zod.string(),
   "score": zod.int().min(listAssessmentsResponseScoreMin).max(listAssessmentsResponseScoreMax),
   "attemptCount": zod.int(),
-  "criticalFailure": zod.boolean()
+  "criticalFailure": zod.boolean(),
+  "latestAttemptId": zod.string().nullish(),
+  "criterionIds": zod.array(zod.string()).optional()
 })
 export const ListAssessmentsResponse = zod.array(ListAssessmentsResponseItem)
 
@@ -762,7 +793,9 @@ export const GetAssessmentResponse = zod.object({
   "status": zod.string(),
   "score": zod.int().min(getAssessmentResponseAssessmentScoreMin).max(getAssessmentResponseAssessmentScoreMax),
   "attemptCount": zod.int(),
-  "criticalFailure": zod.boolean()
+  "criticalFailure": zod.boolean(),
+  "latestAttemptId": zod.string().nullish(),
+  "criterionIds": zod.array(zod.string()).optional()
 }),
   "criteria": zod.array(zod.object({
   "id": zod.string(),
@@ -818,7 +851,8 @@ export const ListRemediationResponseItem = zod.object({
   "description": zod.string(),
   "status": zod.string(),
   "type": zod.string()
-}))
+})),
+  "causalReferences": zod.record(zod.string(), zod.array(zod.string())).optional()
 })
 export const ListRemediationResponse = zod.array(ListRemediationResponseItem)
 
@@ -843,7 +877,8 @@ export const CompleteRemediationResponse = zod.object({
   "description": zod.string(),
   "status": zod.string(),
   "type": zod.string()
-}))
+})),
+  "causalReferences": zod.record(zod.string(), zod.array(zod.string())).optional()
 })
 
 
@@ -882,7 +917,8 @@ export const CompleteRemediationActivityResponse = zod.object({
   "description": zod.string(),
   "status": zod.string(),
   "type": zod.string()
-}))
+})),
+  "causalReferences": zod.record(zod.string(), zod.array(zod.string())).optional()
 })
 
 
@@ -939,7 +975,8 @@ export const GetLearnerReadinessResponse = zod.object({
   "output": zod.string(),
   "kpi": zod.string(),
   "portfolio": zod.string()
-}).optional()
+}).optional(),
+  "terminalPortfolio": zod.enum(['Capability Portfolio', 'Certification Readiness Portfolio'])
 }),
   "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']),
   "score": zod.int().min(getLearnerReadinessResponseScoreMin).max(getLearnerReadinessResponseScoreMax),
@@ -951,13 +988,31 @@ export const GetLearnerReadinessResponse = zod.object({
   "id": zod.string(),
   "score": zod.int(),
   "completed": zod.boolean(),
-  "criticalFailure": zod.boolean()
+  "criticalFailure": zod.boolean(),
+  "assessmentAttemptId": zod.string().nullish(),
+  "criterionIds": zod.array(zod.string()).optional()
 })),
   "evidence": zod.array(zod.object({
   "requirementId": zod.string(),
-  "satisfied": zod.boolean()
+  "satisfied": zod.boolean(),
+  "evidenceIds": zod.array(zod.string()).optional(),
+  "evidenceReviewIds": zod.array(zod.string()).optional()
 })),
-  "openCriticalGaps": zod.array(zod.string())
+  "openCriticalGaps": zod.array(zod.string()),
+  "gates": zod.array(zod.object({
+  "gateId": zod.string(),
+  "gapIds": zod.array(zod.string()),
+  "criterionIds": zod.array(zod.string()),
+  "assessmentAttemptIds": zod.array(zod.string()),
+  "evidenceIds": zod.array(zod.string()),
+  "evidenceReviewIds": zod.array(zod.string()),
+  "remediationPlanIds": zod.array(zod.string()),
+  "reassessmentAttemptIds": zod.array(zod.string()),
+  "learningRecordLinkIds": zod.array(zod.string()).optional(),
+  "diagnosticProfileIds": zod.array(zod.string()).optional(),
+  "diagnosticGapIds": zod.array(zod.string()).optional(),
+  "diagnosticRecommendationIds": zod.array(zod.string()).optional()
+})).optional()
 }),
   "currentGate": zod.object({
   "id": zod.string(),
@@ -1141,8 +1196,29 @@ export const CompleteDiagnosticSessionParams = zod.object({
   "sessionId": zod.coerce.string().min(1)
 })
 
+
+
+
+
+
+
+
 export const completeDiagnosticSessionResponseItemsItemScoreMin = 0;
 export const completeDiagnosticSessionResponseItemsItemScoreMax = 100;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1154,13 +1230,25 @@ export const CompleteDiagnosticSessionResponse = zod.object({
   "currentState": zod.string(),
   "safetyOverride": zod.boolean(),
   "dimensionSummaries": zod.record(zod.string(), zod.number()),
+  "provenance": zod.union([zod.object({
+  "sessionId": zod.string().min(1),
+  "responseIds": zod.array(zod.string().min(1)).min(1),
+  "questionIds": zod.array(zod.string().min(1)).min(1),
+  "optionIds": zod.array(zod.string().min(1)).min(1)
+}),zod.null()]),
   "items": zod.array(zod.object({
   "competencyUnitId": zod.string(),
   "unitCode": zod.string(),
   "unitTitle": zod.string(),
   "state": zod.string(),
   "score": zod.int().min(completeDiagnosticSessionResponseItemsItemScoreMin).max(completeDiagnosticSessionResponseItemsItemScoreMax),
-  "evidenceLevel": zod.string()
+  "evidenceLevel": zod.string(),
+  "provenance": zod.union([zod.object({
+  "sessionId": zod.string().min(1),
+  "responseIds": zod.array(zod.string().min(1)).min(1),
+  "questionIds": zod.array(zod.string().min(1)).min(1),
+  "optionIds": zod.array(zod.string().min(1)).min(1)
+}),zod.null()])
 })),
   "gaps": zod.array(zod.object({
   "id": zod.string(),
@@ -1168,7 +1256,13 @@ export const CompleteDiagnosticSessionResponse = zod.object({
   "unitCode": zod.string().optional(),
   "unitTitle": zod.string().optional(),
   "diagnosis": zod.string(),
-  "severity": zod.string()
+  "severity": zod.string(),
+  "provenance": zod.union([zod.object({
+  "sessionId": zod.string().min(1),
+  "responseIds": zod.array(zod.string().min(1)).min(1),
+  "questionIds": zod.array(zod.string().min(1)).min(1),
+  "optionIds": zod.array(zod.string().min(1)).min(1)
+}),zod.null()])
 })),
   "recommendations": zod.array(zod.object({
   "id": zod.string(),
@@ -1198,8 +1292,29 @@ export const CompleteDiagnosticSessionResponse = zod.object({
 })
 
 
+
+
+
+
+
+
+
 export const getCompetencyProfileResponseItemsItemScoreMin = 0;
 export const getCompetencyProfileResponseItemsItemScoreMax = 100;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1211,13 +1326,25 @@ export const GetCompetencyProfileResponse = zod.object({
   "currentState": zod.string(),
   "safetyOverride": zod.boolean(),
   "dimensionSummaries": zod.record(zod.string(), zod.number()),
+  "provenance": zod.union([zod.object({
+  "sessionId": zod.string().min(1),
+  "responseIds": zod.array(zod.string().min(1)).min(1),
+  "questionIds": zod.array(zod.string().min(1)).min(1),
+  "optionIds": zod.array(zod.string().min(1)).min(1)
+}),zod.null()]),
   "items": zod.array(zod.object({
   "competencyUnitId": zod.string(),
   "unitCode": zod.string(),
   "unitTitle": zod.string(),
   "state": zod.string(),
   "score": zod.int().min(getCompetencyProfileResponseItemsItemScoreMin).max(getCompetencyProfileResponseItemsItemScoreMax),
-  "evidenceLevel": zod.string()
+  "evidenceLevel": zod.string(),
+  "provenance": zod.union([zod.object({
+  "sessionId": zod.string().min(1),
+  "responseIds": zod.array(zod.string().min(1)).min(1),
+  "questionIds": zod.array(zod.string().min(1)).min(1),
+  "optionIds": zod.array(zod.string().min(1)).min(1)
+}),zod.null()])
 })),
   "gaps": zod.array(zod.object({
   "id": zod.string(),
@@ -1225,7 +1352,13 @@ export const GetCompetencyProfileResponse = zod.object({
   "unitCode": zod.string().optional(),
   "unitTitle": zod.string().optional(),
   "diagnosis": zod.string(),
-  "severity": zod.string()
+  "severity": zod.string(),
+  "provenance": zod.union([zod.object({
+  "sessionId": zod.string().min(1),
+  "responseIds": zod.array(zod.string().min(1)).min(1),
+  "questionIds": zod.array(zod.string().min(1)).min(1),
+  "optionIds": zod.array(zod.string().min(1)).min(1)
+}),zod.null()])
 })),
   "recommendations": zod.array(zod.object({
   "id": zod.string(),
@@ -1255,8 +1388,29 @@ export const GetCompetencyProfileResponse = zod.object({
 })
 
 
+
+
+
+
+
+
+
 export const getReadinessMapResponseProfileItemsItemScoreMin = 0;
 export const getReadinessMapResponseProfileItemsItemScoreMax = 100;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 export const getReadinessMapResponseReadinessScoreMin = 0;
 export const getReadinessMapResponseReadinessScoreMax = 100;
@@ -1294,13 +1448,25 @@ export const GetReadinessMapResponse = zod.object({
   "currentState": zod.string(),
   "safetyOverride": zod.boolean(),
   "dimensionSummaries": zod.record(zod.string(), zod.number()),
+  "provenance": zod.union([zod.object({
+  "sessionId": zod.string().min(1),
+  "responseIds": zod.array(zod.string().min(1)).min(1),
+  "questionIds": zod.array(zod.string().min(1)).min(1),
+  "optionIds": zod.array(zod.string().min(1)).min(1)
+}),zod.null()]),
   "items": zod.array(zod.object({
   "competencyUnitId": zod.string(),
   "unitCode": zod.string(),
   "unitTitle": zod.string(),
   "state": zod.string(),
   "score": zod.int().min(getReadinessMapResponseProfileItemsItemScoreMin).max(getReadinessMapResponseProfileItemsItemScoreMax),
-  "evidenceLevel": zod.string()
+  "evidenceLevel": zod.string(),
+  "provenance": zod.union([zod.object({
+  "sessionId": zod.string().min(1),
+  "responseIds": zod.array(zod.string().min(1)).min(1),
+  "questionIds": zod.array(zod.string().min(1)).min(1),
+  "optionIds": zod.array(zod.string().min(1)).min(1)
+}),zod.null()])
 })),
   "gaps": zod.array(zod.object({
   "id": zod.string(),
@@ -1308,7 +1474,13 @@ export const GetReadinessMapResponse = zod.object({
   "unitCode": zod.string().optional(),
   "unitTitle": zod.string().optional(),
   "diagnosis": zod.string(),
-  "severity": zod.string()
+  "severity": zod.string(),
+  "provenance": zod.union([zod.object({
+  "sessionId": zod.string().min(1),
+  "responseIds": zod.array(zod.string().min(1)).min(1),
+  "questionIds": zod.array(zod.string().min(1)).min(1),
+  "optionIds": zod.array(zod.string().min(1)).min(1)
+}),zod.null()])
 })),
   "recommendations": zod.array(zod.object({
   "id": zod.string(),
@@ -1359,7 +1531,8 @@ export const GetReadinessMapResponse = zod.object({
   "output": zod.string(),
   "kpi": zod.string(),
   "portfolio": zod.string()
-}).optional()
+}).optional(),
+  "terminalPortfolio": zod.enum(['Capability Portfolio', 'Certification Readiness Portfolio'])
 }),
   "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']),
   "score": zod.int().min(getReadinessMapResponseReadinessScoreMin).max(getReadinessMapResponseReadinessScoreMax),
@@ -1371,13 +1544,31 @@ export const GetReadinessMapResponse = zod.object({
   "id": zod.string(),
   "score": zod.int(),
   "completed": zod.boolean(),
-  "criticalFailure": zod.boolean()
+  "criticalFailure": zod.boolean(),
+  "assessmentAttemptId": zod.string().nullish(),
+  "criterionIds": zod.array(zod.string()).optional()
 })),
   "evidence": zod.array(zod.object({
   "requirementId": zod.string(),
-  "satisfied": zod.boolean()
+  "satisfied": zod.boolean(),
+  "evidenceIds": zod.array(zod.string()).optional(),
+  "evidenceReviewIds": zod.array(zod.string()).optional()
 })),
-  "openCriticalGaps": zod.array(zod.string())
+  "openCriticalGaps": zod.array(zod.string()),
+  "gates": zod.array(zod.object({
+  "gateId": zod.string(),
+  "gapIds": zod.array(zod.string()),
+  "criterionIds": zod.array(zod.string()),
+  "assessmentAttemptIds": zod.array(zod.string()),
+  "evidenceIds": zod.array(zod.string()),
+  "evidenceReviewIds": zod.array(zod.string()),
+  "remediationPlanIds": zod.array(zod.string()),
+  "reassessmentAttemptIds": zod.array(zod.string()),
+  "learningRecordLinkIds": zod.array(zod.string()).optional(),
+  "diagnosticProfileIds": zod.array(zod.string()).optional(),
+  "diagnosticGapIds": zod.array(zod.string()).optional(),
+  "diagnosticRecommendationIds": zod.array(zod.string()).optional()
+})).optional()
 }),
   "currentGate": zod.object({
   "id": zod.string(),
@@ -1521,10 +1712,12 @@ export const GetCapabilityPassportResponse = zod.object({
   "output": zod.string(),
   "kpi": zod.string(),
   "portfolio": zod.string()
-}).optional()
+}).optional(),
+  "terminalPortfolio": zod.enum(['Capability Portfolio', 'Certification Readiness Portfolio'])
 }),
   "headline": zod.string(),
   "subtitle": zod.string(),
+  "terminalPortfolio": zod.enum(['Capability Portfolio', 'Certification Readiness Portfolio']),
   "readinessDisclaimer": zod.string().describe('Internal readiness-preparation information only; it is not an official competency or certification decision.'),
   "readiness": zod.object({
   "pathway": zod.object({
@@ -1549,7 +1742,8 @@ export const GetCapabilityPassportResponse = zod.object({
   "output": zod.string(),
   "kpi": zod.string(),
   "portfolio": zod.string()
-}).optional()
+}).optional(),
+  "terminalPortfolio": zod.enum(['Capability Portfolio', 'Certification Readiness Portfolio'])
 }),
   "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']),
   "score": zod.int().min(getCapabilityPassportResponseReadinessScoreMin).max(getCapabilityPassportResponseReadinessScoreMax),
@@ -1561,13 +1755,31 @@ export const GetCapabilityPassportResponse = zod.object({
   "id": zod.string(),
   "score": zod.int(),
   "completed": zod.boolean(),
-  "criticalFailure": zod.boolean()
+  "criticalFailure": zod.boolean(),
+  "assessmentAttemptId": zod.string().nullish(),
+  "criterionIds": zod.array(zod.string()).optional()
 })),
   "evidence": zod.array(zod.object({
   "requirementId": zod.string(),
-  "satisfied": zod.boolean()
+  "satisfied": zod.boolean(),
+  "evidenceIds": zod.array(zod.string()).optional(),
+  "evidenceReviewIds": zod.array(zod.string()).optional()
 })),
-  "openCriticalGaps": zod.array(zod.string())
+  "openCriticalGaps": zod.array(zod.string()),
+  "gates": zod.array(zod.object({
+  "gateId": zod.string(),
+  "gapIds": zod.array(zod.string()),
+  "criterionIds": zod.array(zod.string()),
+  "assessmentAttemptIds": zod.array(zod.string()),
+  "evidenceIds": zod.array(zod.string()),
+  "evidenceReviewIds": zod.array(zod.string()),
+  "remediationPlanIds": zod.array(zod.string()),
+  "reassessmentAttemptIds": zod.array(zod.string()),
+  "learningRecordLinkIds": zod.array(zod.string()).optional(),
+  "diagnosticProfileIds": zod.array(zod.string()).optional(),
+  "diagnosticGapIds": zod.array(zod.string()).optional(),
+  "diagnosticRecommendationIds": zod.array(zod.string()).optional()
+})).optional()
 }),
   "currentGate": zod.object({
   "id": zod.string(),
@@ -1666,7 +1878,8 @@ export const GetCapabilityPassportResponse = zod.object({
   "description": zod.string(),
   "status": zod.string(),
   "date": zod.coerce.date().nullable(),
-  "href": zod.string().nullable()
+  "href": zod.string().nullable(),
+  "causalReferences": zod.record(zod.string(), zod.array(zod.string())).optional()
 }))
 })
 
@@ -1676,6 +1889,13 @@ export const GetCapabilityPassportResponse = zod.object({
  */
 export const getTrainerDashboardResponseDiagnosticFollowUpsItemBaselineScoreMin = 0;
 export const getTrainerDashboardResponseDiagnosticFollowUpsItemBaselineScoreMax = 100;
+
+
+
+
+
+
+
 
 
 
@@ -1707,7 +1927,13 @@ export const GetTrainerDashboardResponse = zod.object({
   "unitCode": zod.string().optional(),
   "unitTitle": zod.string().optional(),
   "diagnosis": zod.string(),
-  "severity": zod.string()
+  "severity": zod.string(),
+  "provenance": zod.union([zod.object({
+  "sessionId": zod.string().min(1),
+  "responseIds": zod.array(zod.string().min(1)).min(1),
+  "questionIds": zod.array(zod.string().min(1)).min(1),
+  "optionIds": zod.array(zod.string().min(1)).min(1)
+}),zod.null()])
 })),
   "recommendations": zod.array(zod.object({
   "id": zod.string(),
@@ -1936,7 +2162,8 @@ export const ReviewEvidenceByTrainerResponse = zod.object({
   "relevant": zod.boolean(),
   "sufficient": zod.boolean(),
   "traceable": zod.boolean()
-})
+}),
+  "causalReferences": zod.record(zod.string(), zod.array(zod.string())).optional()
 })
 
 
@@ -1973,7 +2200,8 @@ export const ReviewPracticeAttemptResponse = zod.object({
   "description": zod.string(),
   "href": zod.string().nullable()
 }),
-  "feedback": zod.string().nullable()
+  "feedback": zod.string().nullable(),
+  "causalReferences": zod.record(zod.string(), zod.array(zod.string())).optional()
 })
 
 
@@ -2069,7 +2297,9 @@ export const SubmitAssessmentDecisionResponse = zod.object({
   "status": zod.string(),
   "score": zod.int().min(submitAssessmentDecisionResponseAssessmentScoreMin).max(submitAssessmentDecisionResponseAssessmentScoreMax),
   "attemptCount": zod.int(),
-  "criticalFailure": zod.boolean()
+  "criticalFailure": zod.boolean(),
+  "latestAttemptId": zod.string().nullish(),
+  "criterionIds": zod.array(zod.string()).optional()
 }),
   "criteria": zod.array(zod.object({
   "id": zod.string(),
@@ -2286,6 +2516,9 @@ export const TransitionLearningStateBody = zod.object({
   "reason": zod.string().min(1),
   "idempotencyKey": zod.string().min(transitionLearningStateBodyIdempotencyKeyMin).max(transitionLearningStateBodyIdempotencyKeyMax),
   "references": zod.object({
+  "diagnosticProfileId": zod.string().optional(),
+  "diagnosticGapId": zod.string().optional(),
+  "diagnosticRecommendationId": zod.string().optional(),
   "outcomeId": zod.string().optional(),
   "practiceAttemptId": zod.string().optional(),
   "evidenceId": zod.string().optional(),
@@ -2306,7 +2539,20 @@ export const TransitionLearningStateResponse = zod.object({
   "fromState": zod.enum(['NOT_STARTED', 'IN_PROGRESS', 'LEARNING_COMPLETED', 'OUTCOME_VERIFIED', 'PRACTICE_REQUIRED', 'PRACTICE_IN_PROGRESS', 'EVIDENCE_SUBMITTED', 'UNDER_REVIEW', 'REVISION_REQUIRED', 'REMEDIATION', 'REASSESSMENT', 'READY', 'NOT_READY']),
   "toState": zod.enum(['NOT_STARTED', 'IN_PROGRESS', 'LEARNING_COMPLETED', 'OUTCOME_VERIFIED', 'PRACTICE_REQUIRED', 'PRACTICE_IN_PROGRESS', 'EVIDENCE_SUBMITTED', 'UNDER_REVIEW', 'REVISION_REQUIRED', 'REMEDIATION', 'REASSESSMENT', 'READY', 'NOT_READY']),
   "idempotent": zod.boolean(),
-  "recordedAt": zod.coerce.date()
+  "recordedAt": zod.coerce.date(),
+  "references": zod.object({
+  "diagnosticProfileId": zod.string().optional(),
+  "diagnosticGapId": zod.string().optional(),
+  "diagnosticRecommendationId": zod.string().optional(),
+  "outcomeId": zod.string().optional(),
+  "practiceAttemptId": zod.string().optional(),
+  "evidenceId": zod.string().optional(),
+  "evidenceReviewId": zod.string().optional(),
+  "gapId": zod.string().optional(),
+  "remediationPlanId": zod.string().optional(),
+  "reassessmentAttemptId": zod.string().optional(),
+  "previousAssessmentAttemptId": zod.string().optional()
+})
 })
 
 
@@ -2782,13 +3028,31 @@ export const ListAdminReadinessHistoryResponse = zod.object({
   "id": zod.string(),
   "score": zod.int(),
   "completed": zod.boolean(),
-  "criticalFailure": zod.boolean()
+  "criticalFailure": zod.boolean(),
+  "assessmentAttemptId": zod.string().nullish(),
+  "criterionIds": zod.array(zod.string()).optional()
 })),
   "evidence": zod.array(zod.object({
   "requirementId": zod.string(),
-  "satisfied": zod.boolean()
+  "satisfied": zod.boolean(),
+  "evidenceIds": zod.array(zod.string()).optional(),
+  "evidenceReviewIds": zod.array(zod.string()).optional()
 })),
-  "openCriticalGaps": zod.array(zod.string())
+  "openCriticalGaps": zod.array(zod.string()),
+  "gates": zod.array(zod.object({
+  "gateId": zod.string(),
+  "gapIds": zod.array(zod.string()),
+  "criterionIds": zod.array(zod.string()),
+  "assessmentAttemptIds": zod.array(zod.string()),
+  "evidenceIds": zod.array(zod.string()),
+  "evidenceReviewIds": zod.array(zod.string()),
+  "remediationPlanIds": zod.array(zod.string()),
+  "reassessmentAttemptIds": zod.array(zod.string()),
+  "learningRecordLinkIds": zod.array(zod.string()).optional(),
+  "diagnosticProfileIds": zod.array(zod.string()).optional(),
+  "diagnosticGapIds": zod.array(zod.string()).optional(),
+  "diagnosticRecommendationIds": zod.array(zod.string()).optional()
+})).optional()
 }),
   "decisionReason": zod.string(),
   "evaluatedAt": zod.coerce.date()
@@ -2855,13 +3119,31 @@ export const ExportAdminReadinessHistoryResponse = zod.object({
   "id": zod.string(),
   "score": zod.int(),
   "completed": zod.boolean(),
-  "criticalFailure": zod.boolean()
+  "criticalFailure": zod.boolean(),
+  "assessmentAttemptId": zod.string().nullish(),
+  "criterionIds": zod.array(zod.string()).optional()
 })),
   "evidence": zod.array(zod.object({
   "requirementId": zod.string(),
-  "satisfied": zod.boolean()
+  "satisfied": zod.boolean(),
+  "evidenceIds": zod.array(zod.string()).optional(),
+  "evidenceReviewIds": zod.array(zod.string()).optional()
 })),
-  "openCriticalGaps": zod.array(zod.string())
+  "openCriticalGaps": zod.array(zod.string()),
+  "gates": zod.array(zod.object({
+  "gateId": zod.string(),
+  "gapIds": zod.array(zod.string()),
+  "criterionIds": zod.array(zod.string()),
+  "assessmentAttemptIds": zod.array(zod.string()),
+  "evidenceIds": zod.array(zod.string()),
+  "evidenceReviewIds": zod.array(zod.string()),
+  "remediationPlanIds": zod.array(zod.string()),
+  "reassessmentAttemptIds": zod.array(zod.string()),
+  "learningRecordLinkIds": zod.array(zod.string()).optional(),
+  "diagnosticProfileIds": zod.array(zod.string()).optional(),
+  "diagnosticGapIds": zod.array(zod.string()).optional(),
+  "diagnosticRecommendationIds": zod.array(zod.string()).optional()
+})).optional()
 }),
   "decisionReason": zod.string(),
   "evaluatedAt": zod.coerce.date()

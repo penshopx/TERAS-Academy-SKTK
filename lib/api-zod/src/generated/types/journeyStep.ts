@@ -5,6 +5,7 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { JourneyStepCausalReferences } from './journeyStepCausalReferences';
 
 export interface JourneyStep {
   id: string;
@@ -19,4 +20,5 @@ export interface JourneyStep {
   date: Date | null;
   /** @nullable */
   href: string | null;
+  causalReferences?: JourneyStepCausalReferences;
 }

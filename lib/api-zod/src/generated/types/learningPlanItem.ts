@@ -5,6 +5,7 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { CausalReferences } from './causalReferences';
 import type { ModuleSummary } from './moduleSummary';
 
 export interface LearningPlanItem {
@@ -14,4 +15,5 @@ export interface LearningPlanItem {
   reason: string;
   estimatedMinutes: number;
   status: string;
+  causalReferences?: CausalReferences;
 }

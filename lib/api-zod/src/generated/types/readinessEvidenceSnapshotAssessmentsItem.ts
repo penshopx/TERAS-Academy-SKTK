@@ -11,4 +11,7 @@ export type ReadinessEvidenceSnapshotAssessmentsItem = {
   score: number;
   completed: boolean;
   criticalFailure: boolean;
+  /** @nullable */
+  assessmentAttemptId?: string | null;
+  criterionIds?: string[];
 };

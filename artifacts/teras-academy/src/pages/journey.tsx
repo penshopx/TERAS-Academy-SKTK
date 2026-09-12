@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Activity, CheckCircle2, Circle, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { journeyVisualState } from "@/lib/journey-status";
 
 export default function Journey() {
   const { data: journey, isLoading, error } = useGetLearnerJourney();
@@ -26,16 +27,19 @@ export default function Journey() {
         <CardContent className="p-8">
           <div className="relative border-l-2 border-muted pl-8 space-y-10 py-4">
             {journey.map((step, index) => {
-              const isCompleted = step.status === "COMPLETED";
-              const isActive = step.status === "ACTIVE";
-              const isPending = step.status === "PENDING";
+              const visualState = journeyVisualState(step.status);
+              const isCompleted = visualState === "complete";
+              const isActive = visualState === "active";
+              const isPending = visualState === "pending";
+              const isBlocked = visualState === "blocked";
 
               return (
                 <div key={step.id} data-testid={`journey-step-${step.id}`} className="relative">
                   <div className={cn(
                     "absolute -left-[41px] top-1 rounded-full bg-background p-1",
-                    isCompleted ? "text-primary" : 
+                    isCompleted ? "text-primary" :
                     isActive ? "text-primary shadow-[0_0_10px_rgba(0,195,255,0.5)]" : 
+                    isBlocked ? "text-destructive" :
                     "text-muted-foreground"
                   )}>
                     {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : 
@@ -53,7 +57,7 @@ export default function Journey() {
                         isActive && "text-primary",
                         isPending && "text-muted-foreground"
                       )}>{step.label}</h3>
-                      <Badge variant={isCompleted ? "success" : isActive ? "default" : "outline"} className="font-mono text-[10px] uppercase shrink-0">
+                      <Badge variant={isCompleted ? "success" : isBlocked ? "destructive" : isActive ? "default" : "outline"} className="font-mono text-[10px] uppercase shrink-0">
                         {step.status}
                       </Badge>
                       {step.date && (

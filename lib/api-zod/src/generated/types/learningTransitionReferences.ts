@@ -7,6 +7,9 @@
  */
 
 export interface LearningTransitionReferences {
+  diagnosticProfileId?: string;
+  diagnosticGapId?: string;
+  diagnosticRecommendationId?: string;
   outcomeId?: string;
   practiceAttemptId?: string;
   evidenceId?: string;

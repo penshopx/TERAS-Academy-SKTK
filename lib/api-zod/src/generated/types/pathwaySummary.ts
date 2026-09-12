@@ -7,6 +7,7 @@
  */
 import type { PathwayLearningContract } from './pathwayLearningContract';
 import type { PathwaySummaryPurpose } from './pathwaySummaryPurpose';
+import type { PathwaySummaryTerminalPortfolio } from './pathwaySummaryTerminalPortfolio';
 import type { ReadinessGateSummary } from './readinessGateSummary';
 
 export interface PathwaySummary {
@@ -20,4 +21,5 @@ export interface PathwaySummary {
   gateCount: number;
   gates: ReadinessGateSummary[];
   contract?: PathwayLearningContract;
+  terminalPortfolio: PathwaySummaryTerminalPortfolio;
 }

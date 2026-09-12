@@ -5,6 +5,7 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { DiagnosticProvenance } from './diagnosticProvenance';
 
 export interface CompetencyProfileItem {
   competencyUnitId: string;
@@ -17,4 +18,5 @@ export interface CompetencyProfileItem {
      */
   score: number;
   evidenceLevel: string;
+  provenance: DiagnosticProvenance | null;
 }

@@ -5,6 +5,7 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { DiagnosticProvenance } from './diagnosticProvenance';
 
 export interface DiagnosticGap {
   id: string;
@@ -13,4 +14,5 @@ export interface DiagnosticGap {
   unitTitle?: string;
   diagnosis: string;
   severity: string;
+  provenance: DiagnosticProvenance | null;
 }

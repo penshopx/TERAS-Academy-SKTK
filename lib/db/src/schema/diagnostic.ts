@@ -54,7 +54,10 @@ export const diagnosticResponsesTable = pgTable("teras_diagnostic_responses", {
 export const diagnosticProfilesTable = pgTable("teras_diagnostic_profiles", {
   id: text("id").primaryKey(), sessionId: text("session_id").notNull(), learnerId: text("learner_id").notNull().references(() => peopleTable.id, { onDelete: "cascade" }),
   pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id), frameworkId: text("framework_id").notNull().references(() => competencyFrameworksTable.id), frameworkVersion: text("framework_version").notNull(),
-  currentState: text("current_state").notNull(), safetyOverride: boolean("safety_override").notNull().default(false), dimensionSummaries: jsonb("dimension_summaries").$type<Record<string, unknown>>().notNull().default({}), completedAt: timestamp("completed_at", { withTimezone: true }).notNull().defaultNow(), ...audit,
+  currentState: text("current_state").notNull(), safetyOverride: boolean("safety_override").notNull().default(false), dimensionSummaries: jsonb("dimension_summaries").$type<Record<string, unknown>>().notNull().default({}),
+  /** Immutable response/question/option identities used to derive this profile. */
+  provenance: jsonb("provenance").$type<DiagnosticProvenance>(),
+  completedAt: timestamp("completed_at", { withTimezone: true }).notNull().defaultNow(), ...audit,
 }, table => [
   uniqueIndex("teras_diagnostic_profiles_session_unique").on(table.sessionId),
   index("teras_diagnostic_profiles_learner_pathway_idx").on(table.learnerId, table.pathwayId, table.completedAt),
@@ -63,17 +66,46 @@ export const diagnosticProfilesTable = pgTable("teras_diagnostic_profiles", {
     foreignColumns: [diagnosticSessionsTable.id, diagnosticSessionsTable.learnerId],
     name: "teras_diagnostic_profiles_session_learner_fk",
   }),
+  check("teras_diagnostic_profiles_provenance_check", sql`
+    ${table.provenance} IS NULL OR (
+      ${table.provenance}->>'sessionId' <> ''
+      AND jsonb_array_length(${table.provenance}->'responseIds') > 0
+      AND jsonb_array_length(${table.provenance}->'questionIds') > 0
+      AND jsonb_array_length(${table.provenance}->'optionIds') > 0
+    )
+  `),
 ]);
 
 export const diagnosticProfileItemsTable = pgTable("teras_diagnostic_profile_items", {
   id: text("id").primaryKey(), profileId: text("profile_id").notNull().references(() => diagnosticProfilesTable.id, { onDelete: "cascade" }), competencyUnitId: text("competency_unit_id").notNull().references(() => competencyUnitsTable.id),
-  frameworkId: text("framework_id").notNull().references(() => competencyFrameworksTable.id), unitCode: text("unit_code").notNull().default(""), unitTitle: text("unit_title").notNull().default(""), state: text("state").notNull(), score: integer("score").notNull().default(0), evidenceLevel: text("evidence_level").notNull().default("none"), ...audit,
-}, table => [uniqueIndex("teras_diagnostic_profile_items_profile_unit_unique").on(table.profileId, table.competencyUnitId)]);
+  frameworkId: text("framework_id").notNull().references(() => competencyFrameworksTable.id), unitCode: text("unit_code").notNull().default(""), unitTitle: text("unit_title").notNull().default(""), state: text("state").notNull(), score: integer("score").notNull().default(0), evidenceLevel: text("evidence_level").notNull().default("none"),
+  provenance: jsonb("provenance").$type<DiagnosticProvenance>(), ...audit,
+}, table => [
+  uniqueIndex("teras_diagnostic_profile_items_profile_unit_unique").on(table.profileId, table.competencyUnitId),
+  check("teras_diagnostic_profile_items_provenance_check", sql`
+    ${table.provenance} IS NULL OR (
+      ${table.provenance}->>'sessionId' <> ''
+      AND jsonb_array_length(${table.provenance}->'responseIds') > 0
+      AND jsonb_array_length(${table.provenance}->'questionIds') > 0
+      AND jsonb_array_length(${table.provenance}->'optionIds') > 0
+    )
+  `),
+]);
 
 export const diagnosticGapsTable = pgTable("teras_diagnostic_gaps", {
   id: text("id").primaryKey(), profileId: text("profile_id").notNull().references(() => diagnosticProfilesTable.id, { onDelete: "cascade" }), competencyUnitId: text("competency_unit_id").notNull().references(() => competencyUnitsTable.id),
-  frameworkId: text("framework_id").notNull().references(() => competencyFrameworksTable.id), unitCode: text("unit_code").notNull().default(""), unitTitle: text("unit_title").notNull().default(""), diagnosis: text("diagnosis").notNull(), severity: text("severity").notNull(), ...audit,
-});
+  frameworkId: text("framework_id").notNull().references(() => competencyFrameworksTable.id), unitCode: text("unit_code").notNull().default(""), unitTitle: text("unit_title").notNull().default(""), diagnosis: text("diagnosis").notNull(), severity: text("severity").notNull(),
+  provenance: jsonb("provenance").$type<DiagnosticProvenance>(), ...audit,
+}, table => [
+  check("teras_diagnostic_gaps_provenance_check", sql`
+    ${table.provenance} IS NULL OR (
+      ${table.provenance}->>'sessionId' <> ''
+      AND jsonb_array_length(${table.provenance}->'responseIds') > 0
+      AND jsonb_array_length(${table.provenance}->'questionIds') > 0
+      AND jsonb_array_length(${table.provenance}->'optionIds') > 0
+    )
+  `),
+]);
 export const diagnosticRecommendationsTable = pgTable("teras_diagnostic_recommendations", {
   id: text("id").primaryKey(), profileId: text("profile_id").notNull().references(() => diagnosticProfilesTable.id, { onDelete: "cascade" }), competencyUnitId: text("competency_unit_id").references(() => competencyUnitsTable.id),
   frameworkId: text("framework_id").notNull().references(() => competencyFrameworksTable.id), unitCode: text("unit_code").notNull().default(""), unitTitle: text("unit_title").notNull().default(""), moduleId: text("module_id").references(() => modulesTable.id), practiceTaskId: text("practice_task_id").references(() => practiceTasksTable.id), evidenceRequirementId: text("evidence_requirement_id").references(() => evidenceRequirementsTable.id),
@@ -151,3 +183,10 @@ export type DiagnosticSession = typeof diagnosticSessionsTable.$inferSelect;
 export type DiagnosticProfile = typeof diagnosticProfilesTable.$inferSelect;
 export type InsertDiagnosticSession = z.infer<typeof diagnosticInsertSchemas.diagnosticSessionsTable>;
 export const diagnosticRelations = relations(diagnosticTemplatesTable, ({ many }) => ({ questions: many(diagnosticQuestionsTable) }));
+
+export type DiagnosticProvenance = {
+  sessionId: string;
+  responseIds: string[];
+  questionIds: string[];
+  optionIds: string[];
+};

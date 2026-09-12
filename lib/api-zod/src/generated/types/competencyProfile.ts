@@ -8,6 +8,7 @@
 import type { CompetencyProfileDimensionSummaries } from './competencyProfileDimensionSummaries';
 import type { CompetencyProfileItem } from './competencyProfileItem';
 import type { DiagnosticGap } from './diagnosticGap';
+import type { DiagnosticProvenance } from './diagnosticProvenance';
 import type { DiagnosticRecommendation } from './diagnosticRecommendation';
 
 export interface CompetencyProfile {
@@ -18,6 +19,7 @@ export interface CompetencyProfile {
   currentState: string;
   safetyOverride: boolean;
   dimensionSummaries: CompetencyProfileDimensionSummaries;
+  provenance: DiagnosticProvenance | null;
   items: CompetencyProfileItem[];
   gaps: DiagnosticGap[];
   recommendations: DiagnosticRecommendation[];

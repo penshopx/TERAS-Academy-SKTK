@@ -7,6 +7,9 @@ import {
   baselineModulesTable,
   courseModulesTable,
   db,
+  diagnosticGapsTable,
+  diagnosticProfilesTable,
+  diagnosticRecommendationsTable,
   evidenceReviewsTable,
   evidenceTable,
   gapsTable,
@@ -59,6 +62,9 @@ export type LearningTransitionReason =
   | "CAUSAL_REFERENCE_INVALID";
 
 export type LearningTransitionReferences = {
+  diagnosticProfileId?: string;
+  diagnosticGapId?: string;
+  diagnosticRecommendationId?: string;
   outcomeId?: string;
   practiceAttemptId?: string;
   evidenceId?: string;
@@ -93,6 +99,7 @@ export type LearningTransitionSuccess = {
   toState: LearningState;
   idempotent: boolean;
   recordedAt: Date;
+  references: LearningTransitionReferences;
 };
 
 export type LearningTransitionRejection = {
@@ -196,6 +203,7 @@ function successFromEvent(
   event: typeof learningTransitionEventsTable.$inferSelect,
   idempotent: boolean,
 ): LearningTransitionSuccess {
+  const metadata = event.metadata as { references?: LearningTransitionReferences } | null;
   return {
     status: "SUCCESS",
     eventId: event.id,
@@ -206,6 +214,7 @@ function successFromEvent(
     toState: event.toState as LearningState,
     idempotent,
     recordedAt: event.createdAt,
+    references: metadata?.references ?? {},
   };
 }
 
@@ -214,11 +223,14 @@ export async function transitionLearningState(
   actor: LearningActor,
   transaction?: LearningTransaction,
 ): Promise<LearningTransitionResult> {
+  if (actor.role === "learner" && actor.id !== command.learnerId) {
+    return reject("LEARNER_MISMATCH", "The authenticated actor does not own this learner record.", command.currentState, 403);
+  }
   const context = await activeLearnerPathwayContext(command.learnerId, command.pathwayId);
   if (!context) {
     return reject("PATHWAY_MISMATCH", "The learning record is outside an active enrolled pathway.", command.currentState, 403);
   }
-  if (command.learnerId !== context.learner.id || (actor.role === "learner" && actor.id !== command.learnerId)) {
+  if (command.learnerId !== context.learner.id) {
     return reject("LEARNER_MISMATCH", "The authenticated actor does not own this learner record.", command.currentState, 403);
   }
   if (
@@ -311,7 +323,61 @@ export async function transitionLearningState(
       return reject("PATHWAY_MISMATCH", "The learning hierarchy is not valid for this pathway.", storedState, 403);
     }
 
-    const references = command.references ?? {};
+    const references: LearningTransitionReferences = { ...(command.references ?? {}) };
+    type DiagnosticChain = Required<Pick<LearningTransitionReferences, "diagnosticProfileId" | "diagnosticGapId" | "diagnosticRecommendationId">>;
+    let diagnosticChains: DiagnosticChain[] = [];
+    if (references.diagnosticProfileId && references.diagnosticGapId && references.diagnosticRecommendationId) {
+      diagnosticChains = [{
+        diagnosticProfileId: references.diagnosticProfileId,
+        diagnosticGapId: references.diagnosticGapId,
+        diagnosticRecommendationId: references.diagnosticRecommendationId,
+      }];
+    } else if (!references.diagnosticProfileId && !references.diagnosticGapId && !references.diagnosticRecommendationId) {
+      const priorCausalLinks = await tx.select().from(learningRecordLinksTable).where(and(
+        eq(learningRecordLinksTable.learnerId, command.learnerId),
+        eq(learningRecordLinksTable.pathwayId, command.pathwayId),
+        eq(learningRecordLinksTable.activityId, activity.id),
+      )).orderBy(desc(learningRecordLinksTable.createdAt), desc(learningRecordLinksTable.id));
+      diagnosticChains = priorCausalLinks.flatMap(link => {
+        const metadata = link.metadata;
+        return typeof metadata.diagnosticProfileId === "string" &&
+          typeof metadata.diagnosticGapId === "string" &&
+          typeof metadata.diagnosticRecommendationId === "string"
+          ? [{
+              diagnosticProfileId: metadata.diagnosticProfileId,
+              diagnosticGapId: metadata.diagnosticGapId,
+              diagnosticRecommendationId: metadata.diagnosticRecommendationId,
+            }]
+          : [];
+      }).filter((chain, index, chains) => chains.findIndex(candidate => candidate.diagnosticRecommendationId === chain.diagnosticRecommendationId) === index);
+      if (!diagnosticChains.length) {
+        const [diagnosticProfile] = await tx.select().from(diagnosticProfilesTable).where(and(
+          eq(diagnosticProfilesTable.learnerId, command.learnerId),
+          eq(diagnosticProfilesTable.pathwayId, command.pathwayId),
+        )).orderBy(desc(diagnosticProfilesTable.completedAt), desc(diagnosticProfilesTable.id)).limit(1);
+        if (diagnosticProfile) {
+          const [moduleRecommendations, profileGaps] = await Promise.all([
+            tx.select().from(diagnosticRecommendationsTable).where(and(
+              eq(diagnosticRecommendationsTable.profileId, diagnosticProfile.id),
+              eq(diagnosticRecommendationsTable.moduleId, courseModule.moduleId),
+            )),
+            tx.select().from(diagnosticGapsTable).where(eq(diagnosticGapsTable.profileId, diagnosticProfile.id)),
+          ]);
+          diagnosticChains = moduleRecommendations.flatMap(recommendation => {
+            const diagnosticGap = profileGaps.find(candidate => candidate.competencyUnitId === recommendation.competencyUnitId);
+            return diagnosticGap ? [{
+              diagnosticProfileId: diagnosticProfile.id,
+              diagnosticGapId: diagnosticGap.id,
+              diagnosticRecommendationId: recommendation.id,
+            }] : [];
+          });
+        }
+      }
+      const primaryDiagnosticChain = diagnosticChains[0];
+      if (primaryDiagnosticChain) {
+        Object.assign(references, primaryDiagnosticChain);
+      }
+    }
     let outcome: typeof learningOutcomesTable.$inferSelect | undefined;
     let practiceAttempt: typeof practiceAttemptsTable.$inferSelect | undefined;
     let evidence: typeof evidenceTable.$inferSelect | undefined;
@@ -320,6 +386,35 @@ export async function transitionLearningState(
     let remediationPlan: typeof remediationPlansTable.$inferSelect | undefined;
     let reassessmentAttempt: typeof assessmentAttemptsTable.$inferSelect | undefined;
     let previousAssessmentAttempt: typeof assessmentAttemptsTable.$inferSelect | undefined;
+
+    const hasDiagnosticReference = Boolean(
+      references.diagnosticProfileId ||
+      references.diagnosticGapId ||
+      references.diagnosticRecommendationId,
+    );
+    if (hasDiagnosticReference) {
+      if (!references.diagnosticProfileId || !references.diagnosticGapId || !references.diagnosticRecommendationId) {
+        return reject("CAUSAL_REFERENCE_INVALID", "Diagnostic causal references must include profile, gap, and recommendation.", storedState);
+      }
+      const [[diagnosticProfile], [diagnosticGap], [diagnosticRecommendation]] = await Promise.all([
+        tx.select().from(diagnosticProfilesTable).where(eq(diagnosticProfilesTable.id, references.diagnosticProfileId)).limit(1),
+        tx.select().from(diagnosticGapsTable).where(eq(diagnosticGapsTable.id, references.diagnosticGapId)).limit(1),
+        tx.select().from(diagnosticRecommendationsTable).where(eq(diagnosticRecommendationsTable.id, references.diagnosticRecommendationId)).limit(1),
+      ]);
+      if (
+        !diagnosticProfile ||
+        diagnosticProfile.learnerId !== command.learnerId ||
+        diagnosticProfile.pathwayId !== command.pathwayId ||
+        !diagnosticGap ||
+        diagnosticGap.profileId !== diagnosticProfile.id ||
+        !diagnosticRecommendation ||
+        diagnosticRecommendation.profileId !== diagnosticProfile.id ||
+        diagnosticRecommendation.competencyUnitId !== diagnosticGap.competencyUnitId ||
+        diagnosticRecommendation.moduleId !== courseModule.moduleId
+      ) {
+        return reject("CAUSAL_REFERENCE_INVALID", "Diagnostic profile, gap, and recommendation do not form one learner pathway module chain.", storedState);
+      }
+    }
 
     if (references.outcomeId) {
       [outcome] = await tx.select().from(learningOutcomesTable).where(eq(learningOutcomesTable.id, references.outcomeId)).limit(1);
@@ -432,7 +527,7 @@ export async function transitionLearningState(
       entityReference: command.entityReference,
       reason: command.reason,
       idempotencyKey: command.idempotencyKey,
-      metadata: { references, idempotencyFingerprint: command.idempotencyFingerprint },
+      metadata: { references, diagnosticReferences: diagnosticChains, idempotencyFingerprint: command.idempotencyFingerprint },
       createdBy: actor.id,
     }).returning();
     if (!event) throw new Error("Learning transition event insert returned no row");
@@ -446,7 +541,12 @@ export async function transitionLearningState(
         pathwayId: command.pathwayId,
         status: command.targetState === "IN_PROGRESS" ? "STARTED" : "COMPLETED",
         actorId: actor.id,
-        metadata: { transitionEventId: event.id },
+        metadata: {
+          transitionEventId: event.id,
+          diagnosticProfileId: references.diagnosticProfileId,
+          diagnosticGapId: references.diagnosticGapId,
+          diagnosticRecommendationId: references.diagnosticRecommendationId,
+        },
         createdBy: actor.id,
       });
     }
@@ -467,7 +567,8 @@ export async function transitionLearningState(
     }
 
     if (Object.values(references).some(Boolean)) {
-      await tx.insert(learningRecordLinksTable).values({
+      const linkChains: Array<DiagnosticChain | undefined> = diagnosticChains.length ? diagnosticChains : [undefined];
+      await tx.insert(learningRecordLinksTable).values(linkChains.map(diagnosticChain => ({
         id: `learning-record-link-${crypto.randomUUID()}`,
         learnerId: command.learnerId,
         pathwayId: command.pathwayId,
@@ -480,9 +581,14 @@ export async function transitionLearningState(
         remediationPlanId: remediationPlan?.id,
         reassessmentAttemptId: reassessmentAttempt?.id,
         relation: command.targetState,
-        metadata: { transitionEventId: event.id },
+        metadata: {
+          transitionEventId: event.id,
+          diagnosticProfileId: diagnosticChain?.diagnosticProfileId,
+          diagnosticGapId: diagnosticChain?.diagnosticGapId,
+          diagnosticRecommendationId: diagnosticChain?.diagnosticRecommendationId,
+        },
         createdBy: actor.id,
-      });
+      })));
     }
 
     if (command.targetState === "REASSESSMENT" && gap && remediationPlan && practiceAttempt && evidence && reassessmentAttempt) {

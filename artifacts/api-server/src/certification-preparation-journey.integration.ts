@@ -6,9 +6,12 @@
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import {
-  assessmentAttemptsTable, assessmentCriteriaTable, assessmentsTable, contentResourcesTable, courseVersionsTable, coursesTable, db, evidenceRequirementsTable,
-  evidenceReviewsTable, gapsTable, gapEventsTable, learningRecordLinksTable, reassessmentLinksTable, readinessTransferEventsTable,
-  modulesTable, practiceAttemptsTable, practiceReviewsTable, remediationActivitiesTable, remediationEventsTable,
+  assessmentAttemptsTable, assessmentCriteriaTable, assessmentsTable, baselineModulesTable, contentResourcesTable, courseVersionsTable, coursesTable, db, evidenceRequirementsTable,
+  competencyFrameworksTable, competencyUnitsTable, diagnosticGapsTable, diagnosticOptionsTable, diagnosticQuestionsTable,
+  diagnosticRecommendationsTable, diagnosticTemplatesTable, pathwayCompetencyUnitsTable, competencyUnitPracticeTasksTable,
+  evidenceReviewsTable, gapsTable, gapEventsTable, learningRecordLinksTable, learningTransitionEventsTable, reassessmentLinksTable, readinessEventsTable, readinessTransferEventsTable,
+  learningBaselinesTable, modulesTable, pathwayBaselineModulesTable, pathwayModuleContractsTable,
+  practiceAttemptsTable, practiceReviewsTable, remediationActivitiesTable, remediationEventsTable,
   remediationPlansTable, practiceTasksTable, readinessGatesTable,
 } from "@workspace/db";
 import { createIntegrationTestApp } from "./integration-test-app";
@@ -45,9 +48,13 @@ async function main() {
     const role = (req.get("x-gate-role") || "none") as Role;
     const users: Record<Role, string | null> = { admin: ids.admin, learner: ids.learner, trainer: ids.trainer, assessor: ids.assessor, none: null };
     if (role === "learner" && req.get("x-gate-other") === "1") return { userId: ids.otherLearner, role, learnerId: ids.otherLearner };
-    if (role === "trainer" && req.get("x-gate-other") === "1") return { userId: ids.otherTrainer, role };
-    if (role === "assessor" && req.get("x-gate-other") === "1") return { userId: ids.otherAssessor, role };
-    return { userId: users[role], role: role === "none" ? null : role, learnerId: role === "learner" ? ids.learner : undefined };
+    if (role === "trainer" && req.get("x-gate-other") === "1") return { userId: ids.otherTrainer, role, learnerId: ids.otherLearner };
+    if (role === "assessor" && req.get("x-gate-other") === "1") return { userId: ids.otherAssessor, role, learnerId: ids.otherLearner };
+    return {
+      userId: users[role],
+      role: role === "none" ? null : role,
+      learnerId: role === "learner" || role === "trainer" || role === "assessor" ? ids.learner : undefined,
+    };
   });
   const server = await new Promise<ReturnType<typeof app.listen>>(resolve => { const s = app.listen(0, () => resolve(s)); });
   const address = server.address() as AddressInfo;
@@ -73,8 +80,68 @@ async function main() {
     await expect("/admin/enrollments", "admin", { id: id("other-enrollment"), learnerId: ids.otherLearner, programId: ids.otherProgram, pathwayId: ids.otherPath, trainerId: ids.otherTrainer, assessorId: ids.otherAssessor, cohortId: null, status: "active" });
     assert.equal((await request("/admin/users", "learner")).status, 403, "cross-role admin access");
 
+    const secondModule = id("second-module"), secondTask = id("second-task");
+    await db.insert(modulesTable).values([
+      { id: ids.module, programId: ids.program, pathwayId: ids.path, sequence: 1, code: "GATE", name: "Gate capability", capability: "Safe gate practice", evidence: "Observed record", learningOutcomes: [], theory: [] },
+      { id: secondModule, programId: ids.program, pathwayId: ids.path, sequence: 2, code: "SECOND", name: "Second capability", capability: "Independent second capability", evidence: "Second record", learningOutcomes: [], theory: [] },
+    ]);
+    await db.insert(practiceTasksTable).values([
+      { id: ids.task, moduleId: ids.module, title: "Gate task", description: "Practice", mode: "Observed", durationMinutes: 5, output: "Record" },
+      { id: secondTask, moduleId: secondModule, title: "Second task", description: "Separate practice", mode: "Observed", durationMinutes: 5, output: "Second record" },
+    ]);
+    const frameworkId = id("framework"), competencyUnitId = id("competency-unit"), secondCompetencyUnitId = id("second-competency-unit");
+    const diagnosticTemplateId = id("diagnostic-template"), diagnosticQuestionId = id("diagnostic-question"), secondDiagnosticQuestionId = id("second-diagnostic-question");
+    const diagnosticOptionId = id("diagnostic-option"), secondDiagnosticOptionId = id("second-diagnostic-option");
+    await db.insert(competencyFrameworksTable).values({ id: frameworkId, code: id("framework-code"), name: "Gate competency framework", description: "Run-scoped framework", domain: "Gate", version: "1.0", status: "active" });
+    await db.insert(competencyUnitsTable).values([
+      { id: competencyUnitId, frameworkId, code: "GATE-UNIT", title: "Safe gate practice", description: "Run-scoped capability", sequence: 1, status: "active" },
+      { id: secondCompetencyUnitId, frameworkId, code: "SECOND-UNIT", title: "Second capability", description: "Separate capability", sequence: 2, status: "active" },
+    ]);
+    await db.insert(pathwayCompetencyUnitsTable).values([
+      { id: id("pathway-competency-unit"), pathwayId: ids.path, unitId: competencyUnitId, sequence: 1 },
+      { id: id("second-pathway-competency-unit"), pathwayId: ids.path, unitId: secondCompetencyUnitId, sequence: 2 },
+    ]);
+    await db.insert(competencyUnitPracticeTasksTable).values([
+      { id: id("competency-practice"), unitId: competencyUnitId, taskId: ids.task },
+      { id: id("second-competency-practice"), unitId: secondCompetencyUnitId, taskId: secondTask },
+    ]);
+    await db.insert(diagnosticTemplatesTable).values({ id: diagnosticTemplateId, frameworkId, pathwayId: ids.path, version: "1.0", name: "Gate diagnostic", description: "Run-scoped diagnostic", status: "active", dimensions: ["KNOWLEDGE"] });
+    await db.insert(diagnosticQuestionsTable).values([
+      { id: diagnosticQuestionId, templateId: diagnosticTemplateId, frameworkId, competencyUnitId, dimension: "KNOWLEDGE", prompt: "Can the learner complete the gate capability?", sequence: 1 },
+      { id: secondDiagnosticQuestionId, templateId: diagnosticTemplateId, frameworkId, competencyUnitId: secondCompetencyUnitId, dimension: "KNOWLEDGE", prompt: "Can the learner complete the second capability?", sequence: 2 },
+    ]);
+    await db.insert(diagnosticOptionsTable).values([
+      { id: diagnosticOptionId, questionId: diagnosticQuestionId, code: "GAP", label: "Needs guided development", score: 0 },
+      { id: secondDiagnosticOptionId, questionId: secondDiagnosticQuestionId, code: "GAP", label: "Needs separate development", score: 0 },
+    ]);
+    const diagnosticSession = await expect("/diagnostic/sessions", "learner", {});
+    await expect(`/diagnostic/sessions/${diagnosticSession.id}/responses`, "learner", { progress: 100, responses: [
+      { questionId: diagnosticQuestionId, optionId: diagnosticOptionId },
+      { questionId: secondDiagnosticQuestionId, optionId: secondDiagnosticOptionId },
+    ] }, 200, "PUT");
+    const diagnosticProfile = await expect(`/diagnostic/sessions/${diagnosticSession.id}/complete`, "learner", {}, 200);
+    const profileGaps = (await db.select().from(diagnosticGapsTable)).filter(row => row.profileId === diagnosticProfile.id);
+    const profileRecommendations = (await db.select().from(diagnosticRecommendationsTable)).filter(row => row.profileId === diagnosticProfile.id);
+    const diagnosticGap = profileGaps.find(row => row.competencyUnitId === competencyUnitId);
+    const secondDiagnosticGap = profileGaps.find(row => row.competencyUnitId === secondCompetencyUnitId);
+    const diagnosticRecommendation = profileRecommendations.find(row => row.competencyUnitId === competencyUnitId);
+    const secondDiagnosticRecommendation = profileRecommendations.find(row => row.competencyUnitId === secondCompetencyUnitId);
+    assert(diagnosticGap && diagnosticRecommendation && secondDiagnosticGap && secondDiagnosticRecommendation, "diagnostic must persist module-scoped gaps and recommendations before learning");
+    assert.equal(diagnosticRecommendation.moduleId, ids.module);
+    assert.equal(secondDiagnosticRecommendation.moduleId, secondModule);
+
     // The authoring API creates the full publishable hierarchy and claims managed media.
-    await db.insert(modulesTable).values({ id: ids.module, programId: ids.program, pathwayId: ids.path, sequence: 1, code: "GATE", name: "Gate capability", capability: "Safe gate practice", evidence: "Observed record", learningOutcomes: [], theory: [] });
+    const baselineId = id("baseline"), baselineModuleId = id("baseline-module");
+    await db.insert(learningBaselinesTable).values({ id: baselineId, code: id("baseline-code"), name: "Gate baseline", description: "Run-scoped shared learning baseline" });
+    const secondBaselineModuleId = id("second-baseline-module");
+    await db.insert(baselineModulesTable).values([
+      { id: baselineModuleId, baselineId, moduleId: ids.module, sequence: 1, code: "M01", name: "Gate capability", learningOutcome: "Safe gate practice", evidenceId: "E01" },
+      { id: secondBaselineModuleId, baselineId, moduleId: secondModule, sequence: 2, code: "M02", name: "Second capability", learningOutcome: "Independent second capability", evidenceId: "E02" },
+    ]);
+    await db.insert(pathwayBaselineModulesTable).values([
+      { id: id("pathway-baseline-module"), pathwayId: ids.path, baselineModuleId, sequence: 1 },
+      { id: id("second-pathway-baseline-module"), pathwayId: ids.path, baselineModuleId: secondBaselineModuleId, sequence: 2 },
+    ]);
     const otherModule = id("other-module"), otherTask = id("other-task");
     await db.insert(modulesTable).values({ id: otherModule, programId: ids.otherProgram, pathwayId: ids.otherPath, sequence: 1, code: "OTHER", name: "Other capability", capability: "Other", evidence: "Other", learningOutcomes: [], theory: [] });
     await db.insert(practiceTasksTable).values({ id: otherTask, moduleId: otherModule, title: "Other task", description: "Other", mode: "Observed", durationMinutes: 5, output: "Other" });
@@ -117,18 +184,37 @@ async function main() {
     const visible = await (await request("/learning/courses", "learner")).json() as any[];
     assert.equal(visible.length, 1, "only published active-path content is visible");
     assert.equal(visible[0].id, ids.course); const otherCourses = await request("/learning/courses", "learner", undefined, "GET", true); assert.equal(otherCourses.status, 200); assert.deepEqual(await otherCourses.json(), [], "other-path learner sees no course");
+    const learningPlan = await (await request("/learner/learning-plan", "learner")).json() as any[];
+    const primaryPlan = learningPlan.find(item => item.module.id === ids.module);
+    const secondPlan = learningPlan.find(item => item.module.id === secondModule);
+    assert(primaryPlan?.causalReferences?.diagnosticGapIds?.includes(diagnosticGap.id) &&
+      primaryPlan.causalReferences.diagnosticRecommendationIds.includes(diagnosticRecommendation.id) &&
+      !primaryPlan.causalReferences.diagnosticRecommendationIds.includes(secondDiagnosticRecommendation.id), "primary plan must contain only its module-scoped diagnostic chain");
+    assert(secondPlan?.causalReferences?.diagnosticGapIds?.includes(secondDiagnosticGap.id) &&
+      secondPlan.causalReferences.diagnosticRecommendationIds.includes(secondDiagnosticRecommendation.id) &&
+      !secondPlan.causalReferences.diagnosticRecommendationIds.includes(diagnosticRecommendation.id), "second plan must not inherit the primary module diagnostic chain");
 
     // The activity uses the same published activity ID; attempts/evidence are route writes.
-    await db.insert(practiceTasksTable).values({ id: ids.task, moduleId: ids.module, title: "Gate task", description: "Practice", mode: "Observed", durationMinutes: 5, output: "Record" });
     const attemptsBeforeCrossPath = (await db.select().from(practiceAttemptsTable)).length;
     assert.equal((await request(`/practice/tasks/${otherTask}/attempts`, "learner", { reflection: "cross path", outputSummary: "must not write", sourceActivityId: activity.id, idempotencyKey: id("cross-path") })).status, 404, "other-path task rejected");
     assert.equal((await db.select().from(practiceAttemptsTable)).length, attemptsBeforeCrossPath, "cross-path rejection made no attempt");
     await db.insert(assessmentsTable).values({ id: ids.assessment, moduleId: ids.module, name: "Gate assessment", gateCode: "G1" });
     await db.insert(assessmentCriteriaTable).values(["valid", "relevant", "sufficient", "traceable"].map((code, index) => ({ id: id(`criterion-${code}`), assessmentId: ids.assessment, code, label: code, layer: "evidence", critical: index === 0 })));
     await db.insert(evidenceRequirementsTable).values({ id: id("requirement"), moduleId: ids.module, code: "E1", name: "Gate evidence", description: "Valid evidence", allowedTypes: ["Checklist"] });
-    await db.insert(readinessGatesTable).values({ id: ids.gate, programId: ids.program, pathwayId: ids.path, sequence: 1, code: "G1", name: "Internal gate", requirement: "Internal preparation", assessmentMode: "Mapped", evidenceMode: "Mapped" });
+    await db.insert(pathwayModuleContractsTable).values({ id: id("pathway-module-contract"), pathwayId: ids.path, moduleId: ids.module, assessmentId: ids.assessment, evidenceRequirementId: id("requirement"), gateCode: "G1", assessment: "Gate assessment", evidence: "Gate evidence", output: "Readiness record", kpi: "All criteria competent", portfolio: "Certification Readiness Portfolio" });
+    await db.insert(readinessGatesTable).values({ id: ids.gate, programId: ids.program, pathwayId: ids.path, sequence: 1, code: "G1", name: "Internal gate", requirement: "Internal preparation", assessmentMode: "Mapped", evidenceMode: "Mapped", competencyUnitId });
     const criteria = (await db.select().from(assessmentCriteriaTable)).filter(row => row.assessmentId === ids.assessment);
     const transition = (currentState: string, targetState: string, key: string, references: object = {}) => ({ currentState, targetState, learnerId: ids.learner, pathwayId: ids.path, programId: ids.program, activityId: activity.id, entityReference: key, reason: "gate journey", idempotencyKey: id(key), references });
+    const eventsBeforeWrongDiagnostic = (await db.select().from(learningTransitionEventsTable)).length;
+    const linksBeforeWrongDiagnostic = (await db.select().from(learningRecordLinksTable)).length;
+    const wrongModuleDiagnostic = await request("/learning/transitions", "learner", transition("NOT_STARTED", "IN_PROGRESS", "wrong-module-diagnostic", {
+      diagnosticProfileId: diagnosticProfile.id,
+      diagnosticGapId: secondDiagnosticGap.id,
+      diagnosticRecommendationId: secondDiagnosticRecommendation.id,
+    }));
+    assert.equal(wrongModuleDiagnostic.status, 409, "module-two diagnostic chain must be rejected for module-one learning");
+    assert.equal((await db.select().from(learningTransitionEventsTable)).length, eventsBeforeWrongDiagnostic, "wrong-module diagnostic request must not append a transition");
+    assert.equal((await db.select().from(learningRecordLinksTable)).length, linksBeforeWrongDiagnostic, "wrong-module diagnostic request must not append a causal link");
     await expect("/learning/transitions", "learner", transition("NOT_STARTED", "IN_PROGRESS", "learn"), 201);
     await expect("/learning/transitions", "learner", transition("IN_PROGRESS", "LEARNING_COMPLETED", "complete"), 201);
     await expect("/learning/transitions", "trainer", transition("LEARNING_COMPLETED", "OUTCOME_VERIFIED", "verify", { outcomeId: outcome.id }), 201);
@@ -215,15 +301,92 @@ async function main() {
     const passedAssessment = (await db.select().from(assessmentAttemptsTable)).filter(row => row.assessmentId === ids.assessment).at(-1)!;
     assert.equal((await request(`/remediation/${planId}/complete`, "learner", {})).status, 200, "plan closes only after causal reassessment");
     await expect("/learning/transitions", "assessor", transition("REASSESSMENT", "READY", "ready", { reassessmentAttemptId: passedAssessment.id }), 201);
-    const readinessResponse = await request("/readiness", "learner"); assert.equal(readinessResponse.status, 200); assert.equal((await readinessResponse.json() as any).status, "Ready for Official Assessment");
+    const directPassportResponse = await request("/passport", "learner");
+    assert.equal(directPassportResponse.status, 200, await directPassportResponse.clone().text());
+    const directPassport = await directPassportResponse.json() as any;
+    const readinessPayload = directPassport.readiness;
+    assert.equal(readinessPayload.status, "Ready for Official Assessment");
+    const matchingReadinessEvents = (await db.select().from(readinessEventsTable))
+      .filter(row => row.enrollmentId === ids.enrollment &&
+        row.pathwayId === ids.path &&
+        row.evaluatedAt.toISOString() === readinessPayload.evaluatedAt);
+    assert.equal(matchingReadinessEvents.length, 1, "passport readiness payload must identify exactly one persisted decision");
+    const persistedReadiness = matchingReadinessEvents[0];
+    assert(persistedReadiness, "readiness evaluation must be persisted");
+    const gateSnapshot = persistedReadiness.inputEvidence.gates?.find(gate => gate.gateId === persistedReadiness.gateId);
+    assert(gateSnapshot, "active gate must retain its causal identity snapshot");
+    assert(gateSnapshot.criterionIds.length > 0, "gate snapshot must identify criteria");
+    assert(gateSnapshot.assessmentAttemptIds.includes(passedAssessment.id), "gate snapshot must identify the competent reassessment");
+    assert(gateSnapshot.evidenceIds.includes(reEvidence.id), "gate snapshot must identify reassessment evidence");
+    assert(gateSnapshot.evidenceReviewIds.includes(reassessmentReferences.evidenceReviewId), "gate snapshot must identify evidence review");
+    assert(gateSnapshot.remediationPlanIds.includes(planId), "gate snapshot must identify remediation");
+    assert(gateSnapshot.reassessmentAttemptIds.includes(passedAssessment.id), "gate snapshot must classify reassessment identity");
+    assert(gateSnapshot.diagnosticProfileIds?.includes(diagnosticProfile.id), "gate snapshot must retain the originating diagnostic profile");
+    assert(gateSnapshot.diagnosticGapIds?.includes(diagnosticGap.id), "gate snapshot must retain the originating diagnostic gap");
+    assert(gateSnapshot.diagnosticRecommendationIds?.includes(diagnosticRecommendation.id), "gate snapshot must retain the originating diagnostic recommendation");
+    const directPassportReadiness = directPassport.timeline.find((step: any) => step.causalReferences?.readinessEventIds?.includes(persistedReadiness.id));
+    assert(directPassportReadiness, "first passport request after READY must include its newly persisted readiness event");
+    assert(directPassportReadiness.causalReferences.diagnosticProfileIds.includes(diagnosticProfile.id), "direct passport readiness must retain the diagnostic profile");
+    assert(directPassportReadiness.causalReferences.diagnosticGapIds.includes(diagnosticGap.id), "direct passport readiness must retain the diagnostic gap");
+    assert(directPassportReadiness.causalReferences.diagnosticRecommendationIds.includes(diagnosticRecommendation.id), "direct passport readiness must retain the diagnostic recommendation");
     assert.equal((await db.select().from(reassessmentLinksTable)).filter(row => row.reassessmentAttemptId === reassessmentAttempt.id && row.previousAssessmentAttemptId === failedAssessment.id && row.evidenceId === reEvidence.id).length, 1, "reassessment causal link retained");
     assert.equal((await db.select().from(reassessmentLinksTable)).filter(row => row.reassessmentAttemptId === passedAssessment.id && row.previousAssessmentAttemptId === reassessmentAttempt.id && row.remediationPlanId === planId).length, 1, "competent reassessment is causally linked");
     assert.equal((await db.select().from(readinessTransferEventsTable)).filter(row => row.learnerId === ids.learner && row.enrollmentId === ids.enrollment && row.reassessmentReferences.includes(passedAssessment.id) && row.evidenceReferences.includes(reEvidence.id) && row.practiceReferences.includes(rePractice.id)).length, 1, "ready transfer is append-only and scoped");
-    const passportResponse = await request("/passport", "learner");
-    assert.equal(passportResponse.status, 200, await passportResponse.text());
-    const passport = await (await request("/passport", "learner")).json() as any;
+    const postProgressionPlan = await (await request("/learner/learning-plan", "learner")).json() as any[];
+    const untouchedSecondPlan = postProgressionPlan.find(item => item.module.id === secondModule);
+    assert(untouchedSecondPlan, "unfinished second module must remain in the learning plan");
+    const secondReferences = untouchedSecondPlan.causalReferences;
+    for (const [referenceName, primaryModuleIds] of Object.entries({
+      learningRecordLinkIds: (await db.select().from(learningRecordLinksTable)).map(link => link.id),
+      practiceAttemptIds: [rePractice.id],
+      evidenceIds: [reEvidence.id],
+      gapIds: [gapId],
+      remediationPlanIds: [planId],
+      reassessmentAttemptIds: [passedAssessment.id],
+    })) {
+      assert(primaryModuleIds.every(primaryId => !secondReferences[referenceName].includes(primaryId)), `second module must not inherit module-one ${referenceName}`);
+    }
+    const journeyResponse = await request("/learner/journey", "learner");
+    assert.equal(journeyResponse.status, 200, await journeyResponse.clone().text());
+    const journey = await journeyResponse.json() as any[];
+    const assertDiagnosticChain = (step: any, stage: string) => {
+      assert(step, `${stage} must exist in the persisted timeline`);
+      assert(step.causalReferences?.diagnosticProfileIds?.includes(diagnosticProfile.id), `${stage} must retain the originating diagnostic profile`);
+      assert(step.causalReferences?.diagnosticGapIds?.includes(diagnosticGap.id), `${stage} must retain the originating diagnostic gap`);
+      assert(step.causalReferences?.diagnosticRecommendationIds?.includes(diagnosticRecommendation.id), `${stage} must retain the originating diagnostic recommendation`);
+    };
+    const diagnosticStep = journey.find(step => step.causalReferences?.diagnosticProfileIds?.includes(diagnosticProfile.id));
+    assert(diagnosticStep?.causalReferences?.diagnosticGapIds?.includes(diagnosticGap.id), "timeline diagnostic event must identify the persisted core gap");
+    assert(diagnosticStep?.causalReferences?.diagnosticRecommendationIds?.includes(diagnosticRecommendation.id), "timeline diagnostic event must identify the persisted recommendation");
+    assertDiagnosticChain(journey.find(step => step.label === "Learning: IN_PROGRESS"), "learning");
+    assertDiagnosticChain(journey.find(step => step.causalReferences?.practiceAttemptIds?.includes(rePractice.id)), "practice");
+    assertDiagnosticChain(journey.find(step => step.id === `evidence-${reEvidence.id}`), "evidence");
+    assertDiagnosticChain(journey.find(step => step.causalReferences?.evidenceReviewIds?.includes(reassessmentReferences.evidenceReviewId)), "evidence review");
+    assertDiagnosticChain(journey.find(step => step.causalReferences?.remediationPlanIds?.includes(planId) && step.causalReferences?.remediationEventIds?.length), "remediation");
+    assertDiagnosticChain(journey.find(step => step.causalReferences?.assessmentAttemptIds?.includes(failedAssessment.id)), "assessment");
+    const reassessmentStep = journey.find(step => step.causalReferences?.reassessmentAttemptIds?.includes(passedAssessment.id));
+    assert.equal(reassessmentStep?.label, "Reassessment attempt", "timeline must derive reassessment from the persisted causal link");
+    assertDiagnosticChain(reassessmentStep, "reassessment");
+    const readinessStep = journey.find(step => step.causalReferences?.readinessEventIds?.includes(persistedReadiness.id));
+    assertDiagnosticChain(readinessStep, "readiness");
+    const passport = directPassport;
     assert.match(passport.readinessDisclaimer, /not an official competency decision or certification claim/i);
     assert.equal(passport.achievements[0].capability, "Safe gate practice");
+    assert.equal(passport.terminalPortfolio, "Certification Readiness Portfolio");
+    assert(passport.timeline.some((step: any) => step.id === reassessmentStep.id), "passport must reuse the persisted capability timeline");
+    const passportStages: Array<[string, (step: any) => boolean]> = [
+      ["learning", step => step.label === "Learning: IN_PROGRESS"],
+      ["practice", step => step.causalReferences?.practiceAttemptIds?.includes(rePractice.id)],
+      ["evidence", step => step.id === `evidence-${reEvidence.id}`],
+      ["evidence review", step => step.causalReferences?.evidenceReviewIds?.includes(reassessmentReferences.evidenceReviewId)],
+      ["remediation", step => step.causalReferences?.remediationPlanIds?.includes(planId) && step.causalReferences?.remediationEventIds?.length],
+      ["assessment", step => step.causalReferences?.assessmentAttemptIds?.includes(failedAssessment.id)],
+      ["reassessment", step => step.causalReferences?.reassessmentAttemptIds?.includes(passedAssessment.id)],
+      ["readiness", step => step.causalReferences?.readinessEventIds?.includes(persistedReadiness.id)],
+    ];
+    for (const [stage, matches] of passportStages) {
+      assertDiagnosticChain(passport.timeline.find(matches), `passport ${stage}`);
+    }
     process.stdout.write(`Certification preparation shared-state journey passed (${run})\n`);
   } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 }

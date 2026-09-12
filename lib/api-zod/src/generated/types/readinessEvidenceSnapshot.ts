@@ -7,9 +7,11 @@
  */
 import type { ReadinessEvidenceSnapshotAssessmentsItem } from './readinessEvidenceSnapshotAssessmentsItem';
 import type { ReadinessEvidenceSnapshotEvidenceItem } from './readinessEvidenceSnapshotEvidenceItem';
+import type { ReadinessEvidenceSnapshotGatesItem } from './readinessEvidenceSnapshotGatesItem';
 
 export interface ReadinessEvidenceSnapshot {
   assessments: ReadinessEvidenceSnapshotAssessmentsItem[];
   evidence: ReadinessEvidenceSnapshotEvidenceItem[];
   openCriticalGaps: string[];
+  gates?: ReadinessEvidenceSnapshotGatesItem[];
 }

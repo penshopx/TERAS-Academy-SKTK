@@ -20,4 +20,7 @@ export interface AssessmentSummary {
   score: number;
   attemptCount: number;
   criticalFailure: boolean;
+  /** @nullable */
+  latestAttemptId?: string | null;
+  criterionIds?: string[];
 }

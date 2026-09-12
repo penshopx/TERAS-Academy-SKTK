@@ -9,7 +9,10 @@ import {
   enrollmentsTable, peopleTable, programsTable, pathwaysTable, competencyFrameworksTable,
   competencyUnitsTable, pathwayCompetencyUnitsTable, diagnosticTemplatesTable,
   diagnosticQuestionsTable,
-  modulesTable, practiceTasksTable, readinessEventsTable, readinessGatesTable,
+  assessmentsTable, baselineModulesTable, evidenceRequirementsTable, learningBaselinesTable,
+  modulesTable, pathwayBaselineModulesTable, pathwayModuleContractsTable, practiceTasksTable,
+  competencyUnitPracticeTasksTable,
+  readinessEventsTable, readinessGatesTable,
   personRolesTable,
 } from "@workspace/db";
 import { createIntegrationTestApp } from "./integration-test-app";
@@ -57,8 +60,14 @@ async function run() {
   delete process.env.TERAS_ENABLE_DEMO_ACCESS;
   const migration = await readFile(new URL("../../../lib/db/migrations/0017_diagnostic.sql", import.meta.url), "utf8");
   await pool.query(migration);
+  const sharedBaselineMigration = await readFile(new URL("../../../lib/db/migrations/0034_solar_pv_shared_learning_baseline.sql", import.meta.url), "utf8");
+  await pool.query(sharedBaselineMigration);
+  const provenanceMigration = await readFile(new URL("../../../lib/db/migrations/0035_diagnostic_provenance.sql", import.meta.url), "utf8");
+  await pool.query(provenanceMigration);
   const followUpMigration = await readFile(new URL("../../../lib/db/migrations/0019_diagnostic_recommendation_follow_ups.sql", import.meta.url), "utf8");
   await pool.query(followUpMigration);
+  const followUpIdempotencyMigration = await readFile(new URL("../../../lib/db/migrations/0026_diagnostic_follow_up_idempotency.sql", import.meta.url), "utf8");
+  await pool.query(followUpIdempotencyMigration);
   const singleActiveSessionMigration = await readFile(new URL("../../../lib/db/migrations/0020_diagnostic_single_active_session.sql", import.meta.url), "utf8");
   const profileOwnershipMigration = await readFile(new URL("../../../lib/db/migrations/0021_diagnostic_profile_session_learner.sql", import.meta.url), "utf8");
   await pool.query(profileOwnershipMigration);
@@ -84,12 +93,69 @@ async function run() {
     programId: "solar-pv-tech",
     pathwayId: "path-a",
     sequence: 1,
-    code: "DIAG",
+    code: "M01",
     name: "Diagnostic fixture module",
     capability: "Diagnostic fixture capability",
     evidence: "Diagnostic fixture evidence",
     learningOutcomes: ["Complete the diagnostic fixture"],
     theory: ["Diagnostic fixture theory"],
+    createdBy: "diagnostic-test",
+  });
+  const fixtureBaselineId = `diagnostic-baseline-${suffix}`;
+  const fixtureBaselineModuleId = `diagnostic-baseline-module-${suffix}`;
+  await db.insert(learningBaselinesTable).values({
+    id: fixtureBaselineId,
+    code: `DIAGNOSTIC-${suffix}`,
+    name: "Diagnostic fixture baseline",
+    description: "Shared baseline used by the diagnostic integration test",
+    createdBy: "diagnostic-test",
+  });
+  await db.insert(baselineModulesTable).values({
+    id: fixtureBaselineModuleId,
+    baselineId: fixtureBaselineId,
+    moduleId: "diagnostic-module",
+    sequence: 1,
+    code: "M01",
+    name: "Diagnostic fixture module",
+    learningOutcome: "Complete the diagnostic fixture",
+    evidenceId: "E01",
+    createdBy: "diagnostic-test",
+  });
+  await db.insert(pathwayBaselineModulesTable).values({
+    id: `diagnostic-path-a-baseline-module-${suffix}`,
+    pathwayId: "path-a",
+    baselineModuleId: fixtureBaselineModuleId,
+    sequence: 1,
+    createdBy: "diagnostic-test",
+  });
+  await db.insert(assessmentsTable).values({
+    id: "diagnostic-assessment",
+    moduleId: "diagnostic-module",
+    name: "Diagnostic fixture assessment",
+    gateCode: "G1",
+    createdBy: "diagnostic-test",
+  });
+  await db.insert(evidenceRequirementsTable).values({
+    id: "diagnostic-evidence-requirement",
+    moduleId: "diagnostic-module",
+    code: "DIAG-EVIDENCE",
+    name: "Diagnostic fixture evidence",
+    description: "Evidence used by the diagnostic readiness fixture",
+    allowedTypes: ["document"],
+    createdBy: "diagnostic-test",
+  });
+  await db.insert(pathwayModuleContractsTable).values({
+    id: `diagnostic-path-a-module-contract-${suffix}`,
+    pathwayId: "path-a",
+    moduleId: "diagnostic-module",
+    assessmentId: "diagnostic-assessment",
+    evidenceRequirementId: "diagnostic-evidence-requirement",
+    gateCode: "G1",
+    assessment: "Diagnostic fixture assessment",
+    evidence: "Diagnostic fixture evidence",
+    output: "Diagnostic fixture output",
+    kpi: "Diagnostic fixture KPI",
+    portfolio: "Capability Portfolio",
     createdBy: "diagnostic-test",
   });
   await db.insert(practiceTasksTable).values({
@@ -112,6 +178,11 @@ async function run() {
     { id: "skttk-map-path-a-safe", pathwayId: "path-a", unitId: "skttk-u-safe-isolation", sequence: 1, createdBy: "diagnostic-test" },
     { id: "skttk-map-path-a-install", pathwayId: "path-a", unitId: "skttk-u-installation", sequence: 2, createdBy: "diagnostic-test" },
     { id: "skttk-map-path-a-design", pathwayId: "path-a", unitId: "skttk-u-design", sequence: 3, createdBy: "diagnostic-test" },
+  ]).onConflictDoNothing();
+  await db.insert(competencyUnitPracticeTasksTable).values([
+    { id: "diagnostic-unit-practice-safe", unitId: "skttk-u-safe-isolation", taskId: "diagnostic-practice-task", createdBy: "diagnostic-test" },
+    { id: "diagnostic-unit-practice-install", unitId: "skttk-u-installation", taskId: "diagnostic-practice-task", createdBy: "diagnostic-test" },
+    { id: "diagnostic-unit-practice-design", unitId: "skttk-u-design", taskId: "diagnostic-practice-task", createdBy: "diagnostic-test" },
   ]).onConflictDoNothing();
   await db.insert(diagnosticTemplatesTable).values({ id: "diag-skttk-spv-v1", frameworkId: "framework-skttk-solar-pv", pathwayId: "path-a", version: "1.0", name: "Diagnostic", description: "Fixture", status: "active", dimensions: ["Safety"], createdBy: "diagnostic-test" }).onConflictDoNothing();
   await db.insert(diagnosticQuestionsTable).values([
@@ -230,6 +301,12 @@ async function run() {
       frameworkId: "framework-skttk-solar-pv",
       frameworkVersion: "1.0",
       currentState: "OWNERSHIP_CONSTRAINT_TEST",
+      provenance: {
+        sessionId: sessionB.id,
+        responseIds: [`ownership-response-${suffix}`],
+        questionIds: [`ownership-question-${suffix}`],
+        optionIds: [`ownership-option-${suffix}`],
+      },
       createdBy: learnerB,
     };
     await db.insert(diagnosticProfilesTable).values(ownershipProfile);
@@ -332,9 +409,12 @@ async function run() {
     assert(completed1.id === completed2.id && completed1.safetyOverride === true, "concurrent completion was not idempotent");
     assert(completed1.pathwayId === "path-a" && Object.values(completed1.dimensionSummaries).some((score: any) => score > 0 && score <= 100), "profile dimensions were not normalized from answered options");
     assert(completed1.items.every((item: any) => Number.isInteger(item.score) && item.score >= 0 && item.score <= 100), "profile item scores were not normalized to 0-100");
+    assert(completed1.provenance.sessionId === sessionA.id && completed1.provenance.responseIds.length === completeBody.responses.length, "profile provenance did not retain every diagnostic response");
+    assert(completed1.items.every((item: any) => item.provenance.sessionId === sessionA.id && item.provenance.responseIds.length > 0), "capability items were created without response provenance");
     const profile = await request<any>("/competency-profile", {}, 200, "a");
     const map = await request<any>("/readiness-map", {}, 200, "a");
     assert(profile.id === completed1.id && map.profile.id === profile.id, "profile/readiness-map output failed validation");
+    assert(map.profile.gaps.every((gap: any) => gap.provenance.sessionId === sessionA.id && gap.provenance.questionIds.length > 0 && gap.provenance.optionIds.length > 0), "core gaps were created without exact question and option provenance");
     assert(map.profile.gaps.filter((g: any) => g.severity === "CRITICAL").every((g: any) => g.competencyUnitId === "skttk-u-safe-isolation"), "safety remediation was not scoped to the linked unit");
     assert(map.profile.recommendations.filter((r: any) => r.priority === "URGENT").every((r: any) => r.competencyUnitId === "skttk-u-safe-isolation"), "highest-priority safety remediation leaked to another unit");
     assert(map.profile.recommendations.some((r: any) => r.competencyUnitId === "skttk-u-installation" && r.priority === "HIGH"), "low practice/evidence did not produce mapped recommendations");
@@ -408,8 +488,8 @@ async function run() {
     ]);
     assert(dashboardA.learner.id === learnerA && dashboardA.diagnostic.status === "completed", "learner A dashboard did not use learner A diagnostic");
     assert(dashboardB.learner.id === learnerB && dashboardB.diagnostic.status === "in_progress", "learner B dashboard did not use learner B diagnostic");
-    assert(journeyA.find(step => step.id === "journey-diagnostic")?.status === "Complete", "learner A journey did not use learner A result");
-    assert(journeyB.find(step => step.id === "journey-diagnostic")?.status === "Active", "learner B journey leaked learner A completion");
+    assert(journeyA.find(step => step.id === `diagnostic-${sessionA.id}`)?.status === "Complete", "learner A journey did not project its persisted diagnostic completion");
+    assert(!journeyB.some(step => step.id === `diagnostic-${sessionA.id}` || step.label === "Diagnostic completed"), "learner B journey leaked learner A diagnostic event");
     for (const path of ["/diagnostic", "/diagnostic/sessions", "/competency-profile", "/readiness-map", "/learner/dashboard", "/learner/journey"]) {
       await request(path, path === "/diagnostic/sessions" ? { method: "POST", body: "{}" } : {}, 401);
     }

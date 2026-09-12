@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CapabilityAchievement } from './capabilityAchievement';
+import type { CapabilityPassportTerminalPortfolio } from './capabilityPassportTerminalPortfolio';
 import type { JourneyStep } from './journeyStep';
 import type { LearnerProfile } from './learnerProfile';
 import type { PathwaySummary } from './pathwaySummary';
@@ -16,6 +17,7 @@ export interface CapabilityPassport {
   pathway: PathwaySummary;
   headline: string;
   subtitle: string;
+  terminalPortfolio: CapabilityPassportTerminalPortfolio;
   /** Internal readiness-preparation information only; it is not an official competency or certification decision. */
   readinessDisclaimer: string;
   readiness: ReadinessSummary;

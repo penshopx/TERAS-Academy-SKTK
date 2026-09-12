@@ -49,6 +49,9 @@ export default function Passport() {
                   <span className="text-border">•</span>
                   <span className="text-foreground/70">CURRENT CONTEXT: {passport.pathway.name}</span>
                 </div>
+                <div className="inline-flex items-center rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-bold uppercase tracking-wider text-primary" data-testid="terminal-portfolio">
+                  Terminal portfolio: {passport.terminalPortfolio}
+                </div>
               </div>
               
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pt-6 border-t border-border/50">

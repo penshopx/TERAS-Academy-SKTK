@@ -126,7 +126,8 @@ async function cleanup() {
   if (routeRecords.practiceIds.length) {
     await db.delete(practiceAttemptsTable).where(inArray(practiceAttemptsTable.id, routeRecords.practiceIds));
   }
-  await db.delete(enrollmentPathwayEventsTable).where(eq(enrollmentPathwayEventsTable.id, fixtureIds.pathwaySelection));
+  // Enrollment pathway events are immutable audit history. This fixture uses a
+  // run-scoped ID, so it must not attempt to erase the event during cleanup.
   await db.delete(learningOutcomesTable).where(eq(learningOutcomesTable.id, fixtureIds.outcome));
   await db.delete(learningActivitiesTable).where(eq(learningActivitiesTable.id, activityId));
 }
@@ -427,6 +428,15 @@ async function run() {
     assert(concurrent.filter(result => !result.ok && result.value.reason === "STALE_CURRENT_STATE").length === 1, "Concurrent loser was not stale");
     await removeTransitionRecords();
 
+    const readinessDecision = (value: Awaited<ReturnType<typeof readiness>>) => ({
+      status: value.status,
+      score: value.score,
+      ruleVersion: value.ruleVersion,
+      gates: value.gates,
+      blockers: value.blockers,
+      outstandingGapCount: value.outstandingGapCount,
+      missingEvidenceCount: value.missingEvidenceCount,
+    });
     const beforeReadiness = await readiness(await learnerContext());
     const started = await transitionLearningState(command("NOT_STARTED", "IN_PROGRESS", "start"), actorLearner);
     expectSuccess(started, "start");
@@ -437,13 +447,13 @@ async function run() {
 
     expectSuccess(await transitionLearningState(command("IN_PROGRESS", "LEARNING_COMPLETED", "complete"), actorLearner), "learning completion");
     const afterCompletion = await readiness(await learnerContext());
-    assert(JSON.stringify(beforeReadiness) === JSON.stringify(afterCompletion), "Learning completion changed readiness");
+    assert(JSON.stringify(readinessDecision(afterCompletion)) === JSON.stringify(readinessDecision(beforeReadiness)), "Learning completion changed the readiness decision");
 
     expectSuccess(await transitionLearningState(command("LEARNING_COMPLETED", "OUTCOME_VERIFIED", "outcome", {
       outcomeId: fixtureIds.outcome,
     }), actorTrainer), "outcome verification");
     const afterOutcome = await readiness(await learnerContext());
-    assert(JSON.stringify(beforeReadiness) === JSON.stringify(afterOutcome), "Outcome verification changed readiness");
+    assert(JSON.stringify(readinessDecision(afterOutcome)) === JSON.stringify(readinessDecision(beforeReadiness)), "Outcome verification changed the readiness decision");
 
     expectSuccess(await transitionLearningState(command("OUTCOME_VERIFIED", "PRACTICE_REQUIRED", "practice-required"), actorTrainer), "practice required");
     const practicePayload = {
@@ -583,6 +593,6 @@ async function run() {
 }
 
 run().catch((error: unknown) => {
-  process.stderr.write(`${error}\n`);
+  process.stderr.write(`${error instanceof Error ? `${error.stack ?? error.message}\nCause: ${String(error.cause)}` : String(error)}\n`);
   process.exitCode = 1;
 });

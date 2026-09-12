@@ -5,6 +5,7 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { CausalReferences } from './causalReferences';
 import type { RemediationActivity } from './remediationActivity';
 
 export interface RemediationPlan {
@@ -16,4 +17,5 @@ export interface RemediationPlan {
   /** @nullable */
   dueLabel: string | null;
   activities: RemediationActivity[];
+  causalReferences?: CausalReferences;
 }

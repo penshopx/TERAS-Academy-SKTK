@@ -8,6 +8,7 @@ import {
   competencyFrameworksTable, competencyUnitsTable, competencyUnitOutcomesTable,
   competencyUnitPracticeTasksTable, competencyUnitEvidenceRequirementsTable,
   competencyUnitSimulationsTable, competencyUnitSafetyRulesTable, pathwayCompetencyUnitsTable,
+  practiceTasksTable, evidenceRequirementsTable, readinessGatesTable, pathwayModuleContractsTable,
 } from "@workspace/db";
 import { GetDiagnosticResponse, StartDiagnosticSessionResponse, SaveDiagnosticResponsesBody, SaveDiagnosticResponsesResponse, CompleteDiagnosticSessionParams, CompleteDiagnosticSessionResponse, GetCompetencyProfileResponse, GetReadinessMapResponse } from "@workspace/api-zod";
 import { authorizeLearner } from "../lib/authorization";
@@ -101,7 +102,7 @@ async function profileForAtomic(learnerId: string, session: typeof diagnosticSes
       return { profile: existing, gaps, recommendations };
     }
     const [framework] = await tx.select().from(competencyFrameworksTable).where(eq(competencyFrameworksTable.id, session.frameworkId));
-    const [mappings, units, questions, responses, options, outcomes, practiceMappings, evidenceMappings, simulations, safetyRules] = await Promise.all([
+    const [mappings, units, questions, responses, options, outcomes, practiceMappings, evidenceMappings, simulations, safetyRules, practiceTasks, evidenceRequirements, readinessGates, pathwayContracts] = await Promise.all([
       tx.select().from(pathwayCompetencyUnitsTable).where(eq(pathwayCompetencyUnitsTable.pathwayId, session.pathwayId)),
       tx.select().from(competencyUnitsTable).where(eq(competencyUnitsTable.frameworkId, session.frameworkId)),
       tx.select().from(diagnosticQuestionsTable).where(eq(diagnosticQuestionsTable.templateId, session.templateId)),
@@ -112,10 +113,33 @@ async function profileForAtomic(learnerId: string, session: typeof diagnosticSes
       tx.select().from(competencyUnitEvidenceRequirementsTable),
       tx.select().from(competencyUnitSimulationsTable),
       tx.select().from(competencyUnitSafetyRulesTable),
+      tx.select().from(practiceTasksTable),
+      tx.select().from(evidenceRequirementsTable),
+      tx.select().from(readinessGatesTable).where(and(eq(readinessGatesTable.pathwayId, session.pathwayId), eq(readinessGatesTable.active, true))),
+      tx.select().from(pathwayModuleContractsTable).where(eq(pathwayModuleContractsTable.pathwayId, session.pathwayId)),
     ]);
     const optionById = new Map(options.map(o => [o.id, o]));
     const questionById = new Map(questions.map(q => [q.id, q]));
     const unitById = new Map(units.map(u => [u.id, u]));
+    const provenanceFor = (unitId?: string) => {
+      const relevant = responses.filter(response => {
+        const question = questionById.get(response.questionId);
+        return !unitId || question?.competencyUnitId === unitId;
+      });
+      return {
+        sessionId: session.id,
+        responseIds: relevant.map(response => response.id),
+        questionIds: relevant.map(response => response.questionId),
+        optionIds: relevant.map(response => response.optionId),
+      };
+    };
+    const requiredProvenanceFor = (unitId?: string) => {
+      const provenance = provenanceFor(unitId);
+      if (!provenance.responseIds.length || !provenance.questionIds.length || !provenance.optionIds.length) {
+        throw new Error(`Diagnostic projection is missing response provenance${unitId ? ` for competency unit ${unitId}` : ""}`);
+      }
+      return provenance;
+    };
     const scores = new Map<string, number[]>();
     const dimensions = new Map<string, number[]>();
     const unitDimensions = new Map<string, Map<string, number[]>>();
@@ -144,7 +168,7 @@ async function profileForAtomic(learnerId: string, session: typeof diagnosticSes
       id: id("competency-profile"), sessionId: session.id, learnerId, pathwayId: session.pathwayId,
       frameworkId: session.frameworkId, frameworkVersion: framework?.version ?? "unknown",
       currentState: critical ? "SAFETY_BLOCKED" : "DIAGNOSTIC_CURRENT_POSITION",
-      safetyOverride: critical, dimensionSummaries, createdBy: learnerId,
+      safetyOverride: critical, dimensionSummaries, provenance: requiredProvenanceFor(), createdBy: learnerId,
     }).returning();
     if (!profile) throw new Error("Failed to create profile");
     const gaps: Array<Record<string, unknown>> = [];
@@ -158,17 +182,23 @@ async function profileForAtomic(learnerId: string, session: typeof diagnosticSes
       await tx.insert(diagnosticProfileItemsTable).values({
         id: id("profile-item"), profileId: profile.id, competencyUnitId: mapping.unitId,
         frameworkId: session.frameworkId, unitCode: unit?.code ?? "", unitTitle: unit?.title ?? "",
-        state, score, evidenceLevel: "diagnostic_only", createdBy: learnerId,
+        state, score, evidenceLevel: "diagnostic_only", provenance: requiredProvenanceFor(mapping.unitId), createdBy: learnerId,
       });
       if (score >= 67 && !blocked) continue;
       const diagnosis = blocked ? "Critical safety response requires supervised remediation." : "Diagnostic indicates further learning, practice, and evidence are needed.";
-      const gap = { id: id("diagnostic-gap"), profileId: profile.id, competencyUnitId: mapping.unitId, frameworkId: session.frameworkId, unitCode: unit?.code ?? "", unitTitle: unit?.title ?? "", diagnosis, severity: blocked ? "CRITICAL" : "MODERATE", createdBy: learnerId };
+      const gap = { id: id("diagnostic-gap"), profileId: profile.id, competencyUnitId: mapping.unitId, frameworkId: session.frameworkId, unitCode: unit?.code ?? "", unitTitle: unit?.title ?? "", diagnosis, severity: blocked ? "CRITICAL" : "MODERATE", provenance: requiredProvenanceFor(mapping.unitId), createdBy: learnerId };
       await tx.insert(diagnosticGapsTable).values(gap); gaps.push(gap);
       const outcome = outcomes.find(o => o.unitId === mapping.unitId);
       const practice = practiceMappings.find(p => p.unitId === mapping.unitId);
       const evidence = evidenceMappings.find(e => e.unitId === mapping.unitId);
       const simulation = simulations.find(s => s.unitId === mapping.unitId);
       const safety = safetyRules.find(r => r.unitId === mapping.unitId);
+      const mappedPracticeTask = practice && practiceTasks.find(task => task.id === practice.taskId);
+      const mappedEvidenceRequirement = evidence && evidenceRequirements.find(requirement => requirement.id === evidence.requirementId);
+      const mappedGate = readinessGates.find(gate => gate.competencyUnitId === mapping.unitId);
+      const mappedContract = mappedGate && pathwayContracts.find(contract => contract.gateCode === mappedGate.code);
+      const moduleId = mappedPracticeTask?.moduleId ?? mappedEvidenceRequirement?.moduleId ?? mappedContract?.moduleId;
+      if (!moduleId) throw new Error(`Diagnostic competency unit ${mapping.unitId} has no pathway module mapping`);
       const weakestDimension = weakestDimensionFor(unitDimensions.get(mapping.unitId));
       const kind = blocked
         ? "SAFETY_REMEDIATION"
@@ -192,7 +222,7 @@ async function profileForAtomic(learnerId: string, session: typeof diagnosticSes
       const rationale = blocked
         ? "Respons diagnostik menunjukkan risiko keselamatan kritis pada unit ini. Lakukan remediasi terbimbing; ini bukan asesmen resmi."
         : `Dimensi ${weakestDimension || "kapabilitas"} memerlukan intervensi yang terhubung langsung ke framework sebelum melanjutkan kesiapan internal.`;
-      const recommendation = { id: id("diagnostic-recommendation"), profileId: profile.id, competencyUnitId: mapping.unitId, frameworkId: session.frameworkId, unitCode: unit?.code ?? "", unitTitle: unit?.title ?? "", practiceTaskId: kind === "PRACTICE" ? practice?.taskId : null, evidenceRequirementId: kind === "EVIDENCE" ? evidence?.requirementId : null, simulationId: kind === "INTERNAL_SIMULATION" ? simulation?.id : null, safetyRuleId: blocked ? safety?.id : null, kind, title, rationale, priority: blocked ? "URGENT" : "HIGH", href, createdBy: learnerId };
+      const recommendation = { id: id("diagnostic-recommendation"), profileId: profile.id, competencyUnitId: mapping.unitId, frameworkId: session.frameworkId, unitCode: unit?.code ?? "", unitTitle: unit?.title ?? "", moduleId, practiceTaskId: kind === "PRACTICE" ? practice?.taskId : null, evidenceRequirementId: kind === "EVIDENCE" ? evidence?.requirementId : null, simulationId: kind === "INTERNAL_SIMULATION" ? simulation?.id : null, safetyRuleId: blocked ? safety?.id : null, kind, title, rationale, priority: blocked ? "URGENT" : "HIGH", href, createdBy: learnerId };
       await tx.insert(diagnosticRecommendationsTable).values(recommendation); recommendations.push(recommendation);
     }
     for (const unitId of criticalUnits) await tx.insert(diagnosticSafetyFlagsTable).values({ id: id("safety-flag"), profileId: profile.id, competencyUnitId: unitId, code: "CRITICAL_SAFETY_FAILURE", severity: "CRITICAL", blocking: true, detail: "Diagnostic response indicates unsafe practice.", createdBy: learnerId });
@@ -216,7 +246,7 @@ function weakestDimensionFor(dimensions?: Map<string, number[]>) {
   })[0]?.[0] ?? "";
 }
 
-router.post("/diagnostic/sessions/:sessionId/complete", async (req, res): Promise<void> => { const learnerId = await authorizeLearner(req, res); if (!learnerId) return; const parsed = CompleteDiagnosticSessionParams.safeParse(req.params); if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; } const context = await learnerContext(learnerId); const [session] = await db.select().from(diagnosticSessionsTable).where(and(eq(diagnosticSessionsTable.id, parsed.data.sessionId), eq(diagnosticSessionsTable.learnerId, learnerId), eq(diagnosticSessionsTable.enrollmentId, context.enrollment.id), eq(diagnosticSessionsTable.pathwayId, context.pathway.id))); if (!session) { res.status(404).json({ error: "Diagnostic session not found for the active enrollment and pathway" }); return; } const required = await db.select().from(diagnosticQuestionsTable).where(and(eq(diagnosticQuestionsTable.templateId, session.templateId), eq(diagnosticQuestionsTable.required, true))); const saved = await db.select().from(diagnosticResponsesTable).where(eq(diagnosticResponsesTable.sessionId, session.id)); if (required.some(q => !saved.some(r => r.questionId === q.id))) { res.status(400).json({ error: "REQUIRED_DIAGNOSTIC_ANSWERS_MISSING", message: "Answer every required diagnostic question before completion." }); return; } const result = await profileForAtomic(learnerId, session); const items = await db.select().from(diagnosticProfileItemsTable).where(eq(diagnosticProfileItemsTable.profileId, result.profile.id)); res.json(CompleteDiagnosticSessionResponse.parse({ ...result.profile, items: items.map(({ competencyUnitId, unitCode, unitTitle, state, score, evidenceLevel }) => ({ competencyUnitId, unitCode, unitTitle, state, score, evidenceLevel })), gaps: result.gaps, recommendations: result.recommendations })); });
-router.get("/competency-profile", async (req, res): Promise<void> => { const learnerId = await authorizeLearner(req, res); if (!learnerId) return; const context = await learnerContext(learnerId); const [profile] = await db.select().from(diagnosticProfilesTable).where(and(eq(diagnosticProfilesTable.learnerId, learnerId), eq(diagnosticProfilesTable.pathwayId, context.pathway.id))).orderBy(desc(diagnosticProfilesTable.completedAt)).limit(1); if (!profile) { res.status(404).json({ error: "No completed diagnostic profile" }); return; } const items = await db.select().from(diagnosticProfileItemsTable).where(eq(diagnosticProfileItemsTable.profileId, profile.id)); const gaps = await db.select().from(diagnosticGapsTable).where(eq(diagnosticGapsTable.profileId, profile.id)); const recommendations = await db.select().from(diagnosticRecommendationsTable).where(eq(diagnosticRecommendationsTable.profileId, profile.id)); res.json(GetCompetencyProfileResponse.parse({ ...profile, items: items.map(({ competencyUnitId, unitCode, unitTitle, state, score, evidenceLevel }) => ({ competencyUnitId, unitCode, unitTitle, state, score, evidenceLevel })), gaps, recommendations })); });
-router.get("/readiness-map", async (req, res): Promise<void> => { const learnerId = await authorizeLearner(req, res); if (!learnerId) return; const context = await learnerContext(learnerId); const [profile] = await db.select().from(diagnosticProfilesTable).where(and(eq(diagnosticProfilesTable.learnerId, learnerId), eq(diagnosticProfilesTable.pathwayId, context.pathway.id))).orderBy(desc(diagnosticProfilesTable.completedAt)).limit(1); if (!profile) { res.status(404).json({ error: "No completed diagnostic profile" }); return; } const items = await db.select().from(diagnosticProfileItemsTable).where(eq(diagnosticProfileItemsTable.profileId, profile.id)); const gaps = await db.select().from(diagnosticGapsTable).where(eq(diagnosticGapsTable.profileId, profile.id)); const recommendations = await db.select().from(diagnosticRecommendationsTable).where(eq(diagnosticRecommendationsTable.profileId, profile.id)); res.json(GetReadinessMapResponse.parse({ profile: { ...profile, items: items.map(({ competencyUnitId, unitCode, unitTitle, state, score, evidenceLevel }) => ({ competencyUnitId, unitCode, unitTitle, state, score, evidenceLevel })), gaps, recommendations }, readiness: await readiness(context) })); });
+router.post("/diagnostic/sessions/:sessionId/complete", async (req, res): Promise<void> => { const learnerId = await authorizeLearner(req, res); if (!learnerId) return; const parsed = CompleteDiagnosticSessionParams.safeParse(req.params); if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; } const context = await learnerContext(learnerId); const [session] = await db.select().from(diagnosticSessionsTable).where(and(eq(diagnosticSessionsTable.id, parsed.data.sessionId), eq(diagnosticSessionsTable.learnerId, learnerId), eq(diagnosticSessionsTable.enrollmentId, context.enrollment.id), eq(diagnosticSessionsTable.pathwayId, context.pathway.id))); if (!session) { res.status(404).json({ error: "Diagnostic session not found for the active enrollment and pathway" }); return; } const required = await db.select().from(diagnosticQuestionsTable).where(and(eq(diagnosticQuestionsTable.templateId, session.templateId), eq(diagnosticQuestionsTable.required, true))); const saved = await db.select().from(diagnosticResponsesTable).where(eq(diagnosticResponsesTable.sessionId, session.id)); if (required.some(q => !saved.some(r => r.questionId === q.id))) { res.status(400).json({ error: "REQUIRED_DIAGNOSTIC_ANSWERS_MISSING", message: "Answer every required diagnostic question before completion." }); return; } const result = await profileForAtomic(learnerId, session); const items = await db.select().from(diagnosticProfileItemsTable).where(eq(diagnosticProfileItemsTable.profileId, result.profile.id)); res.json(CompleteDiagnosticSessionResponse.parse({ ...result.profile, items: items.map(({ competencyUnitId, unitCode, unitTitle, state, score, evidenceLevel, provenance }) => ({ competencyUnitId, unitCode, unitTitle, state, score, evidenceLevel, provenance })), gaps: result.gaps, recommendations: result.recommendations })); });
+router.get("/competency-profile", async (req, res): Promise<void> => { const learnerId = await authorizeLearner(req, res); if (!learnerId) return; const context = await learnerContext(learnerId); const [profile] = await db.select().from(diagnosticProfilesTable).where(and(eq(diagnosticProfilesTable.learnerId, learnerId), eq(diagnosticProfilesTable.pathwayId, context.pathway.id))).orderBy(desc(diagnosticProfilesTable.completedAt)).limit(1); if (!profile) { res.status(404).json({ error: "No completed diagnostic profile" }); return; } const items = await db.select().from(diagnosticProfileItemsTable).where(eq(diagnosticProfileItemsTable.profileId, profile.id)); const gaps = await db.select().from(diagnosticGapsTable).where(eq(diagnosticGapsTable.profileId, profile.id)); const recommendations = await db.select().from(diagnosticRecommendationsTable).where(eq(diagnosticRecommendationsTable.profileId, profile.id)); res.json(GetCompetencyProfileResponse.parse({ ...profile, items: items.map(({ competencyUnitId, unitCode, unitTitle, state, score, evidenceLevel, provenance }) => ({ competencyUnitId, unitCode, unitTitle, state, score, evidenceLevel, provenance })), gaps, recommendations })); });
+router.get("/readiness-map", async (req, res): Promise<void> => { const learnerId = await authorizeLearner(req, res); if (!learnerId) return; const context = await learnerContext(learnerId); const [profile] = await db.select().from(diagnosticProfilesTable).where(and(eq(diagnosticProfilesTable.learnerId, learnerId), eq(diagnosticProfilesTable.pathwayId, context.pathway.id))).orderBy(desc(diagnosticProfilesTable.completedAt)).limit(1); if (!profile) { res.status(404).json({ error: "No completed diagnostic profile" }); return; } const items = await db.select().from(diagnosticProfileItemsTable).where(eq(diagnosticProfileItemsTable.profileId, profile.id)); const gaps = await db.select().from(diagnosticGapsTable).where(eq(diagnosticGapsTable.profileId, profile.id)); const recommendations = await db.select().from(diagnosticRecommendationsTable).where(eq(diagnosticRecommendationsTable.profileId, profile.id)); res.json(GetReadinessMapResponse.parse({ profile: { ...profile, items: items.map(({ competencyUnitId, unitCode, unitTitle, state, score, evidenceLevel, provenance }) => ({ competencyUnitId, unitCode, unitTitle, state, score, evidenceLevel, provenance })), gaps, recommendations }, readiness: await readiness(context) })); });
 export default router;

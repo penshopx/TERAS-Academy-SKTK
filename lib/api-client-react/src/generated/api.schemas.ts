@@ -5,6 +5,8 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+export interface CausalReferences {[key: string]: string[]}
+
 export interface DiagnosticSessionInput { [key: string]: unknown }
 
 export interface DiagnosticResponseInput {
@@ -89,6 +91,26 @@ export interface Diagnostic {
   responses?: DiagnosticResponse[];
 }
 
+export interface DiagnosticProvenance {
+  /** @minLength 1 */
+  sessionId: string;
+  /**
+     * @minItems 1
+     * @items.minLength 1
+     */
+  responseIds: string[];
+  /**
+     * @minItems 1
+     * @items.minLength 1
+     */
+  questionIds: string[];
+  /**
+     * @minItems 1
+     * @items.minLength 1
+     */
+  optionIds: string[];
+}
+
 export interface CompetencyProfileItem {
   competencyUnitId: string;
   unitCode: string;
@@ -100,6 +122,7 @@ export interface CompetencyProfileItem {
      */
   score: number;
   evidenceLevel: string;
+  provenance: DiagnosticProvenance | null;
 }
 
 export interface DiagnosticGap {
@@ -109,6 +132,7 @@ export interface DiagnosticGap {
   unitTitle?: string;
   diagnosis: string;
   severity: string;
+  provenance: DiagnosticProvenance | null;
 }
 
 export type DiagnosticRecommendationFollowUpStatus = typeof DiagnosticRecommendationFollowUpStatus[keyof typeof DiagnosticRecommendationFollowUpStatus];
@@ -281,6 +305,7 @@ export interface CompetencyProfile {
   currentState: string;
   safetyOverride: boolean;
   dimensionSummaries: CompetencyProfileDimensionSummaries;
+  provenance: DiagnosticProvenance | null;
   items: CompetencyProfileItem[];
   gaps: DiagnosticGap[];
   recommendations: DiagnosticRecommendation[];
@@ -311,6 +336,14 @@ export interface PathwayLearningContract {
   portfolio: string;
 }
 
+export type PathwaySummaryTerminalPortfolio = typeof PathwaySummaryTerminalPortfolio[keyof typeof PathwaySummaryTerminalPortfolio];
+
+
+export const PathwaySummaryTerminalPortfolio = {
+  Capability_Portfolio: 'Capability Portfolio',
+  Certification_Readiness_Portfolio: 'Certification Readiness Portfolio',
+} as const;
+
 export interface PathwaySummary {
   id: string;
   name: string;
@@ -322,6 +355,7 @@ export interface PathwaySummary {
   gateCount: number;
   gates: ReadinessGateSummary[];
   contract?: PathwayLearningContract;
+  terminalPortfolio: PathwaySummaryTerminalPortfolio;
 }
 
 export type ReadinessSummaryStatus = typeof ReadinessSummaryStatus[keyof typeof ReadinessSummaryStatus];
@@ -338,17 +372,38 @@ export type ReadinessEvidenceSnapshotAssessmentsItem = {
   score: number;
   completed: boolean;
   criticalFailure: boolean;
+  /** @nullable */
+  assessmentAttemptId?: string | null;
+  criterionIds?: string[];
 };
 
 export type ReadinessEvidenceSnapshotEvidenceItem = {
   requirementId: string;
   satisfied: boolean;
+  evidenceIds?: string[];
+  evidenceReviewIds?: string[];
+};
+
+export type ReadinessEvidenceSnapshotGatesItem = {
+  gateId: string;
+  gapIds: string[];
+  criterionIds: string[];
+  assessmentAttemptIds: string[];
+  evidenceIds: string[];
+  evidenceReviewIds: string[];
+  remediationPlanIds: string[];
+  reassessmentAttemptIds: string[];
+  learningRecordLinkIds?: string[];
+  diagnosticProfileIds?: string[];
+  diagnosticGapIds?: string[];
+  diagnosticRecommendationIds?: string[];
 };
 
 export interface ReadinessEvidenceSnapshot {
   assessments: ReadinessEvidenceSnapshotAssessmentsItem[];
   evidence: ReadinessEvidenceSnapshotEvidenceItem[];
   openCriticalGaps: string[];
+  gates?: ReadinessEvidenceSnapshotGatesItem[];
 }
 
 export interface ReadinessContractRequirement {
@@ -936,6 +991,9 @@ export interface LearningResourceProgress {
 }
 
 export interface LearningTransitionReferences {
+  diagnosticProfileId?: string;
+  diagnosticGapId?: string;
+  diagnosticRecommendationId?: string;
   outcomeId?: string;
   practiceAttemptId?: string;
   evidenceId?: string;
@@ -982,6 +1040,7 @@ export interface LearningTransitionResult {
   toState: LearningState;
   idempotent: boolean;
   recordedAt: string;
+  references: LearningTransitionReferences;
 }
 
 export type LearningTransitionReason = typeof LearningTransitionReason[keyof typeof LearningTransitionReason];
@@ -1894,6 +1953,8 @@ export interface LearnerDashboard {
   nextAction: NextAction;
 }
 
+export type JourneyStepCausalReferences = {[key: string]: string[]};
+
 export interface JourneyStep {
   id: string;
   /** @nullable */
@@ -1907,6 +1968,7 @@ export interface JourneyStep {
   date: string | null;
   /** @nullable */
   href: string | null;
+  causalReferences?: JourneyStepCausalReferences;
 }
 
 export interface LearningPlanItem {
@@ -1916,6 +1978,7 @@ export interface LearningPlanItem {
   reason: string;
   estimatedMinutes: number;
   status: string;
+  causalReferences?: CausalReferences;
 }
 
 export interface AssessmentSummary {
@@ -1932,6 +1995,9 @@ export interface AssessmentSummary {
   score: number;
   attemptCount: number;
   criticalFailure: boolean;
+  /** @nullable */
+  latestAttemptId?: string | null;
+  criterionIds?: string[];
 }
 
 export interface EvidenceRequirement {
@@ -1976,6 +2042,7 @@ export interface PracticeAttempt {
   nextAction: LearningNextAction;
   /** @nullable */
   feedback: string | null;
+  causalReferences?: CausalReferences;
 }
 
 export interface EvidenceInput {
@@ -2026,6 +2093,7 @@ export interface EvidenceRecord {
   /** @nullable */
   fileName: string | null;
   quality: EvidenceQuality;
+  causalReferences?: CausalReferences;
 }
 
 export type TrainerEvidenceReviewInputStatus = typeof TrainerEvidenceReviewInputStatus[keyof typeof TrainerEvidenceReviewInputStatus];
@@ -2146,6 +2214,7 @@ export interface RemediationPlan {
   /** @nullable */
   dueLabel: string | null;
   activities: RemediationActivity[];
+  causalReferences?: CausalReferences;
 }
 
 export type AdminReadinessRuleAssessmentMode = typeof AdminReadinessRuleAssessmentMode[keyof typeof AdminReadinessRuleAssessmentMode];
@@ -2395,6 +2464,14 @@ export interface ReadinessRuleInput {
   hardGate: boolean;
 }
 
+export type CapabilityPassportTerminalPortfolio = typeof CapabilityPassportTerminalPortfolio[keyof typeof CapabilityPassportTerminalPortfolio];
+
+
+export const CapabilityPassportTerminalPortfolio = {
+  Capability_Portfolio: 'Capability Portfolio',
+  Certification_Readiness_Portfolio: 'Certification Readiness Portfolio',
+} as const;
+
 export interface CapabilityAchievement {
   id: string;
   capability: string;
@@ -2412,6 +2489,7 @@ export interface CapabilityPassport {
   pathway: PathwaySummary;
   headline: string;
   subtitle: string;
+  terminalPortfolio: CapabilityPassportTerminalPortfolio;
   /** Internal readiness-preparation information only; it is not an official competency or certification decision. */
   readinessDisclaimer: string;
   readiness: ReadinessSummary;

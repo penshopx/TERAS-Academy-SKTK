@@ -9,4 +9,6 @@
 export type ReadinessEvidenceSnapshotEvidenceItem = {
   requirementId: string;
   satisfied: boolean;
+  evidenceIds?: string[];
+  evidenceReviewIds?: string[];
 };

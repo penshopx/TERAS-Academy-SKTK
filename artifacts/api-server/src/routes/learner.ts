@@ -1,9 +1,9 @@
 import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
 import { CompleteRemediationActivityBody, CompleteRemediationActivityParams, CompleteRemediationActivityResponse, CompleteRemediationParams, CompleteRemediationResponse, CreateEvidenceBody, CreateEvidenceResponse, CreatePracticeAttemptBody, CreatePracticeAttemptParams, CreatePracticeAttemptResponse, GetCapabilityPassportResponse, GetLearnerDashboardResponse, GetLearnerJourneyResponse, GetLearnerLearningPlanResponse, GetLearnerReadinessResponse, ListEvidenceResponse, ListGapsResponse, ListRemediationResponse, SelectLearnerPathwayBody, SelectLearnerPathwayResponse } from "@workspace/api-zod";
-import { db, assessmentAttemptsTable, assessmentsTable, enrollmentPathwayEventsTable, evidenceReviewsTable, evidenceTable, learningTransitionEventsTable, modulesTable, pathwaysTable, practiceAttemptsTable, practiceTasksTable, reassessmentLinksTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, diagnosticSessionsTable, diagnosticProfilesTable, diagnosticGapsTable, diagnosticSafetyFlagsTable } from "@workspace/db";
-import { and, desc, eq, sql } from "drizzle-orm";
-import { baselineForModule, catalogue, evidenceRecords, gapRecords, learnerContext, moduleSummary, pathwayHasModule, pathwaySummary, progressByModule, readiness, remediationRecords, selectedBaselineModuleIds } from "../lib/teras";
+import { db, assessmentAttemptsTable, assessmentsTable, enrollmentPathwayEventsTable, evidenceReviewsTable, evidenceTable, learningTransitionEventsTable, learningRecordLinksTable, learningActivitiesTable, lessonsTable, courseModulesTable, modulesTable, pathwaysTable, practiceAttemptsTable, practiceTasksTable, reassessmentLinksTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, diagnosticSessionsTable, diagnosticProfilesTable, diagnosticGapsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, gapsTable, readinessEventsTable } from "@workspace/db";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { baselineForModule, catalogue, evidenceRecords, gapRecords, learnerContext, moduleSummary, pathwayHasModule, pathwaySummary, progressByModule, readiness, remediationRecords, selectedBaselineModuleIds, terminalPortfolioForPathway } from "../lib/teras";
 import { authorizeLearner } from "../lib/authorization";
 import { learningNextAction, transitionLearningState, type LearningState, type LearningTransitionResult } from "../lib/learning-transition";
 const router: IRouter = Router(); const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
@@ -47,7 +47,175 @@ async function currentLearningState(
     .limit(1);
   return (latest?.toState ?? "NOT_STARTED") as LearningState;
 }
-async function pathwayTimeline(learnerId: string) { const context = await learnerContext(learnerId); const [events, pathways] = await Promise.all([db.select().from(enrollmentPathwayEventsTable).where(eq(enrollmentPathwayEventsTable.enrollmentId, context.enrollment.id)).orderBy(enrollmentPathwayEventsTable.sequence), db.select().from(pathwaysTable)]); const map = new Map(pathways.map((pathway) => [pathway.id, pathway])); const original = map.get(context.enrollment.pathwayId) ?? context.pathway; return { context, steps: [{ id: "pathway-enrol", pathwayId: original.id, pathwayName: original.name, label: "Pathway started", description: `Enrolled on ${original.name}.`, status: "Complete", date: new Date("2025-01-06T09:00:00Z"), href: "/programs/solar-pv-tech" }, ...events.map((event) => { const pathway = map.get(event.pathwayId); return { id: `pathway-${event.id}`, pathwayId: event.pathwayId, pathwayName: pathway?.name ?? "Unknown pathway", label: "Pathway selected", description: `Activated ${pathway?.name ?? "capability pathway"}.`, status: "Complete", date: event.createdAt, href: "/programs/solar-pv-tech" }; })] }; }
+async function pathwayTimeline(learnerId: string) {
+  const context = await learnerContext(learnerId);
+  const [pathwayEvents, pathways] = await Promise.all([
+    db.select().from(enrollmentPathwayEventsTable).where(eq(enrollmentPathwayEventsTable.enrollmentId, context.enrollment.id)).orderBy(enrollmentPathwayEventsTable.sequence),
+    db.select().from(pathwaysTable),
+  ]);
+  const pathwayIds = [...new Set([context.enrollment.pathwayId, context.pathway.id, ...pathwayEvents.map(event => event.pathwayId)])];
+  const [diagnosticSessions, diagnosticProfiles, diagnosticGaps, diagnosticRecommendations, transitions, learningLinks, practices, evidence, reviews, assessmentAttempts, reassessmentLinks, remediationEvents, remediationActivities, remediationPlans, gaps, readinessEvents] = await Promise.all([
+    db.select().from(diagnosticSessionsTable).where(and(eq(diagnosticSessionsTable.learnerId, learnerId), inArray(diagnosticSessionsTable.pathwayId, pathwayIds))),
+    db.select().from(diagnosticProfilesTable).where(and(eq(diagnosticProfilesTable.learnerId, learnerId), inArray(diagnosticProfilesTable.pathwayId, pathwayIds))),
+    db.select().from(diagnosticGapsTable),
+    db.select().from(diagnosticRecommendationsTable),
+    db.select().from(learningTransitionEventsTable).where(and(eq(learningTransitionEventsTable.learnerId, learnerId), inArray(learningTransitionEventsTable.pathwayId, pathwayIds))),
+    db.select().from(learningRecordLinksTable).where(and(eq(learningRecordLinksTable.learnerId, learnerId), inArray(learningRecordLinksTable.pathwayId, pathwayIds))),
+    db.select().from(practiceAttemptsTable).where(and(eq(practiceAttemptsTable.learnerId, learnerId), inArray(practiceAttemptsTable.pathwayId, pathwayIds))),
+    db.select().from(evidenceTable).where(and(eq(evidenceTable.learnerId, learnerId), inArray(evidenceTable.pathwayId, pathwayIds))),
+    db.select().from(evidenceReviewsTable),
+    db.select().from(assessmentAttemptsTable).where(and(eq(assessmentAttemptsTable.learnerId, learnerId), inArray(assessmentAttemptsTable.pathwayId, pathwayIds))),
+    db.select().from(reassessmentLinksTable).where(and(eq(reassessmentLinksTable.learnerId, learnerId), inArray(reassessmentLinksTable.pathwayId, pathwayIds))),
+    db.select().from(remediationEventsTable),
+    db.select().from(remediationActivitiesTable),
+    db.select().from(remediationPlansTable),
+    db.select().from(gapsTable).where(and(eq(gapsTable.learnerId, learnerId), inArray(gapsTable.pathwayId, pathwayIds))),
+    db.select().from(readinessEventsTable).where(and(eq(readinessEventsTable.enrollmentId, context.enrollment.id), inArray(readinessEventsTable.pathwayId, pathwayIds))),
+  ]);
+  const map = new Map(pathways.map(pathway => [pathway.id, pathway]));
+  const original = map.get(context.enrollment.pathwayId) ?? context.pathway;
+  type TimelineRecord = { id: string; pathwayId: string; label: string; description: string; status: string; date: Date; href: string | null; refs?: Record<string, string[]> };
+  const records: TimelineRecord[] = [{
+    id: "pathway-enrol",
+    pathwayId: original.id,
+    label: "Pathway enrollment",
+    description: `Enrolled on ${original.name}.`,
+    status: "Complete",
+    date: context.enrollment.createdAt,
+    href: "/programs/solar-pv-tech",
+  }];
+  records.push(...pathwayEvents.map(event => ({
+    id: `pathway-${event.id}`, pathwayId: event.pathwayId, label: "Pathway selected",
+    description: `Activated ${map.get(event.pathwayId)?.name ?? "capability pathway"}.`,
+    status: "Complete", date: event.createdAt, href: "/programs/solar-pv-tech",
+  })));
+  const add = (record: TimelineRecord) => records.push(record);
+  const diagnosticRefsFor = (links: typeof learningLinks) => {
+    const values = (key: "diagnosticProfileId" | "diagnosticGapId" | "diagnosticRecommendationId") =>
+      [...new Set(links.flatMap(link => typeof link.metadata[key] === "string" ? [link.metadata[key] as string] : []))];
+    return {
+      diagnosticProfileIds: values("diagnosticProfileId"),
+      diagnosticGapIds: values("diagnosticGapId"),
+      diagnosticRecommendationIds: values("diagnosticRecommendationId"),
+    };
+  };
+  const diagnosticRefsForTransitions = (events: typeof transitions) => {
+    const values = (key: "diagnosticProfileId" | "diagnosticGapId" | "diagnosticRecommendationId") =>
+      [...new Set(events.flatMap(event => {
+        const references = event.metadata.references;
+        return references && typeof references === "object" && typeof (references as Record<string, unknown>)[key] === "string"
+          ? [(references as Record<string, string>)[key]!]
+          : [];
+      }))];
+    return {
+      diagnosticProfileIds: values("diagnosticProfileId"),
+      diagnosticGapIds: values("diagnosticGapId"),
+      diagnosticRecommendationIds: values("diagnosticRecommendationId"),
+    };
+  };
+  for (const session of diagnosticSessions) {
+    const profile = diagnosticProfiles.find(candidate => candidate.sessionId === session.id);
+    const profileGaps = profile ? diagnosticGaps.filter(candidate => candidate.profileId === profile.id) : [];
+    const profileRecommendations = profile ? diagnosticRecommendations.filter(candidate => candidate.profileId === profile.id) : [];
+    if (session.status === "completed" && session.completedAt) add({
+      id: `diagnostic-${session.id}`, pathwayId: session.pathwayId, label: "Diagnostic completed",
+      description: "Persisted diagnostic responses established the learner capability baseline and core gaps.",
+      status: "Complete", date: session.completedAt, href: "/diagnostic",
+      refs: {
+        diagnosticSessionIds: [session.id],
+        diagnosticProfileIds: profile ? [profile.id] : [],
+        diagnosticGapIds: profileGaps.map(gap => gap.id),
+        diagnosticRecommendationIds: profileRecommendations.map(recommendation => recommendation.id),
+      },
+    });
+  }
+  for (const event of transitions) {
+    const links = learningLinks.filter(link => link.metadata.transitionEventId === event.id);
+    add({
+    id: `learning-${event.id}`, pathwayId: event.pathwayId, label: `Learning: ${event.toState}`,
+    description: event.reason, status: event.toState === "READY" ? "Complete" : "Recorded", date: event.createdAt,
+    href: "/learning", refs: { learningTransitionEventIds: [event.id], ...diagnosticRefsFor(links) },
+  });
+  }
+  for (const attempt of practices) add({
+    id: `practice-${attempt.id}`, pathwayId: attempt.pathwayId, label: "Practice attempt submitted",
+    description: attempt.outputSummary, status: attempt.status, date: attempt.createdAt, href: "/practice",
+      refs: { practiceAttemptIds: [attempt.id], ...diagnosticRefsFor(learningLinks.filter(link => link.practiceAttemptId === attempt.id)) },
+  });
+  for (const item of evidence) {
+    add({ id: `evidence-${item.id}`, pathwayId: item.pathwayId, label: "Evidence submitted",
+      description: item.title, status: "Recorded", date: item.createdAt, href: "/evidence",
+      refs: { evidenceIds: [item.id], ...diagnosticRefsFor(learningLinks.filter(link => link.evidenceId === item.id)) } });
+    for (const review of reviews.filter(candidate => candidate.evidenceId === item.id)) add({
+      id: `evidence-review-${review.id}`, pathwayId: item.pathwayId, label: "Evidence review",
+      description: review.comment ?? `Evidence review recorded as ${review.status}.`, status: review.status,
+      date: review.createdAt, href: "/evidence", refs: {
+        evidenceIds: [item.id],
+        evidenceReviewIds: [review.id],
+        ...diagnosticRefsFor(learningLinks.filter(link => link.evidenceReviewId === review.id || link.evidenceId === item.id)),
+      },
+    });
+  }
+  const reassessmentByAttempt = new Map(reassessmentLinks.map(link => [link.reassessmentAttemptId, link]));
+  for (const attempt of assessmentAttempts) {
+    const reassessment = reassessmentByAttempt.get(attempt.id);
+    add({
+    id: `assessment-${attempt.id}`, pathwayId: attempt.pathwayId, label: reassessment ? "Reassessment attempt" : "Assessment attempt",
+    description: attempt.decision ?? "Assessment attempt recorded.", status: attempt.status, date: attempt.createdAt,
+    href: "/assessments", refs: reassessment
+      ? {
+          assessmentAttemptIds: [attempt.id],
+          reassessmentAttemptIds: [attempt.id],
+          gapIds: [reassessment.originalGapId],
+          remediationPlanIds: [reassessment.remediationPlanId],
+          practiceAttemptIds: [reassessment.practiceAttemptId],
+          evidenceIds: [reassessment.evidenceId],
+          ...diagnosticRefsForTransitions(transitions.filter(event => {
+            const references = event.metadata.references;
+            return references && typeof references === "object" &&
+              (references as Record<string, unknown>).reassessmentAttemptId === attempt.id;
+          })),
+        }
+      : {
+          assessmentAttemptIds: [attempt.id],
+          ...diagnosticRefsForTransitions(transitions.filter(event => {
+            const references = event.metadata.references;
+            return references && typeof references === "object" && (
+              (references as Record<string, unknown>).reassessmentAttemptId === attempt.id ||
+              (references as Record<string, unknown>).previousAssessmentAttemptId === attempt.id
+            );
+          })),
+        },
+  });
+  }
+  for (const event of remediationEvents) {
+    const activity = remediationActivities.find(candidate => candidate.id === event.activityId);
+    const plan = activity && remediationPlans.find(candidate => candidate.id === activity.planId);
+    const gap = plan && gaps.find(candidate => candidate.id === plan.gapId);
+    if (plan && gap) add({
+      id: `remediation-${event.id}`, pathwayId: gap.pathwayId, label: "Remediation",
+      description: `${plan.title}: ${activity?.title ?? "activity"} recorded as ${event.status}.`, status: event.status,
+      date: event.createdAt, href: "/remediation", refs: { gapIds: [gap.id], remediationPlanIds: [plan.id], remediationEventIds: [event.id], ...diagnosticRefsFor(learningLinks.filter(link => link.remediationPlanId === plan.id)) },
+    });
+  }
+  for (const event of readinessEvents) {
+    const gateSnapshot = event.inputEvidence.gates?.find(gate => gate.gateId === event.gateId);
+    add({
+      id: `readiness-${event.id}`, pathwayId: event.pathwayId, label: "Readiness evaluated",
+      description: event.decisionReason, status: event.status, date: event.evaluatedAt, href: "/readiness",
+      refs: {
+        readinessEventIds: [event.id],
+        gateIds: [event.gateId],
+        learningRecordLinkIds: gateSnapshot?.learningRecordLinkIds ?? [],
+        diagnosticProfileIds: gateSnapshot?.diagnosticProfileIds ?? [],
+        diagnosticGapIds: gateSnapshot?.diagnosticGapIds ?? [],
+        diagnosticRecommendationIds: gateSnapshot?.diagnosticRecommendationIds ?? [],
+      },
+    });
+  }
+  records.sort((left, right) => left.date.getTime() - right.date.getTime() || left.id.localeCompare(right.id));
+  return { context, steps: records.map(record => ({ ...record, pathwayName: map.get(record.pathwayId)?.name ?? "Unknown pathway", causalReferences: record.refs ?? {} })) };
+}
 async function diagnosticView(learnerId: string) {
   const context = await learnerContext(learnerId);
   const [session] = await db.select().from(diagnosticSessionsTable)
@@ -180,6 +348,7 @@ router.post("/practice/tasks/:taskId/attempts", async (req, res): Promise<void> 
     outputSummary: row.outputSummary,
     pathwayId: row.pathwayId,
     sourceActivityId: body.data.sourceActivityId,
+     causalReferences: { practiceAttemptIds: [row.id], learningRecordLinkIds: [] },
     nextAction: learningNextAction("PRACTICE_IN_PROGRESS", { activityId: body.data.sourceActivityId, taskId: task.id, practiceAttemptId: row.id }),
     feedback: null,
   }));
@@ -211,12 +380,115 @@ router.post("/remediation/:remediationId/complete", async (req, res): Promise<vo
 router.get("/readiness", async (req, res): Promise<void> => { const learnerId = await authorizeLearner(req, res); if (!learnerId) return; res.json(GetLearnerReadinessResponse.parse(await readiness(await learnerContext(learnerId)))); });
 router.get("/learner/journey", async (req, res): Promise<void> => {
   const learnerId = await authorizeLearner(req, res); if (!learnerId) return;
-  const [timeline, view, diagnostic] = await Promise.all([pathwayTimeline(learnerId), readiness(await learnerContext(learnerId)), diagnosticView(learnerId)]);
-  const result = diagnostic.attempt?.result as { baselineScore?: number; gaps?: string[]; safetyBlockers?: string[] } | null;
-  const diagnosticStep = { id: "journey-diagnostic", pathwayId: timeline.context.pathway.id, pathwayName: timeline.context.pathway.name, label: "Initial diagnostic", description: diagnostic.attempt?.status === "completed" ? `Baseline ${result?.baselineScore ?? 0}/100. ${result?.gaps?.length ?? 0} gap(s) identified.` : "Complete your preparation baseline diagnostic.", status: diagnostic.attempt?.status === "completed" ? "Complete" : "Active", date: diagnostic.attempt?.completedAt ?? null, href: "/diagnostic" };
-  res.json(GetLearnerJourneyResponse.parse([timeline.steps[0], diagnosticStep, ...timeline.steps.slice(1), { id: "journey-current", pathwayId: timeline.context.pathway.id, pathwayName: timeline.context.pathway.name, label: "Current gate", description: view.currentGate.requirement, status: view.status, date: null, href: "/readiness" }]));
+  const timeline = await pathwayTimeline(learnerId);
+  res.json(GetLearnerJourneyResponse.parse(timeline.steps));
 });
-router.get("/learner/learning-plan", async (req, res): Promise<void> => { const learnerId = await authorizeLearner(req, res); if (!learnerId) return; const [context, source] = await Promise.all([learnerContext(learnerId), catalogue()]); const selected = await selectedBaselineModuleIds(context.pathway.id); const progress = await progressByModule(learnerId, context.pathway.id); res.json(GetLearnerLearningPlanResponse.parse(source.modules.filter((module) => selected.has(module.id) && progress(module.id).progress < 100).sort((a, b) => a.sequence - b.sequence).map((module, index) => { const baseline = baselineForModule(module.id, source); const contract = source.pathwayContracts.find(item => item.pathwayId === context.pathway.id && item.moduleId === (baseline?.moduleId ?? module.id)); return { id: `plan-${module.id}`, module: moduleSummary(module, progress(module.id).progress, progress(module.id).status, context.pathway.id, baseline, contract), priority: index === 0 ? "High" : "Normal", reason: "Continue pathway learning.", estimatedMinutes: 90, status: progress(module.id).status }; }))); });
+router.get("/learner/learning-plan", async (req, res): Promise<void> => {
+  const learnerId = await authorizeLearner(req, res); if (!learnerId) return;
+  const [context, source] = await Promise.all([learnerContext(learnerId), catalogue()]);
+  const selected = await selectedBaselineModuleIds(context.pathway.id);
+  const progress = await progressByModule(learnerId, context.pathway.id);
+  const [links, profiles] = await Promise.all([
+    db.select().from(learningRecordLinksTable).where(and(eq(learningRecordLinksTable.learnerId, learnerId), eq(learningRecordLinksTable.pathwayId, context.pathway.id))),
+    db.select().from(diagnosticProfilesTable).where(and(eq(diagnosticProfilesTable.learnerId, learnerId), eq(diagnosticProfilesTable.pathwayId, context.pathway.id))).orderBy(desc(diagnosticProfilesTable.completedAt)).limit(1),
+  ]);
+  const diagnosticProfile = profiles[0];
+  const [diagnosticGaps, diagnosticRecommendations] = diagnosticProfile
+    ? await Promise.all([
+        db.select().from(diagnosticGapsTable).where(eq(diagnosticGapsTable.profileId, diagnosticProfile.id)),
+        db.select().from(diagnosticRecommendationsTable).where(eq(diagnosticRecommendationsTable.profileId, diagnosticProfile.id)),
+      ])
+    : [[], []];
+  const linkActivityIds = [...new Set(links.map(link => link.activityId))];
+  const activityModules = linkActivityIds.length
+    ? await db.select({ activityId: learningActivitiesTable.id, moduleId: courseModulesTable.moduleId })
+        .from(learningActivitiesTable)
+        .innerJoin(lessonsTable, eq(lessonsTable.id, learningActivitiesTable.lessonId))
+        .innerJoin(courseModulesTable, eq(courseModulesTable.id, lessonsTable.courseModuleId))
+        .where(inArray(learningActivitiesTable.id, linkActivityIds))
+    : [];
+  const moduleIdByActivityId = new Map(activityModules.map(item => [item.activityId, item.moduleId]));
+  res.json(GetLearnerLearningPlanResponse.parse(source.modules
+    .filter((module) => selected.has(module.id) && progress(module.id).progress < 100)
+    .sort((a, b) => a.sequence - b.sequence)
+    .map((module, index) => {
+      const baseline = baselineForModule(module.id, source);
+      const contract = source.pathwayContracts.find(item => item.pathwayId === context.pathway.id && item.moduleId === (baseline?.moduleId ?? module.id));
+      const moduleRecommendations = diagnosticRecommendations.filter(recommendation => recommendation.moduleId === module.id);
+      const moduleCompetencyUnitIds = new Set(moduleRecommendations.flatMap(recommendation => recommendation.competencyUnitId ? [recommendation.competencyUnitId] : []));
+      const moduleDiagnosticGaps = diagnosticGaps.filter(gap => moduleCompetencyUnitIds.has(gap.competencyUnitId));
+      const moduleLinks = links.filter(link => moduleIdByActivityId.get(link.activityId) === module.id);
+      return {
+        id: `plan-${module.id}`,
+        module: moduleSummary(module, progress(module.id).progress, progress(module.id).status, context.pathway.id, baseline, contract),
+        priority: index === 0 ? "High" : "Normal",
+        reason: "Continue pathway learning.",
+        estimatedMinutes: 90,
+        status: progress(module.id).status,
+        causalReferences: {
+          diagnosticProfileIds: diagnosticProfile ? [diagnosticProfile.id] : [],
+          diagnosticGapIds: moduleDiagnosticGaps.map(gap => gap.id),
+          diagnosticRecommendationIds: moduleRecommendations.map(recommendation => recommendation.id),
+          learningRecordLinkIds: moduleLinks.map(link => link.id),
+          outcomeIds: moduleLinks.flatMap(link => link.outcomeId ? [link.outcomeId] : []),
+          practiceAttemptIds: moduleLinks.flatMap(link => link.practiceAttemptId ? [link.practiceAttemptId] : []),
+          evidenceIds: moduleLinks.flatMap(link => link.evidenceId ? [link.evidenceId] : []),
+          gapIds: moduleLinks.flatMap(link => link.gapId ? [link.gapId] : []),
+          remediationPlanIds: moduleLinks.flatMap(link => link.remediationPlanId ? [link.remediationPlanId] : []),
+          reassessmentAttemptIds: moduleLinks.flatMap(link => link.reassessmentAttemptId ? [link.reassessmentAttemptId] : []),
+        },
+      };
+    })));
+});
 router.get("/learner/dashboard", async (req, res): Promise<void> => { const learnerId = await authorizeLearner(req, res); if (!learnerId) return; const [context, source] = await Promise.all([learnerContext(learnerId), catalogue()]); const { modules, tasks, enrollments } = source; const selected = await selectedBaselineModuleIds(context.pathway.id); const [view, gaps, evidence, progress, diagnostic] = await Promise.all([readiness(context), gapRecords(learnerId, context.pathway.id), evidenceRecords(learnerId, context.pathway.id), progressByModule(learnerId, context.pathway.id), diagnosticView(learnerId)]); const pathwayModules = modules.filter((module) => selected.has(module.id)).sort((a, b) => a.sequence - b.sequence); const current = pathwayModules.find((module) => progress(module.id).progress < 100) ?? pathwayModules[0]; const task = tasks.find((item) => item.moduleId === current.id); if (!current || !task) throw new Error(`Incomplete curriculum for ${context.pathway.name}`); const currentBaseline = baselineForModule(current.id, source); const currentContract = source.pathwayContracts.find(item => item.pathwayId === context.pathway.id && item.moduleId === (currentBaseline?.moduleId ?? current.id)); const result = diagnostic.attempt?.result as { baselineScore?: number; gaps?: string[]; safetyBlockers?: string[]; blocked?: boolean } | null; const diagnosticDone = diagnostic.attempt?.status === "completed"; res.json(GetLearnerDashboardResponse.parse({ learner: context.learner, program: { ...context.program, moduleCount: pathwayModules.length, learnerCount: new Set(enrollments.filter((item) => item.programId === context.program.id).map((item) => item.learnerId)).size }, pathway: view.pathway, capabilityProgress: Math.round(pathwayModules.reduce((sum, module) => sum + progress(module.id).progress, 0) / pathwayModules.length), readiness: view, currentLearning: moduleSummary(current, progress(current.id).progress, progress(current.id).status, context.pathway.id, currentBaseline, currentContract), currentPractice: { ...task, status: "Available" }, mainGap: gaps.find((gap) => gap.status !== "Resolved") ?? null, evidenceCounts: { total: evidence.length, valid: evidence.filter((item) => item.status === "Valid").length, underReview: evidence.filter((item) => item.status === "Under review").length, needsRevision: evidence.filter((item) => item.status === "Needs revision").length }, diagnostic: { status: diagnostic.attempt?.status ?? "not_started", score: diagnosticDone ? result?.baselineScore ?? 0 : null, topGaps: diagnosticDone ? result?.gaps?.slice(0, 3) ?? [] : [], safetyBlockers: diagnosticDone ? result?.safetyBlockers ?? [] : [], blocked: diagnosticDone ? Boolean(result?.blocked) : false }, nextAction: !diagnosticDone ? { title: diagnostic.attempt ? "Resume your diagnostic" : "Start your diagnostic", description: "Set your personal baseline before continuing pathway learning.", href: "/diagnostic", priority: "High" } : { title: `Continue ${current.code}`, description: result?.blocked ? "Resolve the critical safety blocker before practice." : "Continue your active pathway learning.", href: result?.blocked ? "/diagnostic/result" : `/modules/${current.id}`, priority: "High" } })); });
-router.get("/passport", async (req, res): Promise<void> => { const learnerId = await authorizeLearner(req, res); if (!learnerId) return; const timeline = await pathwayTimeline(learnerId); const [attempts, assessments, modules, evidence, selected] = await Promise.all([db.select().from(assessmentAttemptsTable).where(and(eq(assessmentAttemptsTable.learnerId, learnerId), eq(assessmentAttemptsTable.pathwayId, timeline.context.pathway.id), eq(assessmentAttemptsTable.decision, "Competent"))), db.select().from(assessmentsTable), db.select().from(modulesTable), evidenceRecords(learnerId, timeline.context.pathway.id), selectedBaselineModuleIds(timeline.context.pathway.id)]); const view = await readiness(timeline.context); if (!view.pathway) throw new Error(`Missing pathway catalogue for ${timeline.context.pathway.id}`); const assessmentById = new Map(assessments.map((item) => [item.id, item])); const moduleById = new Map(modules.map((item) => [item.id, item])); const achievements = attempts.flatMap((attempt) => { const module = moduleById.get(assessmentById.get(attempt.assessmentId)?.moduleId ?? ""); return module && selected.has(module.id) && module.programId === timeline.context.program.id ? [{ id: `achievement-${attempt.id}`, capability: module.capability, level: "Internal evidence verified", program: timeline.context.program.name, pathway: timeline.context.pathway.name, achievedAt: attempt.createdAt, evidenceCount: evidence.filter((item) => item.moduleId === module.id).length, status: "Readiness record" as const }] : []; }); res.json(GetCapabilityPassportResponse.parse({ learner: timeline.context.learner, pathway: view.pathway, headline: `${view.pathway.name} capability passport`, subtitle: "A longitudinal record of verified practice and internal readiness.", readinessDisclaimer: "Internal readiness-preparation information only. This is not an official competency decision or certification claim.", readiness: view, achievements, timeline: timeline.steps })); });
+router.get("/passport", async (req, res): Promise<void> => {
+  const learnerId = await authorizeLearner(req, res);
+  if (!learnerId) return;
+  const context = await learnerContext(learnerId);
+  // Readiness persists the decision snapshot. Build the timeline afterwards so
+  // a first passport request includes the exact decision it returns.
+  const view = await readiness(context);
+  const timeline = await pathwayTimeline(learnerId);
+  const [attempts, assessments, modules, evidence, selected] = await Promise.all([
+    db.select().from(assessmentAttemptsTable).where(and(
+      eq(assessmentAttemptsTable.learnerId, learnerId),
+      eq(assessmentAttemptsTable.pathwayId, timeline.context.pathway.id),
+      eq(assessmentAttemptsTable.decision, "Competent"),
+    )),
+    db.select().from(assessmentsTable),
+    db.select().from(modulesTable),
+    evidenceRecords(learnerId, timeline.context.pathway.id),
+    selectedBaselineModuleIds(timeline.context.pathway.id),
+  ]);
+  if (!view.pathway) throw new Error(`Missing pathway catalogue for ${timeline.context.pathway.id}`);
+  const assessmentById = new Map(assessments.map((item) => [item.id, item]));
+  const moduleById = new Map(modules.map((item) => [item.id, item]));
+  const achievements = attempts.flatMap((attempt) => {
+    const module = moduleById.get(assessmentById.get(attempt.assessmentId)?.moduleId ?? "");
+    return module && selected.has(module.id) && module.programId === timeline.context.program.id
+      ? [{
+          id: `achievement-${attempt.id}`,
+          capability: module.capability,
+          level: "Internal evidence verified",
+          program: timeline.context.program.name,
+          pathway: timeline.context.pathway.name,
+          achievedAt: attempt.createdAt,
+          evidenceCount: evidence.filter((item) => item.moduleId === module.id).length,
+          status: "Readiness record" as const,
+        }]
+      : [];
+  });
+  const terminalPortfolio = terminalPortfolioForPathway(timeline.context.pathway);
+  res.json(GetCapabilityPassportResponse.parse({
+    learner: timeline.context.learner,
+    pathway: view.pathway,
+    headline: `${terminalPortfolio} · ${view.pathway.name}`,
+    subtitle: "A longitudinal record of verified practice and internal readiness.",
+    terminalPortfolio,
+    readinessDisclaimer: "Internal readiness-preparation information only. This is not an official competency decision or certification claim.",
+    readiness: view,
+    achievements,
+    timeline: timeline.steps,
+  }));
+});
 export default router;

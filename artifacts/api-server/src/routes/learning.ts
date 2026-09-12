@@ -85,7 +85,7 @@ router.get("/learning/courses", async (req, res): Promise<void> => {
     )
     .map(link => link.courseId));
   const availableCourseIds = new Set(courses
-    .filter(course => (context.pathway.id === "path-a" && course.pathwayId === context.pathway.id) || sharedCourseIds.has(course.id))
+    .filter(course => course.pathwayId === context.pathway.id || sharedCourseIds.has(course.id))
     .map(course => course.id));
   const availableCourseModules = activeCourseModules.filter(link => availableCourseIds.has(link.courseId));
   const moduleById = new Map(modules.map(module => [module.id, module]));

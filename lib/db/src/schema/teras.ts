@@ -220,9 +220,24 @@ export const readinessEventsTable = pgTable("teras_readiness_events", {
   score: integer("score").notNull(), blockers: text("blockers").array().notNull().default([]),
   ruleVersion: integer("rule_version").notNull().default(1),
   inputEvidence: jsonb("input_evidence").$type<{
-    assessments: Array<{ id: string; score: number; completed: boolean; criticalFailure: boolean }>;
-    evidence: Array<{ requirementId: string; satisfied: boolean }>;
+    assessments: Array<{ id: string; score: number; completed: boolean; criticalFailure: boolean; assessmentAttemptId?: string | null; criterionIds?: string[] }>;
+    evidence: Array<{ requirementId: string; satisfied: boolean; evidenceIds?: string[]; evidenceReviewIds?: string[] }>;
     openCriticalGaps: string[];
+    /** Gate-scoped immutable identity snapshot. */
+    gates?: Array<{
+      gateId: string;
+      gapIds?: string[];
+      criterionIds: string[];
+      assessmentAttemptIds: string[];
+      evidenceIds: string[];
+      evidenceReviewIds: string[];
+      remediationPlanIds: string[];
+      reassessmentAttemptIds: string[];
+      learningRecordLinkIds?: string[];
+      diagnosticProfileIds?: string[];
+      diagnosticGapIds?: string[];
+      diagnosticRecommendationIds?: string[];
+    }>;
   }>().notNull().default({ assessments: [], evidence: [], openCriticalGaps: [] }),
   decisionReason: text("decision_reason").notNull().default("Legacy readiness event"),
   evaluatedAt: timestamp("evaluated_at", { withTimezone: true }).notNull().defaultNow(),
