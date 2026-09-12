@@ -457,6 +457,7 @@ export const SelectLearnerPathwayResponse = zod.object({
   "terminalPortfolio": zod.enum(['Capability Portfolio', 'Certification Readiness Portfolio'])
 }),
   "programId": zod.string(),
+  "baselineVersionId": zod.string(),
   "selectedAt": zod.coerce.date()
 })
 
@@ -2681,6 +2682,111 @@ export const ListAuthoredCoursesResponseItem = zod.object({
 }).optional()
 })
 export const ListAuthoredCoursesResponse = zod.array(ListAuthoredCoursesResponseItem)
+
+
+/**
+ * @summary Clone the active published baseline into a draft
+ */
+
+
+
+export const CreateBaselineDraftParams = zod.object({
+  "baselineId": zod.coerce.string().min(1)
+})
+
+export const CreateBaselineDraftResponse = zod.object({
+  "baselineId": zod.string(),
+  "versionId": zod.string(),
+  "version": zod.int(),
+  "status": zod.enum(['DRAFT']),
+  "sourceVersion": zod.int()
+})
+
+
+/**
+ * @summary Publish an immutable baseline snapshot
+ */
+
+
+
+
+export const PublishBaselineVersionParams = zod.object({
+  "baselineId": zod.coerce.string().min(1),
+  "versionId": zod.coerce.string().min(1)
+})
+
+export const PublishBaselineVersionResponse = zod.object({
+  "baselineId": zod.string(),
+  "versionId": zod.string(),
+  "version": zod.int(),
+  "status": zod.enum(['PUBLISHED']),
+  "publishedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update a baseline draft before publication
+ */
+
+
+
+
+export const UpdateBaselineDraftParams = zod.object({
+  "baselineId": zod.coerce.string().min(1),
+  "versionId": zod.coerce.string().min(1)
+})
+
+export const UpdateBaselineDraftBody = zod.object({
+  "snapshot": zod.record(zod.string(), zod.unknown())
+})
+
+export const UpdateBaselineDraftResponse = zod.object({
+  "baselineId": zod.string(),
+  "versionId": zod.string(),
+  "version": zod.int(),
+  "status": zod.enum(['DRAFT']),
+  "snapshot": zod.record(zod.string(), zod.unknown())
+})
+
+
+
+
+
+export const ListBaselineVersionsParams = zod.object({
+  "baselineId": zod.coerce.string().min(1)
+})
+
+export const ListBaselineVersionsResponseItem = zod.object({
+  "id": zod.string(),
+  "baselineId": zod.string(),
+  "version": zod.int(),
+  "status": zod.enum(['DRAFT', 'PUBLISHED']),
+  "snapshot": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date(),
+  "createdBy": zod.string(),
+  "publishedAt": zod.coerce.date().nullable(),
+  "publishedBy": zod.string().nullable()
+})
+export const ListBaselineVersionsResponse = zod.array(ListBaselineVersionsResponseItem)
+
+
+
+
+
+export const ListBaselineAuditParams = zod.object({
+  "baselineId": zod.coerce.string().min(1)
+})
+
+export const ListBaselineAuditResponseItem = zod.object({
+  "id": zod.string(),
+  "baselineId": zod.string(),
+  "versionId": zod.string().nullable(),
+  "action": zod.string(),
+  "actorId": zod.string(),
+  "details": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+})
+export const ListBaselineAuditResponse = zod.array(ListBaselineAuditResponseItem)
 
 
 /**

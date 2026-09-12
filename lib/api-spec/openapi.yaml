@@ -819,6 +819,63 @@ paths:
       summary: List all trainer-authorable courses including drafts and archived courses
       responses:
         "200": { description: Authoring courses, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/LearningCourse" } } } } }
+  /trainer/authoring/baselines/{baselineId}/drafts:
+    post:
+      operationId: createBaselineDraft
+      tags: [trainer]
+      summary: Clone the active published baseline into a draft
+      parameters: [{ $ref: "#/components/parameters/BaselineId" }]
+      responses:
+        "201": { description: Baseline draft created, content: { application/json: { schema: { $ref: "#/components/schemas/BaselineDraft" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /trainer/authoring/baselines/{baselineId}/versions/{versionId}/publish:
+    post:
+      operationId: publishBaselineVersion
+      tags: [trainer]
+      summary: Publish an immutable baseline snapshot
+      parameters:
+        - $ref: "#/components/parameters/BaselineId"
+        - $ref: "#/components/parameters/BaselineVersionId"
+      responses:
+        "201": { description: Immutable baseline version published, content: { application/json: { schema: { $ref: "#/components/schemas/BaselinePublishedVersion" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /trainer/authoring/baselines/{baselineId}/versions/{versionId}:
+    patch:
+      operationId: updateBaselineDraft
+      tags: [trainer]
+      summary: Update a baseline draft before publication
+      parameters:
+        - $ref: "#/components/parameters/BaselineId"
+        - $ref: "#/components/parameters/BaselineVersionId"
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/BaselineDraftInput" } } }
+      responses:
+        "200": { description: Baseline draft updated, content: { application/json: { schema: { $ref: "#/components/schemas/BaselineDraftUpdated" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /trainer/authoring/baselines/{baselineId}/versions:
+    get:
+      operationId: listBaselineVersions
+      tags: [trainer]
+      parameters: [{ $ref: "#/components/parameters/BaselineId" }]
+      responses:
+        "200": { description: Baseline version history, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/BaselineVersion" } } } } }
+  /trainer/authoring/baselines/{baselineId}/audit:
+    get:
+      operationId: listBaselineAudit
+      tags: [trainer]
+      parameters: [{ $ref: "#/components/parameters/BaselineId" }]
+      responses:
+        "200": { description: Append-only baseline audit history, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/BaselineAuditEvent" } } } } }
   /storage/uploads/request-url:
     post:
       operationId: requestManagedResourceUploadUrl
@@ -1408,14 +1465,6 @@ x-pathway-selection-components:
       properties:
         pathwayId: { type: string }
       required: [pathwayId]
-    PathwaySelectionResponse:
-      type: object
-      properties:
-        pathway:
-          $ref: "#/components/schemas/PathwaySummary"
-        programId: { type: string }
-        selectedAt: { type: string, format: date-time }
-      required: [pathway, programId, selectedAt]
     ModuleSummary:
       type: object
       properties:
@@ -2493,6 +2542,8 @@ components:
     CohortId: { name: cohortId, in: path, required: true, schema: { type: string } }
     EnrollmentId: { name: enrollmentId, in: path, required: true, schema: { type: string } }
     CourseId: { name: courseId, in: path, required: true, schema: { type: string } }
+    BaselineId: { name: baselineId, in: path, required: true, schema: { type: string, minLength: 1 } }
+    BaselineVersionId: { name: versionId, in: path, required: true, schema: { type: string, minLength: 1 } }
     ResourceId: { name: resourceId, in: path, required: true, schema: { type: string, minLength: 1 } }
     ProgramId:
       name: programId
@@ -3016,6 +3067,76 @@ components:
         details: { type: object, additionalProperties: true }
         createdAt: { type: string, format: date-time }
       required: [id, courseId, versionId, action, actorId, details, createdAt]
+    BaselineDraft:
+      type: object
+      properties:
+        baselineId: { type: string }
+        versionId: { type: string }
+        version: { type: integer }
+        status: { type: string, enum: [DRAFT] }
+        sourceVersion: { type: integer }
+      required: [baselineId, versionId, version, status, sourceVersion]
+    BaselinePublishedVersion:
+      type: object
+      properties:
+        baselineId: { type: string }
+        versionId: { type: string }
+        version: { type: integer }
+        status: { type: string, enum: [PUBLISHED] }
+        publishedAt: { type: string, format: date-time }
+      required: [baselineId, versionId, version, status, publishedAt]
+    BaselineDraftInput:
+      type: object
+      additionalProperties: false
+      properties:
+        snapshot: { type: object, additionalProperties: true }
+      required: [snapshot]
+    BaselineValidationIssue:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+        path: { type: string }
+      required: [code, message, path]
+    BaselineValidationReport:
+      type: object
+      properties:
+        valid: { type: boolean }
+        errors: { type: array, items: { $ref: "#/components/schemas/BaselineValidationIssue" } }
+      required: [valid, errors]
+    BaselineDraftUpdated:
+      type: object
+      properties:
+        baselineId: { type: string }
+        versionId: { type: string }
+        version: { type: integer }
+        status: { type: string, enum: [DRAFT] }
+        snapshot: { type: object, additionalProperties: true }
+      required: [baselineId, versionId, version, status, snapshot]
+    BaselineVersion:
+      type: object
+      properties:
+        id: { type: string }
+        baselineId: { type: string }
+        version: { type: integer }
+        status: { type: string, enum: [DRAFT, PUBLISHED] }
+        snapshot: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string }
+        publishedAt: { type: ["string", "null"], format: date-time }
+        publishedBy: { type: ["string", "null"] }
+      required: [id, baselineId, version, status, snapshot, createdAt, createdBy, publishedAt, publishedBy]
+    BaselineAuditEvent:
+      type: object
+      properties:
+        id: { type: string }
+        baselineId: { type: string }
+        versionId: { type: ["string", "null"] }
+        action: { type: string }
+        actorId: { type: string }
+        details: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
+      required: [id, baselineId, versionId, action, actorId, details, createdAt]
     LearningActivityType:
       type: string
       enum: [READING, VIDEO, AUDIO, INTERACTIVE, QUIZ, ASSIGNMENT, DISCUSSION, LIVE_SESSION, WORKSHOP, REFLECTION, PRACTICE_PREPARATION]
@@ -3619,8 +3740,9 @@ components:
         pathway:
           $ref: "#/components/schemas/PathwaySummary"
         programId: { type: string }
+        baselineVersionId: { type: string }
         selectedAt: { type: string, format: date-time }
-      required: [pathway, programId, selectedAt]
+      required: [pathway, programId, baselineVersionId, selectedAt]
     LearnerEnrollment:
       type: object
       properties:

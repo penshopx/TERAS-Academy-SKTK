@@ -962,6 +962,107 @@ export interface CourseAuthoringAuditEvent {
   createdAt: string;
 }
 
+export type BaselineDraftStatus = typeof BaselineDraftStatus[keyof typeof BaselineDraftStatus];
+
+
+export const BaselineDraftStatus = {
+  DRAFT: 'DRAFT',
+} as const;
+
+export interface BaselineDraft {
+  baselineId: string;
+  versionId: string;
+  version: number;
+  status: BaselineDraftStatus;
+  sourceVersion: number;
+}
+
+export type BaselinePublishedVersionStatus = typeof BaselinePublishedVersionStatus[keyof typeof BaselinePublishedVersionStatus];
+
+
+export const BaselinePublishedVersionStatus = {
+  PUBLISHED: 'PUBLISHED',
+} as const;
+
+export interface BaselinePublishedVersion {
+  baselineId: string;
+  versionId: string;
+  version: number;
+  status: BaselinePublishedVersionStatus;
+  publishedAt: string;
+}
+
+export type BaselineDraftInputSnapshot = { [key: string]: unknown };
+
+export interface BaselineDraftInput {
+  snapshot: BaselineDraftInputSnapshot;
+}
+
+export interface BaselineValidationIssue {
+  code: string;
+  message: string;
+  path: string;
+}
+
+export interface BaselineValidationReport {
+  valid: boolean;
+  errors: BaselineValidationIssue[];
+}
+
+export type BaselineDraftUpdatedStatus = typeof BaselineDraftUpdatedStatus[keyof typeof BaselineDraftUpdatedStatus];
+
+
+export const BaselineDraftUpdatedStatus = {
+  DRAFT: 'DRAFT',
+} as const;
+
+export type BaselineDraftUpdatedSnapshot = { [key: string]: unknown };
+
+export interface BaselineDraftUpdated {
+  baselineId: string;
+  versionId: string;
+  version: number;
+  status: BaselineDraftUpdatedStatus;
+  snapshot: BaselineDraftUpdatedSnapshot;
+}
+
+export type BaselineVersionStatus = typeof BaselineVersionStatus[keyof typeof BaselineVersionStatus];
+
+
+export const BaselineVersionStatus = {
+  DRAFT: 'DRAFT',
+  PUBLISHED: 'PUBLISHED',
+} as const;
+
+export type BaselineVersionSnapshot = { [key: string]: unknown };
+
+export interface BaselineVersion {
+  id: string;
+  baselineId: string;
+  version: number;
+  status: BaselineVersionStatus;
+  snapshot: BaselineVersionSnapshot;
+  createdAt: string;
+  createdBy: string;
+  /** @nullable */
+  publishedAt: string | null;
+  /** @nullable */
+  publishedBy: string | null;
+}
+
+export type BaselineAuditEventDetails = { [key: string]: unknown };
+
+export interface BaselineAuditEvent {
+  id: string;
+  baselineId: string;
+  /** @nullable */
+  versionId: string | null;
+  action: string;
+  actorId: string;
+  details: BaselineAuditEventDetails;
+  createdAt: string;
+}
+
 export type LearningResourceInputType = typeof LearningResourceInputType[keyof typeof LearningResourceInputType];
 
 
@@ -1923,6 +2024,7 @@ export interface PathwaySelectionInput {
 export interface PathwaySelectionResponse {
   pathway: PathwaySummary;
   programId: string;
+  baselineVersionId: string;
   selectedAt: string;
 }
 

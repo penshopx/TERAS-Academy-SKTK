@@ -114,7 +114,7 @@ async function activeAssessments(requestContext?: LearnerContext) {
     db.select().from(modulesTable),
     db.select().from(assessmentsTable),
   ]);
-  const selected = await selectedBaselineModuleIds(context.pathway.id);
+  const selected = await selectedBaselineModuleIds(context.pathway.id, context.baselineVersionId);
   const pathwayModules = modules.filter((module) => selected.has(module.id));
   const moduleIds = new Set(pathwayModules.map((module) => module.id));
   const summaries = await Promise.all(
@@ -177,7 +177,7 @@ router.get("/assessments/:assessmentId", async (req, res): Promise<void> => {
   const context = contexts.find((item) =>
     item && item.learner.id === requestedLearnerId && item.program.id === module.programId,
   );
-  if (context && !await pathwayHasModule(context.pathway.id, module.id)) {
+  if (context && !await pathwayHasModule(context.pathway.id, module.id, context.baselineVersionId)) {
     res.status(403).json({ error: "Assessment is outside the selected pathway baseline" });
     return;
   }
@@ -231,7 +231,7 @@ router.get("/assessor/dashboard", async (req, res): Promise<void> => {
   if (!assessorId) return;
   const { contexts, result } = await assignedAssessments(assessorId);
   const scoped = await Promise.all(contexts.map(async (context) => ({
-    evidence: await evidenceRecords(context.learner.id, context.pathway.id),
+    evidence: await evidenceRecords(context.learner.id, context.pathway.id, context.baselineVersionId),
     gaps: await gapRecords(context.learner.id, context.pathway.id),
   })));
   const [assessor] = await db
@@ -300,7 +300,7 @@ router.post(
       item.learner.id === body.data.learnerId &&
       item.program.id === assessmentModule.programId,
     ) : undefined;
-    if (context && !await pathwayHasModule(context.pathway.id, assessmentModule.id)) {
+    if (context && !await pathwayHasModule(context.pathway.id, assessmentModule.id, context.baselineVersionId)) {
       res.status(403).json({ error: "Assessment module is not selected by the learner pathway" });
       return;
     }

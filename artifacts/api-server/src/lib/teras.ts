@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, assessmentAttemptsTable, assessmentCriteriaTable, assessmentsTable, baselineModulesTable, courseModulesTable, criterionObservationsTable, enrollmentPathwayEventsTable, enrollmentsTable, evidenceRequirementsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningActivitiesTable, learningBaselinesTable, legacyModuleMappingsTable, learningRecordLinksTable, lessonsTable, modulesTable, pathwayBaselineModulesTable, pathwayModuleContractsTable, pathwaysTable, peopleTable, practiceAttemptsTable, practiceTasksTable, programsTable, readinessEventsTable, readinessGatesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, reassessmentLinksTable } from "@workspace/db";
 import type { BaselineModule, PathwayModuleContract } from "@workspace/db";
+import { selectedBaselineModuleIdsFromVersion } from "./baseline-authoring";
 export const DEMO_LEARNER = "learner-demo";
 const latest = <T extends { createdAt: Date }, K extends string>(rows: T[], key: (row: T) => K) => { const result = new Map<K, T>(); for (const row of rows) if (!result.has(key(row)) || result.get(key(row))!.createdAt < row.createdAt) result.set(key(row), row); return result; };
 export async function catalogue() {
@@ -17,26 +18,28 @@ export async function catalogue() {
 type Catalogue = Awaited<ReturnType<typeof catalogue>>;
 /** Canonical M modules are owned by Path A, but become operational in another
  * pathway only when that pathway has an explicit baseline selection. */
-export async function selectedBaselineModuleIds(pathwayId: string): Promise<Set<string>> {
+export async function selectedBaselineModuleIds(pathwayId: string, baselineVersionId?: string | null): Promise<Set<string>> {
+  const pinned = await selectedBaselineModuleIdsFromVersion(pathwayId, baselineVersionId);
+  if (pinned) return pinned;
   const rows = await db.select({ moduleId: baselineModulesTable.moduleId })
     .from(pathwayBaselineModulesTable)
     .innerJoin(baselineModulesTable, eq(pathwayBaselineModulesTable.baselineModuleId, baselineModulesTable.id))
     .where(eq(pathwayBaselineModulesTable.pathwayId, pathwayId));
   return new Set(rows.map(row => row.moduleId));
 }
-export async function pathwayHasModule(pathwayId: string, moduleId: string): Promise<boolean> {
+export async function pathwayHasModule(pathwayId: string, moduleId: string, baselineVersionId?: string | null): Promise<boolean> {
   const [module] = await db.select({ pathwayId: modulesTable.pathwayId }).from(modulesTable).where(eq(modulesTable.id, moduleId)).limit(1);
   if (module?.pathwayId === pathwayId) return true;
-  return (await selectedBaselineModuleIds(pathwayId)).has(moduleId);
+  return (await selectedBaselineModuleIds(pathwayId, baselineVersionId)).has(moduleId);
 }
-export async function pathwayHasActivity(pathwayId: string, activityId: string): Promise<boolean> {
+export async function pathwayHasActivity(pathwayId: string, activityId: string, baselineVersionId?: string | null): Promise<boolean> {
   const [row] = await db.select({ moduleId: courseModulesTable.moduleId })
     .from(learningActivitiesTable)
     .innerJoin(lessonsTable, eq(lessonsTable.id, learningActivitiesTable.lessonId))
     .innerJoin(courseModulesTable, eq(courseModulesTable.id, lessonsTable.courseModuleId))
     .where(eq(learningActivitiesTable.id, activityId))
     .limit(1);
-  return Boolean(row && await pathwayHasModule(pathwayId, row.moduleId));
+  return Boolean(row && await pathwayHasModule(pathwayId, row.moduleId, baselineVersionId));
 }
 export const baselineForModule = (moduleId: string, catalogue: Pick<Catalogue, "baselineModules" | "legacyMappings">) => {
   const canonical = catalogue.baselineModules.find((baseline) => baseline.moduleId === moduleId);
@@ -80,7 +83,7 @@ export async function learnerContext(learnerId = DEMO_LEARNER) {
   const [pathwayEvent] = await db.select().from(enrollmentPathwayEventsTable).where(eq(enrollmentPathwayEventsTable.enrollmentId, enrollment.id)).orderBy(desc(enrollmentPathwayEventsTable.sequence), desc(enrollmentPathwayEventsTable.createdAt), desc(enrollmentPathwayEventsTable.id)).limit(1);
   const [pathway] = await db.select().from(pathwaysTable).where(eq(pathwaysTable.id, pathwayEvent?.pathwayId ?? enrollment.pathwayId));
   if (!program || !pathway) throw new Error("Enrollment references missing catalogue records");
-  return { enrollment, learner, program, pathway };
+  return { enrollment, learner, program, pathway, baselineVersionId: pathwayEvent?.baselineVersionId ?? enrollment.baselineVersionId ?? null };
 }
 /** Current, active learner pathways explicitly assigned to a workspace actor.
  * This is deliberately enrollment-based rather than derived from a default learner. */
@@ -112,7 +115,7 @@ export async function workspaceAssignmentContexts(actorId: string, role: "traine
     const program = programById.get(enrollment.programId);
     // Corrupt catalogue references must never broaden an actor's scope.
     return learner && program && pathway && pathway.programId === enrollment.programId
-      ? [{ enrollment, learner, program, pathway }]
+      ? [{ enrollment, learner, program, pathway, baselineVersionId: latestPathwayEvent.get(enrollment.id)?.baselineVersionId ?? enrollment.baselineVersionId ?? null }]
       : [];
   });
 }
@@ -130,19 +133,21 @@ export async function activeLearnerPathwayContext(learnerId: string, pathwayId: 
         ]);
         const activePathwayId = pathwayEvent?.pathwayId ?? enrollment.pathwayId;
         return learner && program && pathway && activePathwayId === pathwayId && pathway.programId === enrollment.programId
-          ? { enrollment, learner, program, pathway }
+          ? { enrollment, learner, program, pathway, baselineVersionId: pathwayEvent?.baselineVersionId ?? enrollment.baselineVersionId ?? null }
           : null;
       }),
   );
   return contexts.find((context) => context !== null) ?? null;
 }
-export async function pathwaySummary(pathwayId: string, source?: Catalogue) {
+export async function pathwaySummary(pathwayId: string, source?: Catalogue, baselineVersionId?: string | null) {
   const { paths, modules, gates, pathwayBaselineModules, pathwayContracts, baselineModules } = source ?? await catalogue();
   const pathway = paths.find((item) => item.id === pathwayId);
   if (!pathway) return null;
   const pathwayGates = gates.filter((gate) => gate.pathwayId === pathwayId).sort((a, b) => a.sequence - b.sequence).map(({ id, code, name, sequence, requirement }) => ({ id, code, name, sequence, requirement }));
   const selections = pathwayBaselineModules.filter((selection) => selection.pathwayId === pathwayId);
-  const selectedBaselineIds = new Set(selections.map((selection) => selection.baselineModuleId));
+  const selectedBaselineIds = baselineVersionId
+    ? await selectedBaselineModuleIds(pathwayId, baselineVersionId).then(moduleIds => new Set(baselineModules.filter(baseline => moduleIds.has(baseline.moduleId)).map(baseline => baseline.id)))
+    : new Set(selections.map((selection) => selection.baselineModuleId));
   const selectedBaselineModules = baselineModules.filter((baseline) => selectedBaselineIds.has(baseline.id)).sort((a, b) => a.sequence - b.sequence);
   const contracts = pathwayContracts.filter((contract) => selectedBaselineModules.some((baseline) => baseline.moduleId === contract.moduleId));
   const firstContract = contracts[0];
@@ -169,18 +174,18 @@ export const terminalPortfolioForPathway = (pathway: { id: string; name: string;
     ? "Capability Portfolio"
     : "Certification Readiness Portfolio";
 export async function progressByModule(learnerId = DEMO_LEARNER, pathwayId?: string) { const activePathwayId = pathwayId ?? (await learnerContext(learnerId)).pathway.id; const [attempts, assessments, practiceAttempts, evidence] = await Promise.all([db.select().from(assessmentAttemptsTable).where(and(eq(assessmentAttemptsTable.learnerId, learnerId), eq(assessmentAttemptsTable.pathwayId, activePathwayId))), db.select().from(assessmentsTable), db.select().from(practiceAttemptsTable).where(and(eq(practiceAttemptsTable.learnerId, learnerId), eq(practiceAttemptsTable.pathwayId, activePathwayId))), db.select().from(evidenceTable).where(and(eq(evidenceTable.learnerId, learnerId), eq(evidenceTable.pathwayId, activePathwayId)))]); const assessmentModules = new Map(assessments.map((assessment) => [assessment.id, assessment.moduleId])); const completed = new Set(attempts.filter((attempt) => attempt.decision === "Competent").map((attempt) => assessmentModules.get(attempt.assessmentId))); const practiced = new Set(practiceAttempts.map((attempt) => attempt.taskId.replace(/^task-/, ""))); const evidenced = new Set(evidence.map((item) => item.moduleId)); return (id: string) => completed.has(id) ? { progress: 100, status: "Complete" } : evidenced.has(id) ? { progress: 60, status: "In progress" } : practiced.has(id) ? { progress: 30, status: "In progress" } : { progress: 0, status: "Not started" }; }
-export async function evidenceRecords(learnerId = DEMO_LEARNER, pathwayId?: string) { const activePathwayId = pathwayId ?? (await learnerContext(learnerId)).pathway.id; const [evidence, reviews, modules, people, links, selected] = await Promise.all([db.select().from(evidenceTable), db.select().from(evidenceReviewsTable), db.select().from(modulesTable), db.select().from(peopleTable), db.select().from(learningRecordLinksTable).where(and(eq(learningRecordLinksTable.learnerId, learnerId), eq(learningRecordLinksTable.pathwayId, activePathwayId))), selectedBaselineModuleIds(activePathwayId)]); const reviewMap = latest(reviews, (review) => review.evidenceId), moduleMap = new Map(modules.map((module) => [module.id, module])), personMap = new Map(people.map((person) => [person.id, person])), linkMap = latest(links.filter((link): link is typeof link & { evidenceId: string } => Boolean(link.evidenceId)), (link) => link.evidenceId); return evidence.filter((item) => item.learnerId === learnerId && item.pathwayId === activePathwayId && selected.has(item.moduleId)).map((item) => { const review = reviewMap.get(item.id), module = moduleMap.get(item.moduleId), link = linkMap.get(item.id); return { id: item.id, title: item.title, type: item.type, moduleId: item.moduleId, moduleName: module?.name ?? "Unknown module", taskId: item.taskId, pathwayId: item.pathwayId, sourceActivityId: link?.activityId ?? null, practiceAttemptId: link?.practiceAttemptId ?? null, description: item.description, status: review?.status ?? "Under review", submittedAt: item.createdAt, reviewer: review?.reviewerId ? personMap.get(review.reviewerId)?.name ?? null : null, reviewerComment: review?.comment ?? null, fileName: item.fileName, quality: review?.quality ?? { valid: false, relevant: false, sufficient: false, traceable: false }, causalReferences: { learningRecordLinkIds: link ? [link.id] : [], practiceAttemptIds: link?.practiceAttemptId ? [link.practiceAttemptId] : [], evidenceReviewIds: review ? [review.id] : [], gapIds: link?.gapId ? [link.gapId] : [], remediationPlanIds: link?.remediationPlanId ? [link.remediationPlanId] : [], reassessmentAttemptIds: link?.reassessmentAttemptId ? [link.reassessmentAttemptId] : [] } }; }); }
+export async function evidenceRecords(learnerId = DEMO_LEARNER, pathwayId?: string, baselineVersionId?: string | null) { const context = baselineVersionId === undefined || pathwayId === undefined ? await learnerContext(learnerId) : null; const activePathwayId = pathwayId ?? context!.pathway.id; const pin = baselineVersionId === undefined ? context!.baselineVersionId : baselineVersionId; const [evidence, reviews, modules, people, links, selected] = await Promise.all([db.select().from(evidenceTable), db.select().from(evidenceReviewsTable), db.select().from(modulesTable), db.select().from(peopleTable), db.select().from(learningRecordLinksTable).where(and(eq(learningRecordLinksTable.learnerId, learnerId), eq(learningRecordLinksTable.pathwayId, activePathwayId))), selectedBaselineModuleIds(activePathwayId, pin)]); const reviewMap = latest(reviews, (review) => review.evidenceId), moduleMap = new Map(modules.map((module) => [module.id, module])), personMap = new Map(people.map((person) => [person.id, person])), linkMap = latest(links.filter((link): link is typeof link & { evidenceId: string } => Boolean(link.evidenceId)), (link) => link.evidenceId); return evidence.filter((item) => item.learnerId === learnerId && item.pathwayId === activePathwayId && selected.has(item.moduleId)).map((item) => { const review = reviewMap.get(item.id), module = moduleMap.get(item.moduleId), link = linkMap.get(item.id); return { id: item.id, title: item.title, type: item.type, moduleId: item.moduleId, moduleName: module?.name ?? "Unknown module", taskId: item.taskId, pathwayId: item.pathwayId, sourceActivityId: link?.activityId ?? null, practiceAttemptId: link?.practiceAttemptId ?? null, description: item.description, status: review?.status ?? "Under review", submittedAt: item.createdAt, reviewer: review?.reviewerId ? personMap.get(review.reviewerId)?.name ?? null : null, reviewerComment: review?.comment ?? null, fileName: item.fileName, quality: review?.quality ?? { valid: false, relevant: false, sufficient: false, traceable: false }, causalReferences: { learningRecordLinkIds: link ? [link.id] : [], practiceAttemptIds: link?.practiceAttemptId ? [link.practiceAttemptId] : [], evidenceReviewIds: review ? [review.id] : [], gapIds: link?.gapId ? [link.gapId] : [], remediationPlanIds: link?.remediationPlanId ? [link.remediationPlanId] : [], reassessmentAttemptIds: link?.reassessmentAttemptId ? [link.reassessmentAttemptId] : [] } }; }); }
 export async function gapRecords(learnerId = DEMO_LEARNER, pathwayId?: string) { const activePathwayId = pathwayId ?? (await learnerContext(learnerId)).pathway.id; const [gaps, events] = await Promise.all([db.select().from(gapsTable), db.select().from(gapEventsTable)]); const statuses = latest(events, (event) => event.gapId); return gaps.filter((gap) => gap.learnerId === learnerId && gap.pathwayId === activePathwayId).map((gap) => ({ ...gap, status: statuses.get(gap.id)?.status ?? "Open" })); }
 export async function remediationRecords(learnerId = DEMO_LEARNER, pathwayId?: string) { const activePathwayId = pathwayId ?? (await learnerContext(learnerId)).pathway.id; const gaps = await gapRecords(learnerId, activePathwayId), gapIds = new Set(gaps.map((gap) => gap.id)); const [plans, activities, events, links] = await Promise.all([db.select().from(remediationPlansTable), db.select().from(remediationActivitiesTable), db.select().from(remediationEventsTable), db.select().from(learningRecordLinksTable).where(and(eq(learningRecordLinksTable.learnerId, learnerId), eq(learningRecordLinksTable.pathwayId, activePathwayId)))]); const state = latest(events, (event) => event.activityId); return plans.filter((plan) => gapIds.has(plan.gapId)).map((plan) => { const planActivities = activities.filter((activity) => activity.planId === plan.id).map((activity) => ({ ...activity, status: state.get(activity.id)?.status ?? "Not started" })); const planLinks = links.filter(link => link.remediationPlanId === plan.id); return { ...plan, status: planActivities.every((activity) => activity.status === "Completed") ? "Completed" : planActivities.some((activity) => activity.status === "In progress") ? "In progress" : "Not started", activities: planActivities, causalReferences: { learningRecordLinkIds: planLinks.map(link => link.id), gapIds: [plan.gapId], practiceAttemptIds: planLinks.flatMap(link => link.practiceAttemptId ? [link.practiceAttemptId] : []), evidenceIds: planLinks.flatMap(link => link.evidenceId ? [link.evidenceId] : []), evidenceReviewIds: planLinks.flatMap(link => link.evidenceReviewId ? [link.evidenceReviewId] : []), reassessmentAttemptIds: planLinks.flatMap(link => link.reassessmentAttemptId ? [link.reassessmentAttemptId] : []) } }; }); }
 export async function assessmentSummary(assessment: { id: string; moduleId: string; name: string; gateCode?: string | null }, learnerId = DEMO_LEARNER, pathwayId?: string) { const activePathwayId = pathwayId ?? (await learnerContext(learnerId)).pathway.id; const [attempts, criteria, observations] = await Promise.all([db.select().from(assessmentAttemptsTable).where(and(eq(assessmentAttemptsTable.assessmentId, assessment.id), eq(assessmentAttemptsTable.learnerId, learnerId), eq(assessmentAttemptsTable.pathwayId, activePathwayId))), db.select().from(assessmentCriteriaTable).where(eq(assessmentCriteriaTable.assessmentId, assessment.id)), db.select().from(criterionObservationsTable)]); const latestAttempt = attempts.sort((a, b) => b.number - a.number || b.createdAt.getTime() - a.createdAt.getTime())[0]; const byCriterion = new Map(observations.filter((observation) => observation.attemptId === latestAttempt?.id).map((observation) => [observation.criterionId, observation])); const scores = criteria.map((criterion) => byCriterion.get(criterion.id)?.score).filter((score): score is number => score !== undefined); return { id: assessment.id, moduleId: assessment.moduleId, name: assessment.name, gateCode: assessment.gateCode ?? null, status: latestAttempt?.status ?? "Not started", score: scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length / 3 * 100) : 0, attemptCount: attempts.length, criticalFailure: Boolean(latestAttempt) && criteria.some((criterion) => criterion.critical && (byCriterion.get(criterion.id)?.score ?? 0) < 2), latestAttemptId: latestAttempt?.id ?? null, criterionIds: criteria.map(criterion => criterion.id) }; }
 export async function readiness(context?: Awaited<ReturnType<typeof learnerContext>>) {
   const activeContext = context ?? await learnerContext();
-  const selected = await selectedBaselineModuleIds(activeContext.pathway.id);
+  const selected = await selectedBaselineModuleIds(activeContext.pathway.id, activeContext.baselineVersionId);
   const [allModules, gates, gaps, evidences, allAssessments, allRequirements, allContracts, learnerAttempts, learnerEvidence, learnerReviews, learnerReassessmentLinks, allRemediationPlans, learnerLearningLinks] = await Promise.all([
     db.select().from(modulesTable),
     db.select().from(readinessGatesTable).where(and(eq(readinessGatesTable.pathwayId, activeContext.pathway.id), eq(readinessGatesTable.active, true))).orderBy(readinessGatesTable.sequence),
     gapRecords(activeContext.learner.id, activeContext.pathway.id),
-    evidenceRecords(activeContext.learner.id, activeContext.pathway.id),
+    evidenceRecords(activeContext.learner.id, activeContext.pathway.id, activeContext.baselineVersionId),
     db.select().from(assessmentsTable),
     db.select().from(evidenceRequirementsTable),
     db.select().from(pathwayModuleContractsTable).where(eq(pathwayModuleContractsTable.pathwayId, activeContext.pathway.id)),
@@ -370,7 +375,7 @@ export async function readiness(context?: Awaited<ReturnType<typeof learnerConte
     ruleVersion: gate.ruleVersion, blockers: gate.blockers, contracts: gate.contracts,
   });
   return {
-    pathway: await pathwaySummary(activeContext.pathway.id),
+    pathway: await pathwaySummary(activeContext.pathway.id, undefined, activeContext.baselineVersionId),
     status,
     score,
     ruleVersion,

@@ -171,6 +171,24 @@ export async function authorizeWorkspaceRole(req: Request, res: Response, role: 
   return deny(req, res, false, "You are not authorized for this action");
 }
 
+/** Baseline governance is available to an assigned trainer or administrator. */
+export type BaselineManager = { id: string; global: boolean };
+export async function authorizeBaselineManager(req: Request, res: Response): Promise<BaselineManager | null> {
+  const actor = await identity(req);
+  const test = integrationIdentity(req);
+  if (!actor) return deny(req, res, false, "Authentication required");
+  if (actor.test && (test?.role === "trainer" || test?.role === "admin" || test?.role === "super_admin")) {
+    return { id: test.learnerId ?? actor.subject, global: test.role === "admin" || test.role === "super_admin" };
+  }
+  const rows = await assignments(actor.subject, actor.test, ["trainer", "admin", "super_admin"]);
+  if (!rows.length) return deny(req, res, true, "Trainer or administrator role required");
+  if (rows.some(row => row.role === "admin" || row.role === "super_admin")
+    && !allowsAdministrativeRoles(rows.map(row => row.role), actor, process.env)) {
+    return deny(req, res, true, "Super administrator MFA (aal2) with locked enrollment is required");
+  }
+  return { id: rows[0]!.personId ?? actor.subject, global: rows.some(row => row.role === "admin" || row.role === "super_admin") };
+}
+
 export async function authorizeLearner(req: Request, res: Response): Promise<string | null> {
   const actor = await identity(req);
   const test = integrationIdentity(req);

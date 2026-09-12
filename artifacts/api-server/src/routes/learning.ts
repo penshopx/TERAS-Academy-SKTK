@@ -316,7 +316,7 @@ async function authorizedResourceProgressScope(learnerId: string, resourceId: st
     .limit(1);
   if (!resource || resource.resourceStatus === "ARCHIVED" || resource.activityStatus === "ARCHIVED") return null;
   const context = await learnerContext(learnerId);
-  if (context.program.id !== resource.programId || !await pathwayHasActivity(context.pathway.id, resource.activityId)) return null;
+  if (context.program.id !== resource.programId || !await pathwayHasActivity(context.pathway.id, resource.activityId, context.baselineVersionId)) return null;
   return { resource: { ...resource, pathwayId: context.pathway.id }, context };
 }
 

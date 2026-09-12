@@ -10,5 +10,6 @@ import type { PathwaySummary } from './pathwaySummary';
 export interface PathwaySelectionResponse {
   pathway: PathwaySummary;
   programId: string;
+  baselineVersionId: string;
   selectedAt: Date;
 }

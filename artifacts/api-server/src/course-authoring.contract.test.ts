@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ApplyCourseAuthoringCommandBody, RequestManagedResourceUploadUrlBody } from "@workspace/api-zod";
+import { ApplyCourseAuthoringCommandBody, RequestManagedResourceUploadUrlBody, CreateBaselineDraftResponse, PublishBaselineVersionResponse, SelectLearnerPathwayResponse, UpdateBaselineDraftBody } from "@workspace/api-zod";
 import { allocatedSiblingSequence, assignmentAllows, orderedSiblingIds } from "./lib/course-authoring";
 import { learnerCourseAvailable } from "./routes/learning";
 
@@ -77,3 +77,20 @@ assert.equal(assignmentAllows(assignments, "trainer-a", "program-a", "path-a"), 
 assert.equal(assignmentAllows(assignments, "trainer-a", "program-b", "path-b"), true, "multiple active assignments are supported");
 assert.equal(assignmentAllows(assignments, "trainer-a", "program-c", "path-c"), false, "unrelated pathways are denied");
 assert.equal(assignmentAllows(assignments, "trainer-b", "program-c", "path-c"), false, "inactive assignments are denied");
+
+assert.equal(CreateBaselineDraftResponse.safeParse({
+  baselineId: "baseline-1", versionId: "baseline-version-2", version: 2, status: "DRAFT", sourceVersion: 1,
+}).success, true, "baseline clone response is contract-valid");
+assert.equal(PublishBaselineVersionResponse.safeParse({
+  baselineId: "baseline-1", versionId: "baseline-version-2", version: 2, status: "PUBLISHED",
+  publishedAt: new Date().toISOString(),
+}).success, true, "baseline publish response is contract-valid");
+assert.equal(UpdateBaselineDraftBody.safeParse({ snapshot: { modules: [], selections: [] } }).success, true, "baseline draft edits are contract-valid");
+assert.equal(SelectLearnerPathwayResponse.safeParse({
+  pathway: { id: "path-1", name: "Path", type: "Primary", purpose: "unspecified", outcome: "Outcome", moduleCount: 1, gateCount: 0, gates: [], terminalPortfolio: "Capability Portfolio" },
+  programId: "program-1", baselineVersionId: "baseline-version-2", selectedAt: new Date().toISOString(),
+}).success, true, "learner pathway selection requires a baseline pin");
+assert.equal(SelectLearnerPathwayResponse.safeParse({
+  pathway: { id: "path-1", name: "Path", type: "Primary", purpose: "unspecified", outcome: "Outcome", moduleCount: 1, gateCount: 0, gates: [], terminalPortfolio: "Capability Portfolio" },
+  programId: "program-1", selectedAt: new Date().toISOString(),
+}).success, false, "learner pathway selection rejects a missing baseline pin");

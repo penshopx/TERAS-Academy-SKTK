@@ -33,6 +33,7 @@ import {
   diagnosticRecommendationsTable,
 } from "@workspace/db";
 import { authorizeAdmin, authorizeLocalUser, authorizeSuperAdmin, type AdminActor } from "../lib/authorization";
+import { pinPublishedBaseline } from "../lib/baseline-authoring";
 import { supabaseEmailIsVerified, supabaseIdentity } from "../lib/supabase-auth";
 import { allowsSuperAdminMfa } from "@workspace/db/super-admin-mfa-policy";
 import { readinessAuditSigner } from "../lib/readiness-audit-signing";
@@ -594,8 +595,36 @@ lifecycle("programs", programsTable, ListAdminProgramsResponse, CreateAdminProgr
 lifecycle("pathways", pathwaysTable, ListAdminPathwaysResponse, CreateAdminPathwayBody, CreateAdminPathwayResponse, UpdateAdminPathwayParams, UpdateAdminPathwayBody, UpdateAdminPathwayResponse, pathwaysTable.id, "pathway");
 lifecycle("cohorts", cohortsTable, ListAdminCohortsResponse, CreateAdminCohortBody, CreateAdminCohortResponse, UpdateAdminCohortParams, UpdateAdminCohortBody, UpdateAdminCohortResponse, cohortsTable.id, "cohort");
 router.get("/admin/enrollments", async (req, res): Promise<void> => { if (!await authorizeAdmin(req, res)) return; res.json(ListAdminEnrollmentsResponse.parse(await db.select().from(enrollmentsTable))); });
-router.post("/admin/enrollments", async (req, res): Promise<void> => { const actor = await authorizeAdmin(req, res); const input = parsed(CreateAdminEnrollmentBody, req.body, res); if (!actor || !input) return; const error = await enrollmentValid(input); if (error) { res.status(409).json({ error }); return; } try { const value = await db.transaction(async tx => { const [record] = await tx.insert(enrollmentsTable).values({ ...input, createdBy: `supabase:${actor.authSubject}` }).returning(); await audit(tx as typeof db, actor, "create", "enrollment", record.id, null, record); return record; }); res.status(201).json(CreateAdminEnrollmentResponse.parse(value)); } catch { res.status(409).json({ error: "Enrollment conflicts with existing lifecycle data" }); } });
-router.patch("/admin/enrollments/:enrollmentId", async (req, res): Promise<void> => { const actor = await authorizeAdmin(req, res); const params = parsed(UpdateAdminEnrollmentParams, req.params, res); const input = parsed(UpdateAdminEnrollmentBody, req.body, res); if (!actor || !params || !input) return; const [before] = await db.select().from(enrollmentsTable).where(eq(enrollmentsTable.id, params.enrollmentId)); if (!before) { res.status(404).json({ error: "Enrollment not found" }); return; } const candidate = { ...before, ...input }; const error = await enrollmentValid(candidate); if (error) { res.status(409).json({ error }); return; } try { const value = await db.transaction(async tx => { const [record] = await tx.update(enrollmentsTable).set(input).where(eq(enrollmentsTable.id, params.enrollmentId)).returning(); await audit(tx as typeof db, actor, "update", "enrollment", record.id, before, record); return record; }); res.json(UpdateAdminEnrollmentResponse.parse(value)); } catch { res.status(409).json({ error: "Enrollment conflicts with existing lifecycle data" }); } });
+router.post("/admin/enrollments", async (req, res): Promise<void> => { const actor = await authorizeAdmin(req, res); const input = parsed(CreateAdminEnrollmentBody, req.body, res); if (!actor || !input) return; const error = await enrollmentValid(input); if (error) { res.status(409).json({ error }); return; } try { const value = await db.transaction(async tx => { const baselineVersionId = await pinPublishedBaseline(input.pathwayId, tx); if (!baselineVersionId) throw new Error("No published baseline is available for this pathway"); const [record] = await tx.insert(enrollmentsTable).values({ ...input, baselineVersionId, createdBy: `supabase:${actor.authSubject}` }).returning(); await audit(tx as typeof db, actor, "create", "enrollment", record.id, null, record); return record; }); res.status(201).json(CreateAdminEnrollmentResponse.parse(value)); } catch (error) { res.status(error instanceof Error && error.message.includes("No published") ? 409 : 409).json({ error: error instanceof Error && error.message.includes("No published") ? error.message : "Enrollment conflicts with existing lifecycle data" }); } });
+router.patch("/admin/enrollments/:enrollmentId", async (req, res): Promise<void> => {
+  const actor = await authorizeAdmin(req, res);
+  const params = parsed(UpdateAdminEnrollmentParams, req.params, res);
+  const input = parsed(UpdateAdminEnrollmentBody, req.body, res);
+  if (!actor || !params || !input) return;
+  try {
+    const value = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${params.enrollmentId}))`);
+      const [before] = await tx.select().from(enrollmentsTable).where(eq(enrollmentsTable.id, params.enrollmentId)).limit(1);
+      if (!before) return null;
+      const candidate = { ...before, ...input };
+      const validationError = await enrollmentValid(candidate);
+      if (validationError) throw new Error(validationError);
+      const pathwayChanged = input.pathwayId !== undefined && input.pathwayId !== before.pathwayId;
+      const baselineVersionId = pathwayChanged ? await pinPublishedBaseline(input.pathwayId!, tx) : before.baselineVersionId;
+      if (pathwayChanged && !baselineVersionId) throw new Error("No published baseline is available for this pathway");
+      const [record] = await tx.update(enrollmentsTable)
+        .set({ ...input, baselineVersionId })
+        .where(eq(enrollmentsTable.id, params.enrollmentId))
+        .returning();
+      await audit(tx as typeof db, actor, "update", "enrollment", record.id, before, record);
+      return record;
+    });
+    if (!value) { res.status(404).json({ error: "Enrollment not found" }); return; }
+    res.json(UpdateAdminEnrollmentResponse.parse(value));
+  } catch (error) {
+    res.status(409).json({ error: error instanceof Error ? error.message : "Enrollment conflicts with existing lifecycle data" });
+  }
+});
 router.get("/admin/audit", async (req, res): Promise<void> => { if (!await authorizeAdmin(req, res)) return; res.json(ListAdminAuditEventsResponse.parse(await db.select().from(adminAuditEventsTable).orderBy(desc(adminAuditEventsTable.createdAt)))); });
 
 async function competencyView(framework: any, executor: any = db) {

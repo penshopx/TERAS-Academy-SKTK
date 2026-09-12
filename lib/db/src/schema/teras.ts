@@ -90,7 +90,10 @@ export const enrollmentsTable = pgTable("teras_enrollments", {
   programId: text("program_id").notNull().references(() => programsTable.id),
   pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id), trainerId: text("trainer_id").references(() => peopleTable.id),
   assessorId: text("assessor_id").references(() => peopleTable.id), cohortId: text("cohort_id").references(() => cohortsTable.id),
-  status: text("status").notNull().default("active"), ...audit,
+  status: text("status").notNull().default("active"),
+  /** Immutable curriculum pin selected at enrollment time. */
+  baselineVersionId: text("baseline_version_id"),
+  ...audit,
 }, table => [
   unique("teras_enrollments_id_program_unique").on(table.id, table.programId),
   unique("teras_enrollments_id_learner_unique").on(table.id, table.learnerId),
@@ -133,7 +136,10 @@ export const knowledgeNotFoundTopicsTable = pgTable("teras_knowledge_not_found_t
 export const enrollmentPathwayEventsTable = pgTable("teras_enrollment_pathway_events", {
   id: text("id").primaryKey(), enrollmentId: text("enrollment_id").notNull().references(() => enrollmentsTable.id),
   pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id),
-  programId: text("program_id").notNull().references(() => programsTable.id), sequence: integer("sequence").notNull(), ...audit,
+  programId: text("program_id").notNull().references(() => programsTable.id), sequence: integer("sequence").notNull(),
+  /** Version selected for this pathway decision; learner history never follows later publishes. */
+  baselineVersionId: text("baseline_version_id"),
+  ...audit,
 }, table => [
   uniqueIndex("teras_enrollment_pathway_events_sequence_unique").on(table.enrollmentId, table.sequence),
   foreignKey({columns:[table.enrollmentId,table.programId],foreignColumns:[enrollmentsTable.id,enrollmentsTable.programId],name:"teras_pathway_events_enrollment_program_fk"}),

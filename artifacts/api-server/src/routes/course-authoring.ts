@@ -6,14 +6,88 @@ import {
   ListCourseAuthoringAuditParams, ListCourseAuthoringAuditResponse,
   PreviewAuthoredCourseParams, PreviewAuthoredCourseResponse,
   PublishAuthoredCourseParams, PublishAuthoredCourseResponse,
+  CreateBaselineDraftParams, CreateBaselineDraftResponse,
+  UpdateBaselineDraftBody, UpdateBaselineDraftParams, UpdateBaselineDraftResponse,
+  PublishBaselineVersionParams, PublishBaselineVersionResponse,
+  ListBaselineVersionsParams, ListBaselineVersionsResponse,
+  ListBaselineAuditParams, ListBaselineAuditResponse,
   ValidateAuthoredCourseParams, ValidateAuthoredCourseResponse,
 } from "@workspace/api-zod";
-import { authorizeWorkspaceRole } from "../lib/authorization";
+import { authorizeBaselineManager, authorizeWorkspaceRole, type BaselineManager } from "../lib/authorization";
 import { applyCourseAuthoring, authoredCourse, courseAudit, coursePreview, courseVersions, listAuthoredCourses, publishCourse, trainerHasAssignment, validateCourse } from "../lib/course-authoring";
 import { db, enrollmentsTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
+import { baselineAudit, baselinePathwayIds, createBaselineDraft, listBaselineVersions, publishBaseline, snapshotPathwayIds, updateBaselineDraft } from "../lib/baseline-authoring";
 
 const router: IRouter = Router();
+async function requireBaselineScope(baselineId: string, manager: BaselineManager, res: Response, additionalPathways: Iterable<string> = []) {
+  if (manager.global) return true;
+  const pathwayIds = [...new Set([...await baselinePathwayIds(baselineId), ...additionalPathways])];
+  if (!pathwayIds.length) { res.status(404).json({ error: "Baseline not found" }); return false; }
+  const assignments = await db.select({ pathwayId: enrollmentsTable.pathwayId }).from(enrollmentsTable).where(and(
+    eq(enrollmentsTable.trainerId, manager.id), eq(enrollmentsTable.status, "active"),
+    inArray(enrollmentsTable.pathwayId, pathwayIds),
+  ));
+  const assignedPathways = new Set(assignments.map(row => row.pathwayId));
+  if (!pathwayIds.every(pathwayId => assignedPathways.has(pathwayId))) {
+    res.status(403).json({ error: "You must be assigned to every pathway governed by this baseline" });
+    return false;
+  }
+  return true;
+}
+
+router.post("/trainer/authoring/baselines/:baselineId/drafts", async (req, res): Promise<void> => {
+  const manager = await authorizeBaselineManager(req, res);
+  if (!manager) return;
+  const parsed = CreateBaselineDraftParams.safeParse(req.params);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!await requireBaselineScope(parsed.data.baselineId, manager, res)) return;
+  const result = await createBaselineDraft(parsed.data.baselineId, manager.id);
+  if ("error" in result) { res.status(result.error === "Baseline not found" ? 404 : 409).json({ error: result.error }); return; }
+  res.status(201).json(CreateBaselineDraftResponse.parse(result));
+});
+
+router.post("/trainer/authoring/baselines/:baselineId/versions/:versionId/publish", async (req, res): Promise<void> => {
+  const manager = await authorizeBaselineManager(req, res);
+  if (!manager) return;
+  const parsed = PublishBaselineVersionParams.safeParse(req.params);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!await requireBaselineScope(parsed.data.baselineId, manager, res)) return;
+  const result = await publishBaseline(parsed.data.baselineId, parsed.data.versionId, manager.id);
+  if ("error" in result) { res.status(result.error === "Baseline draft not found" ? 404 : 409).json({ error: result.error, ...("report" in result ? { report: result.report } : {}) }); return; }
+  res.status(201).json(PublishBaselineVersionResponse.parse(result));
+});
+
+router.patch("/trainer/authoring/baselines/:baselineId/versions/:versionId", async (req, res): Promise<void> => {
+  const manager = await authorizeBaselineManager(req, res);
+  if (!manager) return;
+  const parsed = UpdateBaselineDraftParams.safeParse(req.params);
+  const body = UpdateBaselineDraftBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!body.success) { res.status(400).json({ error: body.error?.message ?? "Invalid baseline draft" }); return; }
+  if (!await requireBaselineScope(parsed.data.baselineId, manager, res, snapshotPathwayIds(body.data.snapshot))) return;
+  const result = await updateBaselineDraft(parsed.data.baselineId, parsed.data.versionId, body.data.snapshot, manager.id);
+  if ("error" in result) { res.status(result.error === "Baseline draft not found" ? 404 : 409).json({ error: result.error, ...("report" in result ? { report: result.report } : {}) }); return; }
+  res.json(UpdateBaselineDraftResponse.parse(result));
+});
+
+router.get("/trainer/authoring/baselines/:baselineId/versions", async (req, res): Promise<void> => {
+  const manager = await authorizeBaselineManager(req, res);
+  if (!manager) return;
+  const parsed = ListBaselineVersionsParams.safeParse(req.params);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!await requireBaselineScope(parsed.data.baselineId, manager, res)) return;
+  res.json(ListBaselineVersionsResponse.parse(await listBaselineVersions(parsed.data.baselineId)));
+});
+
+router.get("/trainer/authoring/baselines/:baselineId/audit", async (req, res): Promise<void> => {
+  const manager = await authorizeBaselineManager(req, res);
+  if (!manager) return;
+  const parsed = ListBaselineAuditParams.safeParse(req.params);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!await requireBaselineScope(parsed.data.baselineId, manager, res)) return;
+  res.json(ListBaselineAuditResponse.parse(await baselineAudit(parsed.data.baselineId)));
+});
 async function hasCourseScope(courseId: string, trainerId: string) {
   const aggregate = await authoredCourse(courseId);
   if (!aggregate) return "missing" as const;

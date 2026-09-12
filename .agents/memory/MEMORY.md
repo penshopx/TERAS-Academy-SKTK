@@ -36,3 +36,4 @@
 - [Causal parent ownership](causal-parent-ownership.md) — keep learner ownership and transitive parent identity immutable so validated causal links cannot drift across learners.
 - [Drizzle empty database tests](drizzle-empty-database-tests.md) — clean-bootstrap tests need a disposable database because Drizzle 0.31 introspects public despite search_path.
 - [Post-lock snapshots](post-lock-snapshots.md) — read mutable audit context in a new statement after a contended row lock so READ COMMITTED sees the winner.
+- [Baseline publish and pin coordination](baseline-publish-pin-coordination.md) — baseline publication and learner version pinning must share one transaction lock.

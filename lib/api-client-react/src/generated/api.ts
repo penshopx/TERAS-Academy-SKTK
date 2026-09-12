@@ -53,6 +53,12 @@ import type {
   AssessorAssessmentDecisionInput,
   AssessorDashboard,
   BadRequestResponse,
+  BaselineAuditEvent,
+  BaselineDraft,
+  BaselineDraftInput,
+  BaselineDraftUpdated,
+  BaselinePublishedVersion,
+  BaselineVersion,
   CapabilityPassport,
   CompetencyFrameworkInput,
   CompetencyFrameworkUpdate,
@@ -3508,6 +3514,366 @@ export function useListAuthoredCourses<TData = Awaited<ReturnType<typeof listAut
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListAuthoredCoursesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateBaselineDraftUrl = (baselineId: string,) => {
+
+
+
+
+  return `/api/trainer/authoring/baselines/${baselineId}/drafts`
+}
+
+/**
+ * @summary Clone the active published baseline into a draft
+ */
+export const createBaselineDraft = async (baselineId: string, options?: Parameters<typeof customFetch>[1]): Promise<BaselineDraft> => {
+
+  return customFetch<BaselineDraft>(getCreateBaselineDraftUrl(baselineId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCreateBaselineDraftMutationOptions = <TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBaselineDraft>>, TError,{baselineId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createBaselineDraft>>, TError,{baselineId: string}, TContext> => {
+
+const mutationKey = ['createBaselineDraft'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBaselineDraft>>, {baselineId: string}> = (props) => {
+          const {baselineId} = props ?? {};
+
+          return  createBaselineDraft(baselineId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateBaselineDraftMutationResult = NonNullable<Awaited<ReturnType<typeof createBaselineDraft>>>
+
+    export type CreateBaselineDraftMutationError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>
+
+    /**
+ * @summary Clone the active published baseline into a draft
+ */
+export const useCreateBaselineDraft = <TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBaselineDraft>>, TError,{baselineId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createBaselineDraft>>,
+        TError,
+        {baselineId: string},
+        TContext
+      > => {
+      return useMutation(getCreateBaselineDraftMutationOptions(options));
+    }
+
+export const getPublishBaselineVersionUrl = (baselineId: string,
+    versionId: string,) => {
+
+
+
+
+  return `/api/trainer/authoring/baselines/${baselineId}/versions/${versionId}/publish`
+}
+
+/**
+ * @summary Publish an immutable baseline snapshot
+ */
+export const publishBaselineVersion = async (baselineId: string,
+    versionId: string, options?: Parameters<typeof customFetch>[1]): Promise<BaselinePublishedVersion> => {
+
+  return customFetch<BaselinePublishedVersion>(getPublishBaselineVersionUrl(baselineId,versionId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getPublishBaselineVersionMutationOptions = <TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishBaselineVersion>>, TError,{baselineId: string;versionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof publishBaselineVersion>>, TError,{baselineId: string;versionId: string}, TContext> => {
+
+const mutationKey = ['publishBaselineVersion'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof publishBaselineVersion>>, {baselineId: string;versionId: string}> = (props) => {
+          const {baselineId,versionId} = props ?? {};
+
+          return  publishBaselineVersion(baselineId,versionId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PublishBaselineVersionMutationResult = NonNullable<Awaited<ReturnType<typeof publishBaselineVersion>>>
+
+    export type PublishBaselineVersionMutationError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>
+
+    /**
+ * @summary Publish an immutable baseline snapshot
+ */
+export const usePublishBaselineVersion = <TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishBaselineVersion>>, TError,{baselineId: string;versionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof publishBaselineVersion>>,
+        TError,
+        {baselineId: string;versionId: string},
+        TContext
+      > => {
+      return useMutation(getPublishBaselineVersionMutationOptions(options));
+    }
+
+export const getUpdateBaselineDraftUrl = (baselineId: string,
+    versionId: string,) => {
+
+
+
+
+  return `/api/trainer/authoring/baselines/${baselineId}/versions/${versionId}`
+}
+
+/**
+ * @summary Update a baseline draft before publication
+ */
+export const updateBaselineDraft = async (baselineId: string,
+    versionId: string,
+    baselineDraftInput: BaselineDraftInput, options?: Parameters<typeof customFetch>[1]): Promise<BaselineDraftUpdated> => {
+
+  return customFetch<BaselineDraftUpdated>(getUpdateBaselineDraftUrl(baselineId,versionId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(baselineDraftInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateBaselineDraftMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateBaselineDraft>>, TError,{baselineId: string;versionId: string;data: BodyType<BaselineDraftInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateBaselineDraft>>, TError,{baselineId: string;versionId: string;data: BodyType<BaselineDraftInput>}, TContext> => {
+
+const mutationKey = ['updateBaselineDraft'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateBaselineDraft>>, {baselineId: string;versionId: string;data: BodyType<BaselineDraftInput>}> = (props) => {
+          const {baselineId,versionId,data} = props ?? {};
+
+          return  updateBaselineDraft(baselineId,versionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateBaselineDraftMutationResult = NonNullable<Awaited<ReturnType<typeof updateBaselineDraft>>>
+    export type UpdateBaselineDraftMutationBody = BodyType<BaselineDraftInput>
+    export type UpdateBaselineDraftMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>
+
+    /**
+ * @summary Update a baseline draft before publication
+ */
+export const useUpdateBaselineDraft = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateBaselineDraft>>, TError,{baselineId: string;versionId: string;data: BodyType<BaselineDraftInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateBaselineDraft>>,
+        TError,
+        {baselineId: string;versionId: string;data: BodyType<BaselineDraftInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateBaselineDraftMutationOptions(options));
+    }
+
+export const getListBaselineVersionsUrl = (baselineId: string,) => {
+
+
+
+
+  return `/api/trainer/authoring/baselines/${baselineId}/versions`
+}
+
+export const listBaselineVersions = async (baselineId: string, options?: Parameters<typeof customFetch>[1]): Promise<BaselineVersion[]> => {
+
+  return customFetch<BaselineVersion[]>(getListBaselineVersionsUrl(baselineId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListBaselineVersionsQueryKey = (baselineId: string,) => {
+    return [
+    `/api/trainer/authoring/baselines/${baselineId}/versions`
+    ] as const;
+    }
+
+
+export const getListBaselineVersionsQueryOptions = <TData = Awaited<ReturnType<typeof listBaselineVersions>>, TError = ErrorType<unknown>>(baselineId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBaselineVersions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListBaselineVersionsQueryKey(baselineId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBaselineVersions>>> = ({ signal }) => listBaselineVersions(baselineId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: baselineId !== null && baselineId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listBaselineVersions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListBaselineVersionsQueryResult = NonNullable<Awaited<ReturnType<typeof listBaselineVersions>>>
+export type ListBaselineVersionsQueryError = ErrorType<unknown>
+
+
+
+export function useListBaselineVersions<TData = Awaited<ReturnType<typeof listBaselineVersions>>, TError = ErrorType<unknown>>(
+ baselineId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBaselineVersions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListBaselineVersionsQueryOptions(baselineId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListBaselineAuditUrl = (baselineId: string,) => {
+
+
+
+
+  return `/api/trainer/authoring/baselines/${baselineId}/audit`
+}
+
+export const listBaselineAudit = async (baselineId: string, options?: Parameters<typeof customFetch>[1]): Promise<BaselineAuditEvent[]> => {
+
+  return customFetch<BaselineAuditEvent[]>(getListBaselineAuditUrl(baselineId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListBaselineAuditQueryKey = (baselineId: string,) => {
+    return [
+    `/api/trainer/authoring/baselines/${baselineId}/audit`
+    ] as const;
+    }
+
+
+export const getListBaselineAuditQueryOptions = <TData = Awaited<ReturnType<typeof listBaselineAudit>>, TError = ErrorType<unknown>>(baselineId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBaselineAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListBaselineAuditQueryKey(baselineId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBaselineAudit>>> = ({ signal }) => listBaselineAudit(baselineId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: baselineId !== null && baselineId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listBaselineAudit>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListBaselineAuditQueryResult = NonNullable<Awaited<ReturnType<typeof listBaselineAudit>>>
+export type ListBaselineAuditQueryError = ErrorType<unknown>
+
+
+
+export function useListBaselineAudit<TData = Awaited<ReturnType<typeof listBaselineAudit>>, TError = ErrorType<unknown>>(
+ baselineId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBaselineAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListBaselineAuditQueryOptions(baselineId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -1,4 +1,4 @@
-import { boolean, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { modulesTable, pathwaysTable } from "./teras";
@@ -17,8 +17,38 @@ export const learningBaselinesTable = pgTable("teras_learning_baselines", {
   description: text("description").notNull(),
   version: text("version").notNull().default("1.0"),
   status: text("status").notNull().default("active"),
+  publishedVersionId: text("published_version_id"),
   ...audit,
 }, table => [uniqueIndex("teras_learning_baselines_code_version_unique").on(table.code, table.version)]);
+
+/** Immutable aggregate snapshots. Drafts are cloned from a published version. */
+export const learningBaselineVersionsTable = pgTable("teras_learning_baseline_versions", {
+  id: text("id").primaryKey(),
+  baselineId: text("baseline_id").notNull().references(() => learningBaselinesTable.id),
+  version: integer("version").notNull(),
+  status: text("status").notNull().default("DRAFT"),
+  snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  createdBy: text("created_by").notNull().default("system"),
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+  publishedBy: text("published_by"),
+}, table => [
+  uniqueIndex("teras_learning_baseline_versions_baseline_version_unique").on(table.baselineId, table.version),
+  index("teras_learning_baseline_versions_baseline_published_idx").on(table.baselineId, table.publishedAt),
+]);
+
+/** Append-only audit for baseline clone and publish commands. */
+export const learningBaselineAuditTable = pgTable("teras_learning_baseline_audit", {
+  id: text("id").primaryKey(),
+  baselineId: text("baseline_id").notNull().references(() => learningBaselinesTable.id),
+  versionId: text("version_id").references(() => learningBaselineVersionsTable.id),
+  action: text("action").notNull(),
+  actorId: text("actor_id").notNull(),
+  details: jsonb("details").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
 
 /** One canonical definition for each M01-M10 record. */
 export const baselineModulesTable = pgTable("teras_baseline_modules", {
@@ -85,6 +115,8 @@ export const legacyModuleMappingsTable = pgTable("teras_legacy_module_mappings",
 
 const tables = {
   learningBaselinesTable,
+  learningBaselineVersionsTable,
+  learningBaselineAuditTable,
   baselineModulesTable,
   pathwayBaselineModulesTable,
   pathwayModuleContractsTable,
@@ -94,6 +126,8 @@ export const baselineInsertSchemas = Object.fromEntries(
   Object.entries(tables).map(([name, table]) => [name, createInsertSchema(table).omit({ createdAt: true, updatedAt: true })]),
 );
 export type LearningBaseline = typeof learningBaselinesTable.$inferSelect;
+export type LearningBaselineVersion = typeof learningBaselineVersionsTable.$inferSelect;
+export type LearningBaselineAudit = typeof learningBaselineAuditTable.$inferSelect;
 export type BaselineModule = typeof baselineModulesTable.$inferSelect;
 export type PathwayBaselineModule = typeof pathwayBaselineModulesTable.$inferSelect;
 export type PathwayModuleContract = typeof pathwayModuleContractsTable.$inferSelect;
