@@ -107,7 +107,7 @@ export const learningActivitiesTable = pgTable("teras_learning_activities", {
   ...catalogueAudit,
 }, table => [
   uniqueIndex("teras_learning_activities_lesson_sequence_unique").on(table.lessonId, table.sequence),
-  uniqueIndex("teras_learning_activities_id_pathway_unique").on(table.id, table.pathwayId),
+  unique("teras_learning_activities_id_pathway_unique").on(table.id, table.pathwayId),
   unique("teras_learning_activities_id_program_pathway_unique").on(table.id, table.programId, table.pathwayId),
 ]);
 

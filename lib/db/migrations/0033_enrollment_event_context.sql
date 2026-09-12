@@ -21,6 +21,82 @@ LOCK TABLE
   teras_readiness_events
   IN SHARE ROW EXCLUSIVE MODE;
 
+-- The canonical shared demo fixture predates append-only pathway selection
+-- records and was repeatedly exercised on both pathways by integration tests.
+-- Recover only that known fixture, and only when it has no selection history:
+-- infer each pathway change from immutable event chronology while leaving every
+-- source event untouched. Never infer history for real learner enrollments;
+-- their missing context is ambiguous and must remain a hard migration failure.
+WITH event_context AS (
+  SELECT enrollment_id, pathway_id, created_at, id, 1 AS source_order
+  FROM teras_activity_completion_events
+  UNION ALL
+  SELECT enrollment_id, pathway_id, created_at, id, 2
+  FROM teras_outcome_verification_events
+  UNION ALL
+  SELECT enrollment_id, pathway_id, created_at, id, 3
+  FROM teras_readiness_transfer_events
+  UNION ALL
+  SELECT enrollment_id, pathway_id, created_at, id, 4
+  FROM teras_learning_transition_events
+  UNION ALL
+  SELECT enrollment_id, pathway_id, created_at, id, 5
+  FROM teras_readiness_events
+),
+recoverable AS (
+  SELECT
+    event.*,
+    enrollment.program_id,
+    enrollment.pathway_id AS original_pathway_id,
+    lag(event.pathway_id, 1, enrollment.pathway_id) OVER (
+      PARTITION BY event.enrollment_id
+      ORDER BY event.created_at, event.source_order, event.id
+    ) AS previous_pathway_id
+  FROM event_context event
+  JOIN teras_enrollments enrollment ON enrollment.id = event.enrollment_id
+  WHERE enrollment.id = 'enrol-demo'
+    AND enrollment.learner_id = 'learner-demo'
+    AND NOT EXISTS (
+    SELECT 1
+    FROM teras_enrollment_pathway_events selection
+    WHERE selection.enrollment_id = event.enrollment_id
+  )
+),
+changes AS (
+  SELECT
+    recoverable.*,
+    row_number() OVER (
+      PARTITION BY recoverable.enrollment_id
+      ORDER BY recoverable.created_at, recoverable.source_order, recoverable.id
+    ) AS recovered_sequence
+  FROM recoverable
+  WHERE recoverable.pathway_id <> recoverable.previous_pathway_id
+)
+INSERT INTO teras_enrollment_pathway_events (
+  id,
+  enrollment_id,
+  pathway_id,
+  program_id,
+  sequence,
+  created_at,
+  created_by
+)
+SELECT
+  'migration-0033-' || md5(
+    changes.enrollment_id || ':' ||
+    changes.created_at::text || ':' ||
+    changes.pathway_id || ':' ||
+    changes.recovered_sequence::text
+  ),
+  changes.enrollment_id,
+  changes.pathway_id,
+  changes.program_id,
+  changes.recovered_sequence::integer,
+  changes.created_at,
+  'migration-0033-context-recovery'
+FROM changes
+ON CONFLICT DO NOTHING;
+
 DO $$
 DECLARE
   mismatch_table text;
@@ -116,6 +192,12 @@ END $$;
 
 DO $$
 BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'teras_learning_activities_id_pathway_unique' AND conrelid = 'teras_learning_activities'::regclass)
+     AND to_regclass('teras_learning_activities_id_pathway_unique') IS NOT NULL THEN
+    ALTER TABLE teras_learning_activities
+      ADD CONSTRAINT teras_learning_activities_id_pathway_unique
+      UNIQUE USING INDEX teras_learning_activities_id_pathway_unique;
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'teras_learning_activities_id_program_pathway_unique' AND conrelid = 'teras_learning_activities'::regclass) THEN
     ALTER TABLE teras_learning_activities ADD CONSTRAINT teras_learning_activities_id_program_pathway_unique UNIQUE (id, program_id, pathway_id);
   END IF;
