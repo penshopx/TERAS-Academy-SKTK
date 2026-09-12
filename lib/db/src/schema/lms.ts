@@ -138,6 +138,7 @@ export const contentResourcesTable = pgTable("teras_content_resources", {
     )`,
   ),
   uniqueIndex("teras_content_resources_activity_sequence_unique").on(table.activityId, table.sequence),
+  unique("teras_content_resources_id_activity_unique").on(table.id, table.activityId),
 ]);
 
 /** Immutable published course aggregate. Old versions intentionally remain addressable for audit/progress. */
@@ -367,11 +368,21 @@ export const learningResourceProgressTable = pgTable("teras_learning_resource_pr
   createdBy: text("created_by").notNull().default("system"),
 }, table => [
   check("teras_learning_resource_progress_position_check", sql`${table.position} >= 0`),
+  foreignKey({
+    columns: [table.enrollmentId, table.learnerId],
+    foreignColumns: [enrollmentsTable.id, enrollmentsTable.learnerId],
+    name: "teras_learning_resource_progress_enrollment_learner_fk",
+  }),
+  foreignKey({
+    columns: [table.resourceId, table.activityId],
+    foreignColumns: [contentResourcesTable.id, contentResourcesTable.activityId],
+    name: "teras_learning_resource_progress_resource_activity_fk",
+  }),
   uniqueIndex("teras_learning_resource_progress_scope_unique").on(
-    table.learnerId, table.enrollmentId, table.activityId, table.resourceId,
+    table.learnerId, table.enrollmentId, table.pathwayId, table.activityId, table.resourceId,
   ),
   index("teras_learning_resource_progress_lookup_idx").on(
-    table.learnerId, table.enrollmentId, table.activityId, table.resourceId,
+    table.learnerId, table.enrollmentId, table.pathwayId, table.activityId, table.resourceId,
   ),
 ]);
 

@@ -16,8 +16,8 @@ CREATE TABLE IF NOT EXISTS teras_learning_resource_progress (
   created_by text NOT NULL DEFAULT 'system'
 );
 CREATE UNIQUE INDEX IF NOT EXISTS teras_learning_resource_progress_scope_unique
-  ON teras_learning_resource_progress(learner_id, enrollment_id, activity_id, resource_id);
+  ON teras_learning_resource_progress(learner_id, enrollment_id, pathway_id, activity_id, resource_id);
 CREATE INDEX IF NOT EXISTS teras_learning_resource_progress_lookup_idx
-  ON teras_learning_resource_progress(learner_id, enrollment_id, activity_id, resource_id);
+  ON teras_learning_resource_progress(learner_id, enrollment_id, pathway_id, activity_id, resource_id);
 
 COMMIT;

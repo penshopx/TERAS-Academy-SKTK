@@ -338,6 +338,7 @@ router.get("/learning/resources/:resourceId/progress", async (req, res): Promise
   const [progress] = await db.select().from(learningResourceProgressTable).where(and(
     eq(learningResourceProgressTable.learnerId, learnerId),
     eq(learningResourceProgressTable.enrollmentId, scope.context.enrollment.id),
+    eq(learningResourceProgressTable.pathwayId, scope.context.pathway.id),
     eq(learningResourceProgressTable.activityId, scope.resource.activityId),
     eq(learningResourceProgressTable.resourceId, scope.resource.resourceId),
   )).limit(1);
@@ -384,6 +385,7 @@ router.put("/learning/resources/:resourceId/progress", async (req, res): Promise
     target: [
       learningResourceProgressTable.learnerId,
       learningResourceProgressTable.enrollmentId,
+      learningResourceProgressTable.pathwayId,
       learningResourceProgressTable.activityId,
       learningResourceProgressTable.resourceId,
     ],
