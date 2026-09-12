@@ -94,6 +94,34 @@ test("renders a blocked learner condition as not cleared with every blocker visi
   }
 });
 
+test("renders a not ready learner condition as safety blocked with critical failure details", () => {
+  const blockers = [
+    "Critical assessment failed: electrical isolation",
+    "Critical gap unresolved: emergency shutdown",
+    "Evidence package requires revision",
+  ];
+  const markup = renderToStaticMarkup(
+    <LearnerConditionView
+      owner="Assessor"
+      dashboard={dashboard}
+      readiness={{
+        status: "Not Ready",
+        score: 38,
+        blockers,
+        currentGate,
+      }}
+    />,
+  );
+
+  assert.match(markup, /SAFETY BLOCKED/);
+  assert.match(markup, /active critical assessment failure or unresolved critical gap/);
+  assert.match(markup, /Critical failure/);
+  assert.match(markup, /Assessor/);
+  for (const blocker of blockers) {
+    assert.match(markup, new RegExp(blocker));
+  }
+});
+
 test("keeps the learner condition loading state visible without stale safety data", () => {
   const markup = renderConditionState({
     dashboard: undefined,
