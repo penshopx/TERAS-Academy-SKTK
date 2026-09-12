@@ -33,6 +33,10 @@ async function count(client: pg.Client, table: "teras_practice_attempts" | "tera
   return Number((await client.query(`SELECT count(*)::int AS count FROM ${table} WHERE learner_id = 'learner-demo'`)).rows[0]?.count);
 }
 
+async function countWhere(client: pg.Client, table: string, column: string, value: string) {
+  return Number((await client.query(`SELECT count(*)::int AS count FROM ${table} WHERE ${column} = $1`, [value])).rows[0]?.count);
+}
+
 async function setState(client: pg.Client, activityId: string, state: string) {
   await client.query(
     `INSERT INTO teras_learning_transition_events
@@ -76,9 +80,39 @@ async function main() {
     // The forms submit through the real learner routes.  These state rows only
     // prepare the isolated learner for the same gated workflow a browser sees.
     await setState(database, "activity-m03-safe-isolation", "PRACTICE_REQUIRED");
+    await database.query(`
+      INSERT INTO teras_practice_attempts
+        (id, task_id, learner_id, pathway_id, reflection, output_summary, status, created_by)
+      VALUES
+        ('browser-review-practice', 'task-m03', 'learner-demo', 'path-a', 'Review fixture reflection', 'Review fixture output', 'Submitted', 'learner-demo');
+      INSERT INTO teras_learning_record_links
+        (id, learner_id, pathway_id, activity_id, practice_attempt_id, relation, metadata, created_by)
+      VALUES
+        ('browser-review-practice-link', 'learner-demo', 'path-a', 'activity-m03-safe-isolation', 'browser-review-practice', 'produced', '{}'::jsonb, 'learner-demo');
+      INSERT INTO teras_evidence
+        (id, learner_id, pathway_id, module_id, task_id, title, type, description, created_by)
+      VALUES
+        ('browser-review-evidence', 'learner-demo', 'path-a', 'm03', 'task-m03', 'Browser retry evidence', 'Checklist', 'Evidence fixture for a disconnected trainer review.', 'learner-demo');
+      INSERT INTO teras_gaps
+        (id, learner_id, pathway_id, module_id, capability, criterion, severity, priority, diagnosis, gate, recommended_action, created_by)
+      VALUES
+        ('browser-review-gap', 'learner-demo', 'path-a', 'm03', 'Safe isolation', 'SAFE-01', 'Critical', 'High', 'Browser retry fixture', 'G1', 'Repeat under supervision', 'learner-demo');
+      INSERT INTO teras_remediation_plans
+        (id, gap_id, title, description, due_label, created_by)
+      VALUES
+        ('browser-review-plan', 'browser-review-gap', 'Browser retry remediation', 'Retry fixture remediation plan.', 'This week', 'learner-demo');
+      INSERT INTO teras_remediation_activities
+        (id, plan_id, title, description, type, created_by)
+      VALUES
+        ('browser-review-activity', 'browser-review-plan', 'Repeat safe isolation', 'Retry fixture remediation activity.', 'Coaching', 'learner-demo');
+    `);
 
     const requests: Array<{ path: string; key: string }> = [];
     const heldResponses = new Set(["/api/practice/tasks/task-m03/attempts", "/api/evidence"]);
+    const droppedReviewResponses = new Set([
+      "/api/trainer/practice/browser-review-practice/review",
+      "/api/trainer/evidence/browser-review-evidence/review",
+    ]);
     const commitWaiters = new Map<string, () => void>();
     const waitForCommit = (requestPath: string) => new Promise<void>((resolve) => {
       commitWaiters.set(requestPath, resolve);
@@ -88,8 +122,13 @@ async function main() {
     process.env.DATABASE_URL = databaseUrl.toString();
     ({ pool: applicationPool } = await import("@workspace/db"));
     const { createIntegrationTestApp } = await import("./integration-test-app");
+    let authorizationIdentity: { userId: string; role: "learner" | "trainer"; learnerId?: string } = {
+      userId: "task-41-browser",
+      role: "learner",
+      learnerId: "learner-demo",
+    };
     appServer = createIntegrationTestApp(
-      () => ({ userId: "task-41-browser", role: "learner", learnerId: "learner-demo" }),
+      () => authorizationIdentity,
       {
         afterCommit: (request) => {
           if (request.method === "POST" && typeof request.body?.idempotencyKey === "string") {
@@ -102,6 +141,10 @@ async function main() {
         holdResponseAfterCommit: (request) => {
           const path = requestPath(request);
           return request.method === "POST" && heldResponses.delete(path);
+        },
+        dropResponseAfterCommit: (request) => {
+          const path = requestPath(request);
+          return request.method === "POST" && droppedReviewResponses.delete(path);
         },
       },
     );
@@ -215,6 +258,102 @@ async function main() {
     const nextEvidenceKey = requests.filter(item => item.path === "/api/evidence").at(-1)?.key;
     if (!previousEvidenceKey || !nextEvidenceKey || previousEvidenceKey === nextEvidenceKey) {
       throw new Error("The next account reused the previous account's evidence idempotency key.");
+    }
+
+    authorizationIdentity = { userId: "trainer-aria", role: "trainer" };
+    await identity.signIn("trainer-aria");
+    await page.goto(`${baseUrl}/trainer`);
+    const reviewDrafts: Array<{ path: string; key: string }> = [];
+    page.on("request", request => {
+      const path = new URL(request.url()).pathname;
+      if (request.method() === "POST" && path.includes("/api/trainer/")) {
+        const body = request.postDataJSON() as { idempotencyKey?: string };
+        if (body.idempotencyKey) reviewDrafts.push({ path, key: body.idempotencyKey });
+      }
+    });
+
+    const review = async (id: string, comment: string) => {
+      await page.getByTestId(`button-review-${id}`).click();
+      await page.getByTestId("select-trainer-review-outcome").click();
+      await page.getByRole("option", { name: "Needs revision", exact: true }).click();
+      await page.getByTestId("input-trainer-review-comment").fill(comment);
+      await page.getByTestId("button-record-trainer-review").click();
+    };
+    const retryAfterReload = async (id: string, comment: string) => {
+      await page.reload();
+      await review(id, comment);
+      await page.getByText("Review recorded", { exact: true }).waitFor();
+    };
+    const assertSameRetryKey = (path: string) => {
+      const keys = reviewDrafts.filter(item => item.path === path).map(item => item.key);
+      if (keys.length !== 2 || keys[0] !== keys[1]) {
+        throw new Error(`Reload and retry did not reuse the trainer review idempotency key for ${path}.`);
+      }
+    };
+
+    const gapEventsBefore = await countWhere(database, "teras_gap_events", "gap_id", "browser-review-gap");
+    const remediationEventsBefore = await countWhere(database, "teras_remediation_events", "activity_id", "browser-review-activity");
+
+    const practiceReviewPath = "/api/trainer/practice/browser-review-practice/review";
+    await review("browser-review-practice", "Repeat the isolation sequence");
+    await page.getByText("Review failed", { exact: true }).waitFor();
+    await retryAfterReload("browser-review-practice", "Repeat the isolation sequence");
+    assertSameRetryKey(practiceReviewPath);
+    if (await countWhere(database, "teras_practice_reviews", "attempt_id", "browser-review-practice") !== 1) {
+      throw new Error("The disconnected practice review retry duplicated review history.");
+    }
+    if (await countWhere(database, "teras_gap_events", "gap_id", "browser-review-gap") !== gapEventsBefore + 1) {
+      throw new Error("The disconnected practice review retry duplicated gap history.");
+    }
+    if (await countWhere(database, "teras_remediation_events", "activity_id", "browser-review-activity") !== remediationEventsBefore + 1) {
+      throw new Error("The disconnected practice review retry duplicated remediation history.");
+    }
+    await review("browser-review-practice", "Repeat the isolation sequence with a supervisor");
+    await page.getByText("Review recorded", { exact: true }).waitFor();
+    const practiceReviewKeys = reviewDrafts.filter(item => item.path === practiceReviewPath).map(item => item.key);
+    if (practiceReviewKeys.length !== 3 || practiceReviewKeys[2] === practiceReviewKeys[1]) {
+      throw new Error("Changing the practice review draft did not allocate a new idempotency key.");
+    }
+    if (await countWhere(database, "teras_practice_reviews", "attempt_id", "browser-review-practice") !== 2) {
+      throw new Error("Changing the practice review draft did not append a new review.");
+    }
+    if (await countWhere(database, "teras_gap_events", "gap_id", "browser-review-gap") !== gapEventsBefore + 2) {
+      throw new Error("The changed practice review draft did not append exactly one new gap event.");
+    }
+    if (await countWhere(database, "teras_remediation_events", "activity_id", "browser-review-activity") !== remediationEventsBefore + 2) {
+      throw new Error("The changed practice review draft did not append exactly one new remediation event.");
+    }
+
+    const evidenceReviewPath = "/api/trainer/evidence/browser-review-evidence/review";
+    const gapEventsBeforeEvidence = await countWhere(database, "teras_gap_events", "gap_id", "browser-review-gap");
+    const remediationEventsBeforeEvidence = await countWhere(database, "teras_remediation_events", "activity_id", "browser-review-activity");
+    await review("browser-review-evidence", "Add a traceable proving record");
+    await page.getByText("Review failed", { exact: true }).waitFor();
+    await retryAfterReload("browser-review-evidence", "Add a traceable proving record");
+    assertSameRetryKey(evidenceReviewPath);
+    if (await countWhere(database, "teras_evidence_reviews", "evidence_id", "browser-review-evidence") !== 1) {
+      throw new Error("The disconnected evidence review retry duplicated review history.");
+    }
+    if (await countWhere(database, "teras_gap_events", "gap_id", "browser-review-gap") !== gapEventsBeforeEvidence + 1) {
+      throw new Error("The disconnected evidence review retry duplicated gap history.");
+    }
+    if (await countWhere(database, "teras_remediation_events", "activity_id", "browser-review-activity") !== remediationEventsBeforeEvidence + 1) {
+      throw new Error("The disconnected evidence review retry duplicated remediation history.");
+    }
+    await review("browser-review-evidence", "Add a signed and traceable proving record");
+    await page.getByText("Review recorded", { exact: true }).waitFor();
+    const evidenceReviewKeys = reviewDrafts.filter(item => item.path === evidenceReviewPath).map(item => item.key);
+    if (evidenceReviewKeys.length !== 3 || evidenceReviewKeys[2] === evidenceReviewKeys[1]) {
+      throw new Error("Changing the evidence review draft did not allocate a new idempotency key.");
+    }
+    if (await countWhere(database, "teras_evidence_reviews", "evidence_id", "browser-review-evidence") !== 2) {
+      throw new Error("Changing the evidence review draft did not append a new review.");
+    }
+    if (await countWhere(database, "teras_gap_events", "gap_id", "browser-review-gap") !== gapEventsBeforeEvidence + 2) {
+      throw new Error("The changed evidence review draft did not append exactly one new gap event.");
+    }
+    if (await countWhere(database, "teras_remediation_events", "activity_id", "browser-review-activity") !== remediationEventsBeforeEvidence + 2) {
+      throw new Error("The changed evidence review draft did not append exactly one new remediation event.");
     }
     process.stdout.write("browser idempotency integration passed\n");
   } finally {
