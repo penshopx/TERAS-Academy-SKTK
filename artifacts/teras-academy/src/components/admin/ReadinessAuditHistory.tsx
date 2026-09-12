@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   exportAdminReadinessHistory,
   getListAdminReadinessHistoryQueryKey,
@@ -70,6 +70,9 @@ export async function runReadinessAuditExport({
       },
       onDownloadProgress: ({ loadedBytes }) => onLoadedBytes(loadedBytes),
     });
+    if (controller.signal.aborted) {
+      return { status: "cancelled", recordCount };
+    }
     const downloaded = download(payload);
     onRecordCount(payload.recordCount);
     return { status: "success", checksum: downloaded.checksum, recordCount: payload.recordCount };
@@ -79,6 +82,15 @@ export async function runReadinessAuditExport({
     }
     return { status: "failed", error, recordCount };
   }
+}
+
+export function cancelReadinessExportOnUnmount(
+  mounted: { current: boolean },
+  controller: { current: AbortController | null },
+) {
+  mounted.current = false;
+  controller.current?.abort();
+  controller.current = null;
 }
 
 export function downloadReadinessAuditExport(
@@ -176,6 +188,7 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
   const [exportError, setExportError] = useState<unknown>(null);
   const [lastChecksum, setLastChecksum] = useState("");
   const exportAbortController = useRef<AbortController | null>(null);
+  const mounted = useRef(false);
   const exporting = exportStatus === "preparing";
   const params = useMemo<ListAdminReadinessHistoryParams>(() => ({
     ...(learnerId ? { learnerId } : {}),
@@ -197,6 +210,11 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
     ...(ruleVersion ? { ruleVersion: Number(ruleVersion) } : {}),
   }), [learnerId, pathwayId, status, ruleVersion]);
 
+  useEffect(() => {
+    mounted.current = true;
+    return () => cancelReadinessExportOnUnmount(mounted, exportAbortController);
+  }, []);
+
   const download = async () => {
     const controller = new AbortController();
     exportAbortController.current = controller;
@@ -209,10 +227,15 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
       controller,
       request: (signal, callbacks) => exportAdminReadinessHistory(exportParams, { signal, ...callbacks }),
       download: downloadReadinessAuditExport,
-      onRecordCount: setExportRecordCount,
-      onLoadedBytes: setExportLoadedBytes,
+      onRecordCount: count => {
+        if (mounted.current) setExportRecordCount(count);
+      },
+      onLoadedBytes: loadedBytes => {
+        if (mounted.current) setExportLoadedBytes(loadedBytes);
+      },
     });
     try {
+      if (!mounted.current) return;
       if (result.status === "success") {
         trackReadinessAuditExport("succeeded", result.recordCount);
         setLastChecksum(result.checksum);

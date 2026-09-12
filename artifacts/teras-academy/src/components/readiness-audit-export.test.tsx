@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { AdminReadinessExport } from "@workspace/api-client-react";
 import { customFetch } from "../../../../lib/api-client-react/src/custom-fetch";
 import {
+  cancelReadinessExportOnUnmount,
   downloadReadinessAuditExport,
   ReadinessExportProgress,
   ReadinessExportFeedback,
@@ -153,6 +154,47 @@ test("cancelling readiness export prevents downloads and reports cancellation", 
     <ReadinessExportFeedback status="cancelled" recordCount={null} error={null} errorMessage={String} checksum="" />,
   );
   assert.match(markup, /Ekspor dibatalkan\. Tidak ada file yang diunduh\./);
+});
+
+test("unmount aborts an unfinished readiness export without downloading or updating state", async () => {
+  const controller = new AbortController();
+  const controllerRef = { current: controller as AbortController | null };
+  const mounted = { current: true };
+  let downloads = 0;
+  const stateUpdates: string[] = [];
+  let resolveStream!: (value: AdminReadinessExport) => void;
+  const stream = new Promise<AdminReadinessExport>(resolve => {
+    resolveStream = resolve;
+  });
+  const resultPromise = runReadinessAuditExport({
+    controller,
+    request: async (_signal, callbacks) => {
+      callbacks.onResponse(new Response(null, { headers: { "x-export-record-count": "1" } }));
+      callbacks.onDownloadProgress({ loadedBytes: 128, totalBytes: null });
+      return stream;
+    },
+    download: () => {
+      downloads += 1;
+      return { checksum };
+    },
+    onRecordCount: count => {
+      if (mounted.current) stateUpdates.push(`count:${count}`);
+    },
+    onLoadedBytes: bytes => {
+      if (mounted.current) stateUpdates.push(`bytes:${bytes}`);
+    },
+  });
+
+  cancelReadinessExportOnUnmount(mounted, controllerRef);
+  const updatesAtUnmount = [...stateUpdates];
+  resolveStream(payload);
+  const result = await resultPromise;
+
+  assert.equal(controller.signal.aborted, true);
+  assert.equal(controllerRef.current, null);
+  assert.deepEqual(result, { status: "cancelled", recordCount: 1 });
+  assert.equal(downloads, 0);
+  assert.deepEqual(stateUpdates, updatesAtUnmount);
 });
 
 test("readiness export runner keeps successful and failed outcomes explicit", async () => {
