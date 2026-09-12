@@ -16,6 +16,7 @@ import {
 } from "@workspace/db";
 import { createIntegrationTestApp } from "./integration-test-app";
 import { ObjectStorageService } from "./lib/objectStorage";
+import { workspaceAssignmentContexts } from "./lib/teras";
 
 const run = crypto.randomUUID();
 const storageScope = (process.env.TERAS_GATE_STORAGE_NAMESPACE ?? "local-test").replace(/[^a-zA-Z0-9._-]/g, "-");
@@ -78,6 +79,10 @@ async function main() {
     await expect("/admin/cohorts", "admin", { id: ids.cohort, programId: ids.program, name: `Cohort ${run}`, status: "active", startsOn: null, endsOn: null });
     await expect("/admin/enrollments", "admin", { id: ids.enrollment, learnerId: ids.learner, programId: ids.program, pathwayId: ids.path, trainerId: ids.trainer, assessorId: ids.assessor, cohortId: ids.cohort, status: "active" });
     await expect("/admin/enrollments", "admin", { id: id("other-enrollment"), learnerId: ids.otherLearner, programId: ids.otherProgram, pathwayId: ids.otherPath, trainerId: ids.otherTrainer, assessorId: ids.otherAssessor, cohortId: null, status: "active" });
+    const trainerAssignments = await workspaceAssignmentContexts(ids.trainer, "trainer");
+    assert.equal(trainerAssignments.length, 1, "trainer fixture must have exactly one active assignment");
+    assert.equal(trainerAssignments[0]?.program.id, ids.program, "trainer fixture must be assigned to the journey program");
+    assert.equal(trainerAssignments[0]?.pathway.id, ids.path, "trainer fixture must be assigned to the journey pathway before authoring");
     assert.equal((await request("/admin/users", "learner")).status, 403, "cross-role admin access");
 
     const secondModule = id("second-module"), secondTask = id("second-task");
