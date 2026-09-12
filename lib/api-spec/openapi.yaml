@@ -500,6 +500,22 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /trainer/reminder-preferences/history:
+    get:
+      operationId: getTrainerReminderPreferenceHistory
+      tags: [trainer]
+      summary: List operational revisions of the current trainer's email reminder preferences
+      responses:
+        "200":
+          description: Reminder preference revisions, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrainerReminderPreferenceRevision"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /trainer/review-queue:
     get:
       operationId: getTrainerReviewQueue
@@ -2718,6 +2734,16 @@ components:
         timeZone: { type: string, minLength: 1, maxLength: 100 }
         quietHoursStart: { type: ["string", "null"], pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
         quietHoursEnd: { type: ["string", "null"], pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+    TrainerReminderPreferenceRevision:
+      type: object
+      required: [id, emailEnabled, timeZone, quietHoursStart, quietHoursEnd, recordedAt]
+      properties:
+        id: { type: string }
+        emailEnabled: { type: boolean }
+        timeZone: { type: string }
+        quietHoursStart: { type: ["string", "null"], pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+        quietHoursEnd: { type: ["string", "null"], pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+        recordedAt: { type: string, format: date-time }
     TrainerDiagnosticFollowUp:
       type: object
       required: [learnerId, learnerName, pathwayId, pathwayName, baselineScore, currentState, completedAt, dimensionSummaries, gaps, recommendations, safetyFindings]

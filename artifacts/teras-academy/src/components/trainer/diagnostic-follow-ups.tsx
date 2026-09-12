@@ -1,5 +1,5 @@
-import { AlertTriangle, ArrowUpRight, BellRing, CalendarClock, ClipboardList, ShieldAlert } from "lucide-react";
-import { getGetTrainerDashboardQueryKey, getGetTrainerReminderPreferencesQueryKey, type DiagnosticRecommendation, type TrainerDiagnosticFollowUp, useGetTrainerReminderPreferences, useRecordDiagnosticRecommendationFollowUp, useUpdateTrainerReminderPreferences } from "@workspace/api-client-react";
+import { AlertTriangle, ArrowUpRight, BellRing, CalendarClock, ClipboardList, History, ShieldAlert } from "lucide-react";
+import { getGetTrainerDashboardQueryKey, getGetTrainerReminderPreferenceHistoryQueryKey, getGetTrainerReminderPreferencesQueryKey, type DiagnosticRecommendation, type TrainerDiagnosticFollowUp, useGetTrainerReminderPreferenceHistory, useGetTrainerReminderPreferences, useRecordDiagnosticRecommendationFollowUp, useUpdateTrainerReminderPreferences } from "@workspace/api-client-react";
 import React, { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +27,9 @@ const timeZones = ["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura", "UTC"];
 function ReminderPreferences() {
   const preferences = useGetTrainerReminderPreferences({
     query: { queryKey: getGetTrainerReminderPreferencesQueryKey(), staleTime: 30_000 },
+  });
+  const history = useGetTrainerReminderPreferenceHistory({
+    query: { queryKey: getGetTrainerReminderPreferenceHistoryQueryKey(), staleTime: 30_000 },
   });
   const mutation = useUpdateTrainerReminderPreferences();
   const queryClient = useQueryClient();
@@ -56,6 +59,7 @@ function ReminderPreferences() {
   }, {
     onSuccess: (updated) => {
       queryClient.setQueryData(getGetTrainerReminderPreferencesQueryKey(), updated);
+      queryClient.invalidateQueries({ queryKey: getGetTrainerReminderPreferenceHistoryQueryKey() });
       toast({ title: "Reminder preferences saved", description: "The scheduler will use these settings for future email attempts." });
     },
     onError: () => toast({ title: "Preferences not saved", description: "Please check the settings and try again.", variant: "destructive" }),
@@ -99,6 +103,34 @@ function ReminderPreferences() {
       <Button className="mt-4" size="sm" onClick={save} disabled={preferences.isLoading || mutation.isPending}>
         {mutation.isPending ? "Saving…" : "Save reminder preferences"}
       </Button>
+      <details className="mt-4 border-t border-border pt-4" data-testid="trainer-reminder-preference-history">
+        <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium">
+          <History className="h-4 w-4" />
+          View operational configuration history
+          {history.data?.length ? <Badge variant="outline">{history.data.length}</Badge> : null}
+        </summary>
+        <p className="mt-2 text-xs text-muted-foreground">This history records email delivery configuration only. It is separate from diagnostic evidence, follow-ups, and readiness decisions.</p>
+        {history.isLoading ? <p className="mt-3 text-sm text-muted-foreground">Loading configuration history…</p> : null}
+        {history.isError ? <p className="mt-3 text-sm text-destructive">Configuration history could not be loaded.</p> : null}
+        {history.data?.length === 0 ? <p className="mt-3 rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">No saved configuration revisions yet.</p> : null}
+        {history.data?.length ? (
+          <ol className="mt-3 space-y-2">
+            {history.data.map((revision, index) => (
+              <li key={revision.id} className="rounded-md border border-border bg-background/60 p-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <strong>{index === 0 ? "Current configuration" : "Previous configuration"}</strong>
+                  <time className="text-muted-foreground" dateTime={revision.recordedAt}>{new Date(revision.recordedAt).toLocaleString()}</time>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
+                  <span>Email: <strong className="text-foreground">{revision.emailEnabled ? "Enabled" : "Disabled"}</strong></span>
+                  <span>Time zone: <strong className="text-foreground">{revision.timeZone}</strong></span>
+                  <span>Quiet hours: <strong className="text-foreground">{revision.quietHoursStart && revision.quietHoursEnd ? `${revision.quietHoursStart}–${revision.quietHoursEnd}` : "Off"}</strong></span>
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : null}
+      </details>
     </section>
   );
 }

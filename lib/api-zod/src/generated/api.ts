@@ -2064,6 +2064,24 @@ export const UpdateTrainerReminderPreferencesResponse = zod.object({
 
 
 /**
+ * @summary List operational revisions of the current trainer's email reminder preferences
+ */
+export const getTrainerReminderPreferenceHistoryResponseQuietHoursStartRegExp = new RegExp('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+export const getTrainerReminderPreferenceHistoryResponseQuietHoursEndRegExp = new RegExp('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+
+
+export const GetTrainerReminderPreferenceHistoryResponseItem = zod.object({
+  "id": zod.string(),
+  "emailEnabled": zod.boolean(),
+  "timeZone": zod.string(),
+  "quietHoursStart": zod.string().regex(getTrainerReminderPreferenceHistoryResponseQuietHoursStartRegExp).nullable(),
+  "quietHoursEnd": zod.string().regex(getTrainerReminderPreferenceHistoryResponseQuietHoursEndRegExp).nullable(),
+  "recordedAt": zod.coerce.date()
+})
+export const GetTrainerReminderPreferenceHistoryResponse = zod.array(GetTrainerReminderPreferenceHistoryResponseItem)
+
+
+/**
  * @summary List practice and evidence reviews
  */
 export const GetTrainerReviewQueueResponseItem = zod.object({

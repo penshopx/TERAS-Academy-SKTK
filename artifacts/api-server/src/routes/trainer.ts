@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
-import { GetTrainerDashboardResponse, GetTrainerReminderPreferencesResponse, GetTrainerReviewQueueResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse, UpdateTrainerReminderPreferencesBody, UpdateTrainerReminderPreferencesResponse } from "@workspace/api-zod";
+import { GetTrainerDashboardResponse, GetTrainerReminderPreferenceHistoryResponse, GetTrainerReminderPreferencesResponse, GetTrainerReviewQueueResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse, UpdateTrainerReminderPreferencesBody, UpdateTrainerReminderPreferencesResponse } from "@workspace/api-zod";
 import { db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, trainerReminderPreferencesTable } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 import { evidenceRecords, gapRecords, pathwayHasModule, remediationRecords, selectedBaselineModuleIds, workspaceAssignmentContexts } from "../lib/teras";
@@ -188,6 +188,20 @@ router.get("/trainer/reminder-preferences", async (req, res): Promise<void> => {
     quietHoursEnd: latest.quietHoursEnd,
     updatedAt: latest.createdAt,
   } : DEFAULT_REMINDER_PREFERENCES));
+});
+router.get("/trainer/reminder-preferences/history", async (req, res): Promise<void> => {
+  const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;
+  const revisions = await db.select().from(trainerReminderPreferencesTable)
+    .where(eq(trainerReminderPreferencesTable.trainerId, trainerId))
+    .orderBy(desc(trainerReminderPreferencesTable.createdAt), desc(trainerReminderPreferencesTable.id));
+  res.json(GetTrainerReminderPreferenceHistoryResponse.parse(revisions.map((revision) => ({
+    id: revision.id,
+    emailEnabled: revision.emailEnabled,
+    timeZone: revision.timeZone,
+    quietHoursStart: revision.quietHoursStart,
+    quietHoursEnd: revision.quietHoursEnd,
+    recordedAt: revision.createdAt,
+  }))));
 });
 router.put("/trainer/reminder-preferences", async (req, res): Promise<void> => {
   const body = UpdateTrainerReminderPreferencesBody.safeParse(req.body);

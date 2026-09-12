@@ -262,6 +262,23 @@ export interface TrainerReminderPreferencesInput {
   quietHoursEnd: string | null;
 }
 
+export interface TrainerReminderPreferenceRevision {
+  id: string;
+  emailEnabled: boolean;
+  timeZone: string;
+  /**
+     * @nullable
+     * @pattern ^([01][0-9]|2[0-3]):[0-5][0-9]$
+     */
+  quietHoursStart: string | null;
+  /**
+     * @nullable
+     * @pattern ^([01][0-9]|2[0-3]):[0-5][0-9]$
+     */
+  quietHoursEnd: string | null;
+  recordedAt: string;
+}
+
 export type TrainerDiagnosticFollowUpDimensionSummaries = {[key: string]: number};
 
 export interface TrainerDiagnosticSafetyFinding {
