@@ -1219,9 +1219,20 @@ export type AdminOperationalSummaryIncompleteAssignments = {
   total: number;
 };
 
+export type AdminOperationalSummaryFailedTrainerRemindersItem = {
+  id: string;
+  trainerId: string;
+  trainerName: string;
+  target: string;
+  targetAt: string;
+  lastAttemptAt: string;
+  reason: string;
+};
+
 export interface AdminOperationalSummary {
   metrics: AdminOperationalMetric[];
   incompleteAssignments: AdminOperationalSummaryIncompleteAssignments;
+  failedTrainerReminders: AdminOperationalSummaryFailedTrainerRemindersItem[];
   queues: AdminOperationalQueue[];
   bottleneck: AdminOperationalBottleneck;
   actions: AdminOperationalAction[];

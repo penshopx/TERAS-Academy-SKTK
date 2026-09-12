@@ -18,6 +18,13 @@ const RETRY_AFTER_MINUTES = 30;
 
 export type ReminderKind = "due_soon" | "overdue";
 
+export function safeReminderFailureReason(reason: string | null) {
+  if (!reason) return "Pengiriman email gagal setelah tiga percobaan.";
+  if (reason.includes("TERAS_NOTIFICATION_FROM")) return "Konfigurasi pengirim email belum tersedia.";
+  if (reason.includes("Resend rejected")) return "Layanan email menolak pengiriman.";
+  return "Layanan email tidak dapat menyelesaikan pengiriman.";
+}
+
 type FollowUpSnapshot = {
   id: string;
   recommendationId: string;
@@ -111,6 +118,13 @@ export async function dispatchTrainerFollowUpReminders(
 ) {
   if (process.env.TERAS_TRAINER_REMINDER_EMAIL_ENABLED !== "true") return { sent: 0, failed: 0, skipped: "disabled" as const };
 
+  await db.update(diagnosticFollowUpReminderDeliveriesTable)
+    .set({ status: "permanently_failed" })
+    .where(and(
+      eq(diagnosticFollowUpReminderDeliveriesTable.status, "failed"),
+      eq(diagnosticFollowUpReminderDeliveriesTable.attemptCount, MAX_ATTEMPTS),
+    ));
+
   const followUps = await db.select().from(diagnosticRecommendationFollowUpsTable).orderBy(asc(diagnosticRecommendationFollowUpsTable.createdAt));
   const candidates = latestFollowUps(followUps).flatMap((followUp) => {
     const kind = dueReminderKind(followUp, now);
@@ -183,7 +197,10 @@ export async function dispatchTrainerFollowUpReminders(
       sent += 1;
     } catch (error) {
       const failureReason = error instanceof Error ? error.message.slice(0, 500) : "Unknown reminder delivery failure";
-      await db.update(diagnosticFollowUpReminderDeliveriesTable).set({ status: "failed", failureReason }).where(eq(diagnosticFollowUpReminderDeliveriesTable.id, claimed.id));
+      const terminal = claimed.attemptCount >= MAX_ATTEMPTS;
+      await db.update(diagnosticFollowUpReminderDeliveriesTable)
+        .set({ status: terminal ? "permanently_failed" : "failed", failureReason })
+        .where(eq(diagnosticFollowUpReminderDeliveriesTable.id, claimed.id));
       logger.warn({ deliveryId: claimed.id, followUpId: followUp.id, attemptCount: claimed.attemptCount, error: failureReason }, "Trainer follow-up reminder delivery failed");
       failed += 1;
     }

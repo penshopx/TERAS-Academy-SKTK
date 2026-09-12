@@ -28,11 +28,14 @@ import {
   competencyFrameworksTable, competencyUnitsTable, pathwayCompetencyUnitsTable, competencyUnitOutcomesTable,
   competencyUnitPracticeTasksTable, competencyUnitEvidenceRequirementsTable, competencyUnitSimulationsTable, competencyUnitSafetyRulesTable,
   readinessEventsTable, readinessGatesTable,
+  diagnosticFollowUpReminderDeliveriesTable, diagnosticRecommendationFollowUpsTable,
+  diagnosticRecommendationsTable,
 } from "@workspace/db";
 import { authorizeAdmin, authorizeLocalUser, authorizeSuperAdmin, type AdminActor } from "../lib/authorization";
 import { supabaseEmailIsVerified, supabaseIdentity } from "../lib/supabase-auth";
 import { allowsSuperAdminMfa } from "@workspace/db/super-admin-mfa-policy";
 import { readinessAuditSigner } from "../lib/readiness-audit-signing";
+import { safeReminderFailureReason } from "../lib/trainer-follow-up-notifications";
 import {
   claimExistingSuperAdminIdentity,
   createManagedUser,
@@ -114,6 +117,7 @@ async function readOnlyDashboardProjection() {
       { id: "enrollments", label: "Enrollment aktif", value: activeEnrollments.length, description: "Konteks lifecycle aktif di seluruh organisasi." },
     ],
     incompleteAssignments: { trainer: trainerMissing, assessor: assessorMissing, total: activeEnrollments.filter(enrollment => !enrollment.trainerId || !enrollment.assessorId).length },
+    failedTrainerReminders: [],
     queues: [],
     bottleneck: { stage: "clear", label: "Gunakan Admin Control Room", count: 0, description: "Mode ini hanya menampilkan ringkasan organisasi dan tidak menjalankan pekerjaan atas nama role operasional.", targetTab: "enrollments" },
     actions: [],
@@ -378,6 +382,7 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
   const [
     roles, people, programs, pathways, cohorts, enrollments, evidence, evidenceReviews, attempts,
     gaps, remediationPlans, remediationActivities, remediationEvents, reassessmentLinks,
+    failedReminderRows,
   ] = await Promise.all([
     db.select().from(personRolesTable), db.select().from(peopleTable), db.select().from(programsTable),
     db.select().from(pathwaysTable), db.select().from(cohortsTable), db.select().from(enrollmentsTable), db.select().from(evidenceTable),
@@ -385,6 +390,21 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
     db.select().from(gapsTable),
     db.select().from(remediationPlansTable), db.select().from(remediationActivitiesTable),
     db.select().from(remediationEventsTable), db.select().from(reassessmentLinksTable),
+    db.select({
+      id: diagnosticFollowUpReminderDeliveriesTable.id,
+      trainerId: diagnosticFollowUpReminderDeliveriesTable.trainerId,
+      trainerName: peopleTable.name,
+      target: diagnosticRecommendationsTable.title,
+      targetAt: diagnosticRecommendationFollowUpsTable.targetAt,
+      lastAttemptAt: diagnosticFollowUpReminderDeliveriesTable.lastAttemptAt,
+      failureReason: diagnosticFollowUpReminderDeliveriesTable.failureReason,
+    })
+      .from(diagnosticFollowUpReminderDeliveriesTable)
+      .innerJoin(diagnosticRecommendationFollowUpsTable, eq(diagnosticRecommendationFollowUpsTable.id, diagnosticFollowUpReminderDeliveriesTable.followUpId))
+      .innerJoin(diagnosticRecommendationsTable, eq(diagnosticRecommendationsTable.id, diagnosticRecommendationFollowUpsTable.recommendationId))
+      .innerJoin(peopleTable, eq(peopleTable.id, diagnosticFollowUpReminderDeliveriesTable.trainerId))
+      .where(eq(diagnosticFollowUpReminderDeliveriesTable.status, "permanently_failed"))
+      .orderBy(desc(diagnosticFollowUpReminderDeliveriesTable.lastAttemptAt)),
   ]);
   const activePeople = new Set(people.filter(person => person.status === "active").map(person => person.id));
   const activeEnrollments = enrollments.filter(enrollment => enrollment.status === "active" && activePeople.has(enrollment.learnerId));
@@ -450,6 +470,18 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
     });
   const trainerMissing = activeEnrollments.filter(enrollment => !enrollment.trainerId).length;
   const assessorMissing = activeEnrollments.filter(enrollment => !enrollment.assessorId).length;
+  const failedTrainerReminders = failedReminderRows.flatMap(row => {
+    if (!row.targetAt || !row.lastAttemptAt) return [];
+    return [{
+      id: row.id,
+      trainerId: row.trainerId,
+      trainerName: row.trainerName,
+      target: row.target,
+      targetAt: row.targetAt,
+      lastAttemptAt: row.lastAttemptAt,
+      reason: safeReminderFailureReason(row.failureReason),
+    }];
+  });
   const queues = [
     { id: "evidence", label: "Evidence menunggu review", count: evidenceItems.length, description: "Evidence dengan review terbaru masih Under review.", targetTab: "enrollments", items: evidenceItems },
     { id: "assessment", label: "Assessment menunggu keputusan", count: assessmentItems.length, description: "Attempt terbaru belum memiliki keputusan assessor.", targetTab: "enrollments", items: assessmentItems },
@@ -461,6 +493,7 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
     ? { stage: largestQueue.id, label: largestQueue.label, count: largestQueue.count, description: `Tahap ${largestQueue.label.toLowerCase()} adalah antrean lifecycle terbesar saat ini.`, targetTab: "enrollments" as const }
     : { stage: "clear" as const, label: "Tidak ada antrean lifecycle", count: 0, description: "Tidak ada pekerjaan lifecycle yang tertahan saat ringkasan dibuat.", targetTab: "enrollments" as const };
   const actions = [
+    ...(failedTrainerReminders.length ? [{ id: "review-failed-trainer-reminders", label: "Periksa pengingat trainer yang gagal", description: `${failedTrainerReminders.length} pengingat telah berhenti setelah tiga percobaan dan perlu ditangani pengelola.`, count: failedTrainerReminders.length, targetTab: "enrollments" as const, urgency: "critical" as const }] : []),
     ...(trainerMissing ? [{ id: "assign-trainers", label: "Lengkapi assignment trainer", description: `${trainerMissing} enrollment aktif belum memiliki trainer.`, count: trainerMissing, targetTab: "enrollments" as const, urgency: "critical" as const }] : []),
     ...(assessorMissing ? [{ id: "assign-assessors", label: "Lengkapi assignment assessor", description: `${assessorMissing} enrollment aktif belum memiliki assessor.`, count: assessorMissing, targetTab: "enrollments" as const, urgency: "critical" as const }] : []),
     ...queues.filter(queue => queue.count > 0).map(queue => ({ id: `resolve-${queue.id}`, label: `Tindak lanjuti ${queue.label.toLowerCase()}`, description: queue.description, count: queue.count, targetTab: "enrollments" as const, urgency: queue.count === largestQueue.count ? "attention" as const : "normal" as const })),
@@ -475,6 +508,7 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
       { id: "enrollments", label: "Enrollment aktif", value: activeEnrollments.length, description: "Learner yang masih berada dalam lifecycle aktif." },
     ],
     incompleteAssignments: { trainer: trainerMissing, assessor: assessorMissing, total: activeEnrollments.filter(enrollment => !enrollment.trainerId || !enrollment.assessorId).length },
+    failedTrainerReminders,
     queues, bottleneck, actions, generatedAt: new Date(),
   }));
 });

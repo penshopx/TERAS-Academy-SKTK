@@ -3248,6 +3248,15 @@ export const GetAdminOperationalSummaryResponse = zod.object({
   "assessor": zod.int().min(getAdminOperationalSummaryResponseIncompleteAssignmentsAssessorMin),
   "total": zod.int().min(getAdminOperationalSummaryResponseIncompleteAssignmentsTotalMin)
 }),
+  "failedTrainerReminders": zod.array(zod.object({
+  "id": zod.string(),
+  "trainerId": zod.string(),
+  "trainerName": zod.string(),
+  "target": zod.string(),
+  "targetAt": zod.coerce.date(),
+  "lastAttemptAt": zod.coerce.date(),
+  "reason": zod.string()
+})),
   "queues": zod.array(zod.object({
   "id": zod.enum(['evidence', 'assessment', 'remediation', 'reassessment']),
   "label": zod.string(),
@@ -3320,6 +3329,15 @@ export const GetAdminLearnerDashboardProjectionResponse = zod.object({
   "assessor": zod.int().min(getAdminLearnerDashboardProjectionResponseIncompleteAssignmentsAssessorMin),
   "total": zod.int().min(getAdminLearnerDashboardProjectionResponseIncompleteAssignmentsTotalMin)
 }),
+  "failedTrainerReminders": zod.array(zod.object({
+  "id": zod.string(),
+  "trainerId": zod.string(),
+  "trainerName": zod.string(),
+  "target": zod.string(),
+  "targetAt": zod.coerce.date(),
+  "lastAttemptAt": zod.coerce.date(),
+  "reason": zod.string()
+})),
   "queues": zod.array(zod.object({
   "id": zod.enum(['evidence', 'assessment', 'remediation', 'reassessment']),
   "label": zod.string(),
@@ -3392,6 +3410,15 @@ export const GetAdminTrainerDashboardProjectionResponse = zod.object({
   "assessor": zod.int().min(getAdminTrainerDashboardProjectionResponseIncompleteAssignmentsAssessorMin),
   "total": zod.int().min(getAdminTrainerDashboardProjectionResponseIncompleteAssignmentsTotalMin)
 }),
+  "failedTrainerReminders": zod.array(zod.object({
+  "id": zod.string(),
+  "trainerId": zod.string(),
+  "trainerName": zod.string(),
+  "target": zod.string(),
+  "targetAt": zod.coerce.date(),
+  "lastAttemptAt": zod.coerce.date(),
+  "reason": zod.string()
+})),
   "queues": zod.array(zod.object({
   "id": zod.enum(['evidence', 'assessment', 'remediation', 'reassessment']),
   "label": zod.string(),
@@ -3464,6 +3491,15 @@ export const GetAdminAssessorDashboardProjectionResponse = zod.object({
   "assessor": zod.int().min(getAdminAssessorDashboardProjectionResponseIncompleteAssignmentsAssessorMin),
   "total": zod.int().min(getAdminAssessorDashboardProjectionResponseIncompleteAssignmentsTotalMin)
 }),
+  "failedTrainerReminders": zod.array(zod.object({
+  "id": zod.string(),
+  "trainerId": zod.string(),
+  "trainerName": zod.string(),
+  "target": zod.string(),
+  "targetAt": zod.coerce.date(),
+  "lastAttemptAt": zod.coerce.date(),
+  "reason": zod.string()
+})),
   "queues": zod.array(zod.object({
   "id": zod.enum(['evidence', 'assessment', 'remediation', 'reassessment']),
   "label": zod.string(),

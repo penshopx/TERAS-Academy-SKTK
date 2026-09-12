@@ -112,7 +112,7 @@ export const diagnosticFollowUpReminderDeliveriesTable = pgTable("teras_diagnost
   index("teras_diagnostic_follow_up_reminder_delivery_status_idx").on(table.status, table.lastAttemptAt),
   check("teras_diagnostic_follow_up_reminder_delivery_channel_check", sql`${table.channel} IN ('email')`),
   check("teras_diagnostic_follow_up_reminder_delivery_kind_check", sql`${table.reminderKind} IN ('due_soon','overdue')`),
-  check("teras_diagnostic_follow_up_reminder_delivery_status_check", sql`${table.status} IN ('pending','sending','sent','failed')`),
+  check("teras_diagnostic_follow_up_reminder_delivery_status_check", sql`${table.status} IN ('pending','sending','sent','failed','permanently_failed')`),
   check("teras_diagnostic_follow_up_reminder_delivery_attempt_count_check", sql`${table.attemptCount} >= 0 AND ${table.attemptCount} <= 3`),
 ]);
 export const trainerReminderPreferencesTable = pgTable("teras_trainer_reminder_preferences", {

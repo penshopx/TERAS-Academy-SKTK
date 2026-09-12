@@ -1,6 +1,9 @@
 import { createIntegrationTestApp } from "./integration-test-app";
 import {
   assessmentAttemptsTable, assessmentsTable, db, enrollmentsTable, evidenceReviewsTable, evidenceTable,
+  competencyFrameworksTable, diagnosticFollowUpReminderDeliveriesTable, diagnosticProfilesTable,
+  diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSessionsTable,
+  diagnosticTemplatesTable,
   gapsTable, modulesTable, pathwaysTable, peopleTable, personRolesTable, practiceAttemptsTable,
   practiceTasksTable, programsTable, reassessmentLinksTable, remediationActivitiesTable,
   remediationEventsTable, remediationPlansTable,
@@ -20,6 +23,8 @@ const ids = {
   activeGap: id("active-gap"), inactiveGap: id("inactive-gap"), activePlan: id("active-plan"), inactivePlan: id("inactive-plan"),
   activeActivity: id("active-activity"), inactiveActivity: id("inactive-activity"),
   inactiveReassessment: id("inactive-reassessment"), pendingAfterRemediation: id("pending-after-remediation"),
+  trainer: id("trainer"), framework: id("framework"), template: id("template"), session: id("session"),
+  profile: id("profile"), recommendation: id("recommendation"), followUp: id("follow-up"), failedDelivery: id("failed-delivery"),
 };
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 
@@ -35,6 +40,7 @@ async function run() {
     await db.insert(peopleTable).values([
       { id: ids.activeLearner, name: "Active Summary Learner", initials: "AS", email: null, role: "learner", organization: null, status: "active" },
       { id: ids.inactiveLearner, name: "Inactive Summary Learner", initials: "IS", email: null, role: "learner", organization: null, status: "active" },
+      { id: ids.trainer, name: "Summary Trainer", initials: "ST", email: "trainer@example.test", role: "trainer", organization: null, status: "active" },
     ]);
     await db.insert(personRolesTable).values([{ personId: ids.activeLearner, role: "learner" }, { personId: ids.inactiveLearner, role: "learner" }]);
     await db.insert(programsTable).values({ id: ids.program, domain: "Summary test", name: "Summary test", description: "Summary isolation", status: "active" });
@@ -46,6 +52,17 @@ async function run() {
       { id: ids.activeEnrollment, learnerId: ids.activeLearner, programId: ids.program, pathwayId: ids.activePath, status: "active" },
       { id: ids.inactiveEnrollment, learnerId: ids.inactiveLearner, programId: ids.program, pathwayId: ids.inactivePath, status: "completed" },
     ]);
+    await db.insert(competencyFrameworksTable).values({ id: ids.framework, code: id("FW"), name: "Summary framework", description: "test", version: "1", status: "active" });
+    await db.insert(diagnosticTemplatesTable).values({ id: ids.template, frameworkId: ids.framework, pathwayId: ids.activePath, version: "1", name: "Summary template", description: "test", status: "published" });
+    await db.insert(diagnosticSessionsTable).values({ id: ids.session, learnerId: ids.activeLearner, enrollmentId: ids.activeEnrollment, pathwayId: ids.activePath, templateId: ids.template, frameworkId: ids.framework, status: "completed", progress: 100 });
+    await db.insert(diagnosticProfilesTable).values({ id: ids.profile, sessionId: ids.session, learnerId: ids.activeLearner, pathwayId: ids.activePath, frameworkId: ids.framework, frameworkVersion: "1", currentState: "practice" });
+    await db.insert(diagnosticRecommendationsTable).values({ id: ids.recommendation, profileId: ids.profile, frameworkId: ids.framework, kind: "practice", title: "Inspect inverter target", rationale: "test", priority: "high" });
+    await db.insert(diagnosticRecommendationFollowUpsTable).values({ id: ids.followUp, recommendationId: ids.recommendation, trainerId: ids.trainer, status: "planned", targetAt: new Date("2030-01-10T00:00:00Z"), note: "test" });
+    await db.insert(diagnosticFollowUpReminderDeliveriesTable).values({
+      id: ids.failedDelivery, followUpId: ids.followUp, trainerId: ids.trainer, channel: "email", reminderKind: "due_soon",
+      destination: "trainer@example.test", status: "permanently_failed", attemptCount: 3,
+      lastAttemptAt: new Date("2030-01-09T03:00:00Z"), failureReason: "secret transport detail: smtp.example.test",
+    });
     await db.insert(modulesTable).values([
       { id: ids.activeModule, programId: ids.program, pathwayId: ids.activePath, sequence: 1, code: "AS", name: "Active", capability: "test", evidence: "test", learningOutcomes: [], theory: [] },
       { id: ids.inactiveModule, programId: ids.program, pathwayId: ids.inactivePath, sequence: 1, code: "IS", name: "Inactive", capability: "test", evidence: "test", learningOutcomes: [], theory: [] },
@@ -99,6 +116,11 @@ async function run() {
     assert(remediationQueue.items.some((item: any) => item.id === ids.activePlan), "Active remediation plan must be present in queue details");
     assert(counts.reassessment === baselineCounts.reassessment, "Completed enrollment reassessment must be excluded and competent active reassessment must not queue");
     assert(counts.assessment === baselineCounts.assessment, "Highest attempt number must win even when its timestamp is older; completed enrollment attempts must be excluded");
+    const reminderFailure = summary.failedTrainerReminders.find((item: any) => item.id === ids.failedDelivery);
+    assert(reminderFailure?.trainerName === "Summary Trainer" && reminderFailure?.target === "Inspect inverter target", "Permanent reminder failure must identify trainer and target");
+    assert(reminderFailure?.lastAttemptAt === "2030-01-09T03:00:00.000Z", "Permanent reminder failure must expose the last attempt time");
+    assert(reminderFailure?.reason === "Layanan email tidak dapat menyelesaikan pengiriman.", "Admin summary must redact raw transport failure details");
+    assert(!JSON.stringify(reminderFailure).includes("smtp.example.test"), "Admin summary leaked a raw transport failure reason");
 
     await db.insert(remediationEventsTable).values({ id: id("active-rem-completed"), activityId: ids.activeActivity, status: "Completed" });
     await db.insert(assessmentAttemptsTable).values({
@@ -118,6 +140,12 @@ async function run() {
     assert(completedRemediationCounts.reassessment === baselineCounts.reassessment + 1, "Pending reassessment must remain queued after remediation completes");
     assert(completedRemediationCounts.assessment === baselineCounts.assessment + 1, "Pending reassessment attempt must remain in the assessment queue");
   } finally {
+    await db.delete(diagnosticFollowUpReminderDeliveriesTable).where(inArray(diagnosticFollowUpReminderDeliveriesTable.id, [ids.failedDelivery]));
+    await db.delete(diagnosticRecommendationFollowUpsTable).where(inArray(diagnosticRecommendationFollowUpsTable.id, [ids.followUp]));
+    await db.delete(diagnosticRecommendationsTable).where(inArray(diagnosticRecommendationsTable.id, [ids.recommendation]));
+    await db.delete(diagnosticProfilesTable).where(inArray(diagnosticProfilesTable.id, [ids.profile]));
+    await db.delete(diagnosticSessionsTable).where(inArray(diagnosticSessionsTable.id, [ids.session]));
+    await db.delete(diagnosticTemplatesTable).where(inArray(diagnosticTemplatesTable.id, [ids.template]));
     await db.delete(reassessmentLinksTable).where(inArray(reassessmentLinksTable.id, [id("active-failed-link"), id("active-link"), id("inactive-link"), id("active-pending-after-remediation-link")]));
     await db.delete(remediationEventsTable).where(inArray(remediationEventsTable.activityId, [ids.activeActivity, ids.inactiveActivity]));
     await db.delete(remediationActivitiesTable).where(inArray(remediationActivitiesTable.id, [ids.activeActivity, ids.inactiveActivity]));
@@ -132,9 +160,10 @@ async function run() {
     await db.delete(modulesTable).where(inArray(modulesTable.id, [ids.activeModule, ids.inactiveModule]));
     await db.delete(enrollmentsTable).where(inArray(enrollmentsTable.id, [ids.activeEnrollment, ids.inactiveEnrollment]));
     await db.delete(pathwaysTable).where(inArray(pathwaysTable.id, [ids.activePath, ids.inactivePath]));
+    await db.delete(competencyFrameworksTable).where(inArray(competencyFrameworksTable.id, [ids.framework]));
     await db.delete(programsTable).where(inArray(programsTable.id, [ids.program]));
     await db.delete(personRolesTable).where(inArray(personRolesTable.personId, [ids.activeLearner, ids.inactiveLearner]));
-    await db.delete(peopleTable).where(inArray(peopleTable.id, [ids.activeLearner, ids.inactiveLearner]));
+    await db.delete(peopleTable).where(inArray(peopleTable.id, [ids.activeLearner, ids.inactiveLearner, ids.trainer]));
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
 }

@@ -39,6 +39,7 @@ export * from './adminOperationalQueueId';
 export * from './adminOperationalQueueItem';
 export * from './adminOperationalQueueTargetTab';
 export * from './adminOperationalSummary';
+export * from './adminOperationalSummaryFailedTrainerRemindersItem';
 export * from './adminOperationalSummaryIncompleteAssignments';
 export * from './adminPathway';
 export * from './adminPathwayInput';

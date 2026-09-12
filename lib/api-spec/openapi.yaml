@@ -3196,7 +3196,7 @@ components:
         targetTab: { type: string, enum: [enrollments] }
     AdminOperationalSummary:
       type: object
-      required: [metrics, incompleteAssignments, queues, bottleneck, actions, generatedAt]
+      required: [metrics, incompleteAssignments, failedTrainerReminders, queues, bottleneck, actions, generatedAt]
       properties:
         metrics:
           type: array
@@ -3208,6 +3208,19 @@ components:
             trainer: { type: integer, minimum: 0 }
             assessor: { type: integer, minimum: 0 }
             total: { type: integer, minimum: 0 }
+        failedTrainerReminders:
+          type: array
+          items:
+            type: object
+            required: [id, trainerId, trainerName, target, targetAt, lastAttemptAt, reason]
+            properties:
+              id: { type: string }
+              trainerId: { type: string }
+              trainerName: { type: string }
+              target: { type: string }
+              targetAt: { type: string, format: date-time }
+              lastAttemptAt: { type: string, format: date-time }
+              reason: { type: string }
         queues:
           type: array
           items: { $ref: "#/components/schemas/AdminOperationalQueue" }

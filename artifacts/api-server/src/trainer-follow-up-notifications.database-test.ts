@@ -104,13 +104,15 @@ async function main() {
 
   await db.delete(enrollmentPathwayEventsTable);
   await db.delete(diagnosticFollowUpReminderDeliveriesTable);
-  const failingSender = async () => { throw new Error("simulated transport failure"); };
+  let failedSends = 0;
+  const failingSender = async () => { failedSends += 1; throw new Error("simulated transport failure"); };
   await dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender });
   await dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender });
   await dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender });
   await dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender });
   audit = await db.select().from(diagnosticFollowUpReminderDeliveriesTable).where(eq(diagnosticFollowUpReminderDeliveriesTable.followUpId, "follow-up"));
-  if (audit[0]?.status !== "failed" || audit[0]?.attemptCount !== 3) throw new Error("Failed delivery did not stop after three audited attempts");
+  if (audit[0]?.status !== "permanently_failed" || audit[0]?.attemptCount !== 3) throw new Error("Failed delivery did not become a terminal escalation after three audited attempts");
+  if (failedSends !== 3) throw new Error(`Terminal delivery was attempted ${failedSends} times instead of three`);
 }
 
 main().then(

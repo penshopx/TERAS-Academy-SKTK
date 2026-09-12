@@ -9,11 +9,13 @@ import type { AdminOperationalAction } from './adminOperationalAction';
 import type { AdminOperationalBottleneck } from './adminOperationalBottleneck';
 import type { AdminOperationalMetric } from './adminOperationalMetric';
 import type { AdminOperationalQueue } from './adminOperationalQueue';
+import type { AdminOperationalSummaryFailedTrainerRemindersItem } from './adminOperationalSummaryFailedTrainerRemindersItem';
 import type { AdminOperationalSummaryIncompleteAssignments } from './adminOperationalSummaryIncompleteAssignments';
 
 export interface AdminOperationalSummary {
   metrics: AdminOperationalMetric[];
   incompleteAssignments: AdminOperationalSummaryIncompleteAssignments;
+  failedTrainerReminders: AdminOperationalSummaryFailedTrainerRemindersItem[];
   queues: AdminOperationalQueue[];
   bottleneck: AdminOperationalBottleneck;
   actions: AdminOperationalAction[];

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { adminErrorMessage, filterQueueItems, isAdminForbidden, isAdminMfaRequired, queueStateFromSearch, shouldEnableAdminQueries, validateQueueFilters } from "../pages/admin";
+import { adminErrorMessage, filterQueueItems, hasPermanentReminderEscalations, isAdminForbidden, isAdminMfaRequired, queueStateFromSearch, shouldEnableAdminQueries, validateQueueFilters } from "../pages/admin";
 
 test("admin conflict errors provide an actionable accessible message", () => {
   assert.equal(
@@ -72,4 +73,21 @@ test("stale or missing queue links clear the selected detail safely", () => {
     selectedQueue: null,
     filters: { learner: "", pathway: "", trainer: "", assessor: "" },
   });
+});
+
+test("permanent trainer reminder failures activate the admin alarm, but an empty list does not", () => {
+  assert.equal(hasPermanentReminderEscalations({ failedTrainerReminders: [] }), false);
+  assert.equal(hasPermanentReminderEscalations({ failedTrainerReminders: [{
+    id: "delivery-1", trainerId: "trainer-1", trainerName: "Trainer Satu", target: "Inspeksi inverter",
+    targetAt: "2030-01-10T00:00:00.000Z", lastAttemptAt: "2030-01-09T03:00:00.000Z", reason: "Layanan email tidak dapat menyelesaikan pengiriman.",
+  }] }), true);
+});
+
+test("admin summary renders every safe permanent-failure detail for the manager", async () => {
+  const source = await readFile(new URL("../pages/admin.tsx", import.meta.url), "utf8");
+  assert.match(source, /data-testid="admin-failed-trainer-reminders"/);
+  assert.match(source, /item\.trainerName/);
+  assert.match(source, /item\.target/);
+  assert.match(source, /item\.lastAttemptAt/);
+  assert.match(source, /item\.reason/);
 });
