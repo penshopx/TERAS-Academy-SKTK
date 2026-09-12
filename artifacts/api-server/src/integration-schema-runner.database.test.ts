@@ -4,6 +4,7 @@ import pg from "pg";
 import {
   cleanupStaleIntegrationSchemas,
   initializeIntegrationSchema,
+  runIsolatedIntegrationTest,
 } from "./integration-schema-runner";
 
 const { Client } = pg;
@@ -81,5 +82,44 @@ test("cleanup keeps an active old schema, drops it once inactive, and ignores un
     await cleaner.query(`DROP SCHEMA IF EXISTS "${activeName}" CASCADE`);
     await cleaner.query(`DROP SCHEMA IF EXISTS "${unknownName}" CASCADE`);
     await cleaner.end();
+  }
+});
+
+test("a normally failing child command still removes its empty disposable schema", {
+  skip: !databaseUrl,
+}, async () => {
+  const client = new Client({ connectionString: databaseUrl });
+  const contractPrefix = "schema_runner_failure";
+  const publicTable = "teras_schema_runner_failure_contract";
+  await client.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS public.${publicTable} (
+        id integer PRIMARY KEY
+      )
+    `);
+    await client.query(`TRUNCATE public.${publicTable}`);
+    await client.query(`INSERT INTO public.${publicTable} (id) VALUES (1)`);
+
+    await assert.rejects(
+      runIsolatedIntegrationTest({
+        schemaPrefix: contractPrefix,
+        testFile: "./src/fixtures/integration-schema-runner-failure.fixture.ts",
+      }),
+      /failed with exit code 1/,
+    );
+
+    const remainingSchemas = await client.query<{ schema_name: string }>(
+      `
+        SELECT schema_name
+        FROM information_schema.schemata
+        WHERE schema_name LIKE $1 ESCAPE '\\'
+      `,
+      [`${contractPrefix.replaceAll("_", "\\_")}_%`],
+    );
+    assert.deepEqual(remainingSchemas.rows, []);
+  } finally {
+    await client.query(`DROP TABLE IF EXISTS public.${publicTable}`);
+    await client.end();
   }
 });
