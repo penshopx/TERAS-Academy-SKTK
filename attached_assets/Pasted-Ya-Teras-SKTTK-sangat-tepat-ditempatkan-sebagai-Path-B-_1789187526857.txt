@@ -1,0 +1,173 @@
+Ya. **Teras SKTTK sangat tepat ditempatkan sebagai Path B dalam arsitektur TERAS Academy.**
+
+Lebih tepatnya:
+
+> **TERAS SKTTK = Path B / Certification Preparation Journey**
+> yaitu jalur pembelajaran, pendampingan, latihan, dan pemeriksaan readiness untuk mempersiapkan peserta menghadapi **uji kompetensi SKTTK resmi**.
+
+### Posisi TERAS SKTTK
+
+```text
+                    TERAS ACADEMY
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+           PATH A                 PATH B
+       Capability Build      Certification Prep
+              │                     │
+       "Saya ingin              "Saya ingin
+       membangun                mempersiapkan
+       kemampuan"               uji kompetensi"
+              │                     │
+       Learning + Practice    Learning + Mentoring
+              │                     │
+          Evidence              Simulation
+              │                     │
+       Reassessment          Mock Assessment
+              │                     │
+          Readiness            Readiness
+              └──────────┬──────────┘
+                         ↓
+                 Capability Passport
+                         ↓
+            Recommended for Official
+             Competency Testing
+                         ↓
+                  LSP / Asesor
+               Uji Kompetensi Resmi
+```
+
+### Jadi TERAS SKTTK bukan sekadar LMS
+
+Ini penting.
+
+Kalau hanya:
+
+> materi SKTTK → video → kuis → selesai
+
+maka itu hanya **LMS course biasa**.
+
+Tetapi TERAS SKTTK harus menjalankan proses:
+
+**Target SKTTK → Diagnostic → Gap Mapping → Learning → Practice → Simulation → Evidence → Feedback → Remediation → Reassessment → Readiness → rekomendasi mengikuti uji kompetensi resmi.**
+
+Dengan demikian, **LMS adalah mesin pembelajarannya**, sementara capability/readiness engine adalah mesin yang memastikan pembelajaran tersebut benar-benar membawa peserta mendekati kesiapan uji.
+
+### Contoh konkret
+
+Misalnya seseorang mengambil **skema/jenjang SKTTK tertentu**.
+
+TERAS tidak langsung mengatakan:
+
+> "Anda siap."
+
+Tetapi melakukan:
+
+**1. Diagnostic**
+
+Mengukur kemampuan awal terhadap unit kompetensi yang relevan.
+
+**2. Gap Mapping**
+
+Contoh:
+
+| Area            | Hasil           |
+| --------------- | --------------- |
+| Pengetahuan     | Cukup           |
+| Prosedur kerja  | Perlu penguatan |
+| Praktik         | Perlu latihan   |
+| Evidence        | Belum cukup     |
+| Safety-critical | Belum memenuhi  |
+
+**3. Learning**
+
+TERAS memberikan materi yang relevan terhadap gap, bukan sekadar memaksa peserta menyelesaikan semua materi.
+
+**4. Practice**
+
+Peserta melakukan latihan/simulasi yang relevan dengan kompetensi.
+
+**5. Evidence**
+
+Peserta membangun bukti kemampuan yang dapat ditinjau dalam konteks TERAS.
+
+**6. Remediation**
+
+Kalau ada kelemahan:
+
+> "Bagian ini belum memadai → lakukan aktivitas X → ulangi praktik Y."
+
+**7. Reassessment**
+
+Kemudian diukur kembali.
+
+**8. Readiness**
+
+Barulah TERAS memberikan:
+
+> **READY FOR OFFICIAL COMPETENCY TESTING**
+
+atau:
+
+> **READY WITH SUPPORT**
+
+atau:
+
+> **NEEDS STRENGTHENING**
+
+dan seterusnya.
+
+### Batas yang harus tetap dijaga
+
+TERAS **tidak mengambil alih fungsi LSP/asesor**.
+
+Jadi:
+
+**TERAS SKTTK**
+
+> Persiapan → pembelajaran → pendampingan → simulasi → evidence → readiness
+
+sedangkan:
+
+**LSP/Asesor**
+
+> asesmen kompetensi resmi → keputusan kompetensi → sertifikasi sesuai kewenangannya.
+
+Ini sangat konsisten dengan positioning TERAS yang sudah kita bangun.
+
+### Bahkan saya akan mempertajam nomenklaturnya
+
+Daripada menyebut Path B sekadar **"Certification Path"**, saya lebih menyarankan:
+
+> **Path B — Certification Preparation & Readiness**
+
+Karena TERAS **tidak melakukan sertifikasi**.
+
+Dan **TERAS SKTTK** dapat menjadi produk/domain implementation pertama dari Path B:
+
+```text
+TERAS Academy
+│
+├── Path A
+│   └── Capability Development
+│       └── Solar PV Installation
+│
+└── Path B
+    └── Certification Preparation & Readiness
+        └── TERAS SKTTK
+            ├── Diagnostic
+            ├── Learning
+            ├── Mentoring
+            ├── Practice
+            ├── Simulation
+            ├── Evidence
+            ├── Remediation
+            ├── Reassessment
+            └── Readiness
+                    ↓
+            Official Competency Testing
+```
+
+**Jadi jawabannya: ya, sangat tepat.** Bahkan menurut saya, **TERAS SKTTK adalah salah satu bentuk paling jelas dari Path B**, sedangkan Solar PV Path A menjadi reference implementation untuk capability-building engine.
+
+Perbedaannya adalah **Path A membangun kemampuan**, sementara **Path B mengonversi gap terhadap target kompetensi menjadi program persiapan dan readiness menuju uji kompetensi resmi.**

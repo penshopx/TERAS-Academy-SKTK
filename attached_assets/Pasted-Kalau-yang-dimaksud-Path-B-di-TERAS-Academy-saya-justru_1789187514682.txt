@@ -1,0 +1,139 @@
+Kalau yang dimaksud **Path B di TERAS Academy**, saya justru melihat Path B sebagai bagian yang sangat penting—tetapi **fungsinya berbeda dari Path A**.
+
+### Path A vs Path B
+
+**Path A = pengembangan kemampuan melalui pembelajaran dan praktik**
+
+```text
+Diagnostic
+   ↓
+Learning
+   ↓
+Practice
+   ↓
+Evidence
+   ↓
+Feedback
+   ↓
+Remediation
+   ↓
+Reassessment
+   ↓
+Readiness
+   ↓
+Capability Passport
+```
+
+Sedangkan:
+
+**Path B = persiapan menuju proses asesmen/sertifikasi resmi**
+
+```text
+Diagnostic
+   ↓
+Competency Gap Mapping
+   ↓
+Target SKTTK / Unit Kompetensi
+   ↓
+Learning & Review
+   ↓
+Simulation / Mock Assessment
+   ↓
+Evidence Readiness
+   ↓
+Readiness Review
+   ↓
+Recommended for Official Competency Testing
+   ↓
+Asesmen Resmi oleh Lembaga Sertifikasi
+```
+
+### Jadi Path B bukan "versi kedua" Path A
+
+Path B sebaiknya menjadi **Certification Preparation Track**.
+
+Peserta tidak harus mengikuti seluruh learning journey dari awal. Sistem bisa menemukan:
+
+> **"Anda sudah memiliki sebagian kemampuan/evidence. Berikut gap yang harus ditutup sebelum mengikuti asesmen resmi."**
+
+Contohnya:
+
+**Peserta → target SKTTK Elektrikal tertentu**
+
+TERAS melakukan:
+
+* mapping unit kompetensi;
+* diagnostic terhadap kompetensi yang relevan;
+* identifikasi gap;
+* rekomendasi modul yang perlu dipelajari;
+* latihan/simulasi;
+* pemeriksaan evidence;
+* remediation;
+* mock assessment;
+* readiness review.
+
+Output TERAS tetap:
+
+> **READY FOR OFFICIAL COMPETENCY TESTING**
+
+bukan:
+
+> ❌ Kompeten
+> ❌ Lulus SKTTK
+> ❌ Tersertifikasi
+
+Karena keputusan resmi tetap milik lembaga sertifikasi.
+
+### Hubungannya dengan Solar PV
+
+Ini yang menurut saya menarik.
+
+**Solar PV M01–M10 Path A** dapat menjadi **reference implementation** untuk engine.
+
+Kemudian Path B dapat menggunakan engine yang sama tetapi dengan **target competency framework** sebagai titik masuk.
+
+Misalnya:
+
+```text
+                  TERAS ACADEMY
+                       │
+          ┌────────────┴────────────┐
+          │                         │
+       PATH A                    PATH B
+   Capability Build          Certification Prep
+          │                         │
+   Diagnostic               Target SKTTK
+          ↓                         ↓
+      Learning                Gap Mapping
+          ↓                         ↓
+      Practice               Targeted Learning
+          ↓                         ↓
+      Evidence              Simulation
+          ↓                         ↓
+     Remediation            Evidence Review
+          ↓                         ↓
+     Reassessment            Mock Assessment
+          ↓                         ↓
+       Readiness              Readiness Review
+          └──────────┬──────────────┘
+                     ↓
+             Capability Passport
+                     ↓
+      Recommended for Official
+       Competency Testing
+```
+
+### Dan ini mengubah cara kita menghitung progres
+
+Kalau **Path B belum dibangun mendalam**, saya tidak akan mengatakan TERAS sudah 60–70% implementasi SKTTK.
+
+Lebih tepat:
+
+* **Platform engine:** sudah matang.
+* **Path A Solar PV:** reference implementation yang sedang dimatangkan.
+* **Path B engine:** konsep/domain architecture sudah jelas, tetapi implementasi certification-preparation yang lengkap masih perlu dibangun.
+* **SKTTK Elektrikal:** content mapping dan competency framework masih merupakan pekerjaan domain berikutnya.
+
+Jadi menurut saya **Path B sebaiknya jangan dibangun sebagai aplikasi terpisah**. Ia harus menjadi **mode/jalur kedua di atas engine TERAS yang sama**.
+
+Dan justru di sinilah nilai TERAS menjadi lebih kuat: **satu engine, dua journey—Capability Development dan Certification Preparation.**
