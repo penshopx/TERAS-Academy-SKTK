@@ -1,21 +1,15 @@
 import {
-  assessmentAttemptsTable,
-  criterionObservationsTable,
   db,
   evidenceReviewsTable,
   evidenceTable,
-  learningRecordLinksTable,
   learningTransitionEventsTable,
   practiceAttemptsTable,
   practiceReviewsTable,
 } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
-import crypto from "node:crypto";
+import { eq } from "drizzle-orm";
 import { createIntegrationTestApp } from "./integration-test-app";
 
 let baseUrl = "";
-const fixtureScopedKey = (operation: string, key: string) =>
-  `${operation}:${crypto.createHash("sha256").update(JSON.stringify({ learnerId: "learner-demo", key })).digest("hex")}`;
 
 async function request<T>(
   path: string,
@@ -61,78 +55,6 @@ type Dashboard = {
 type ReviewQueue = {
   recentActivity: Array<{ pathwayId: string }>;
 };
-
-async function removePreviousIntegrationRecords() {
-  await db.delete(learningTransitionEventsTable).where(
-    inArray(learningTransitionEventsTable.idempotencyKey, [
-      fixtureScopedKey("practice-attempt", "pathway-isolation-b04-practice-attempt"),
-      fixtureScopedKey("evidence-submit", "pathway-isolation-b04-evidence"),
-    ]),
-  );
-
-  const rationales = [
-    "Path B integration verification",
-    "Partial B2 verification",
-    ...["b03", "b04", "b05", "b06", "b07", "b08"].map(
-      (moduleId) => `Path B ${moduleId} gate verification`,
-    ),
-  ];
-  const attempts = await db
-    .select({ id: assessmentAttemptsTable.id })
-    .from(assessmentAttemptsTable)
-    .where(inArray(assessmentAttemptsTable.decisionRationale, rationales));
-  if (attempts.length) {
-    const attemptIds = attempts.map((attempt) => attempt.id);
-    await db
-      .delete(criterionObservationsTable)
-      .where(inArray(criterionObservationsTable.attemptId, attemptIds));
-    await db
-      .delete(assessmentAttemptsTable)
-      .where(inArray(assessmentAttemptsTable.id, attemptIds));
-  }
-
-  const integrationEvidence = await db
-    .select({ id: evidenceTable.id })
-    .from(evidenceTable)
-    .where(
-      inArray(evidenceTable.description, [
-        "Traceable Path B integration evidence",
-        ...["b02", "b03", "b04", "b05", "b06", "b07", "b08"].map(
-          (moduleId) => `Traceable Path B ${moduleId} integration evidence`,
-        ),
-      ]),
-    );
-  if (integrationEvidence.length) {
-    const evidenceIds = integrationEvidence.map((evidence) => evidence.id);
-    await db.delete(learningTransitionEventsTable).where(
-      inArray(learningTransitionEventsTable.entityReference, evidenceIds),
-    );
-    await db.delete(learningRecordLinksTable).where(inArray(learningRecordLinksTable.evidenceId, evidenceIds));
-    await db.delete(evidenceReviewsTable).where(inArray(evidenceReviewsTable.evidenceId, evidenceIds));
-    await db.delete(evidenceTable).where(inArray(evidenceTable.id, evidenceIds));
-  }
-
-  const practiceAttempts = await db
-    .select({ id: practiceAttemptsTable.id })
-    .from(practiceAttemptsTable)
-    .where(eq(practiceAttemptsTable.reflection, "Verified pathway-scoped practice"));
-  if (practiceAttempts.length) {
-    const practiceAttemptIds = practiceAttempts.map((attempt) => attempt.id);
-    await db.delete(learningTransitionEventsTable).where(
-      inArray(learningTransitionEventsTable.entityReference, practiceAttemptIds),
-    );
-    await db.delete(learningRecordLinksTable).where(inArray(learningRecordLinksTable.practiceAttemptId, practiceAttemptIds));
-    await db
-      .delete(practiceReviewsTable)
-      .where(inArray(practiceReviewsTable.attemptId, practiceAttemptIds));
-    await db
-      .delete(practiceAttemptsTable)
-      .where(inArray(practiceAttemptsTable.id, practiceAttemptIds));
-  }
-  await db.delete(learningTransitionEventsTable).where(
-    eq(learningTransitionEventsTable.idempotencyKey, "pathway-isolation-b04-practice-required"),
-  );
-}
 
 async function seedReadinessEvidence(moduleId: string) {
   const evidenceId = `pathway-isolation-evidence-${moduleId}`;
@@ -241,7 +163,6 @@ async function run() {
   }
   baseUrl = `http://127.0.0.1:${address.port}/api`;
   try {
-    await removePreviousIntegrationRecords();
     await post("/learner/pathway", { pathwayId: "path-b" }, 201);
 
   const detail = await request<AssessmentDetail>("/assessments/assessment-b01");

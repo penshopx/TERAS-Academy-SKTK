@@ -7,6 +7,8 @@ const { Client } = pg;
 type IsolatedIntegrationOptions = {
   schemaPrefix: string;
   testFile: string;
+  setupCommand?: readonly string[];
+  setupEnvironment?: Readonly<Record<string, string>>;
   excludeTables?: readonly string[];
   staleSchemaAgeMs?: number;
 };
@@ -192,16 +194,23 @@ function isolatedDatabaseUrl(databaseUrl: string, schemaName: string) {
   return url.toString();
 }
 
-async function runTestFile(testFile: string, databaseUrl: string) {
+async function runCommand(
+  command: readonly string[],
+  databaseUrl: string,
+  extraEnvironment: Readonly<Record<string, string>> = {},
+) {
+  const [executable, ...args] = command;
+  if (!executable) throw new Error("Isolated integration command cannot be empty");
   const child = spawn(
-    "pnpm",
-    ["--filter", "@workspace/api-server", "exec", "tsx", testFile],
+    executable,
+    args,
     {
       cwd: process.cwd(),
       env: {
         ...process.env,
         NODE_ENV: "test",
         DATABASE_URL: databaseUrl,
+        ...extraEnvironment,
       },
       stdio: "inherit",
     },
@@ -212,14 +221,23 @@ async function runTestFile(testFile: string, databaseUrl: string) {
   ];
   if (code !== 0) {
     throw new Error(
-      `Integration test ${testFile} failed with ${signal ?? `exit code ${code}`}`,
+      `Integration command ${command.join(" ")} failed with ${signal ?? `exit code ${code}`}`,
     );
   }
+}
+
+async function runTestFile(testFile: string, databaseUrl: string) {
+  await runCommand(
+    ["pnpm", "--filter", "@workspace/api-server", "exec", "tsx", testFile],
+    databaseUrl,
+  );
 }
 
 export async function runIsolatedIntegrationTest({
   schemaPrefix,
   testFile,
+  setupCommand,
+  setupEnvironment,
   excludeTables = [],
   staleSchemaAgeMs = DEFAULT_STALE_SCHEMA_AGE_MS,
 }: IsolatedIntegrationOptions) {
@@ -252,9 +270,13 @@ export async function runIsolatedIntegrationTest({
       );
     }
 
+    const databaseUrl = isolatedDatabaseUrl(process.env.DATABASE_URL!, schemaName);
+    if (setupCommand) {
+      await runCommand(setupCommand, databaseUrl, setupEnvironment);
+    }
     await runTestFile(
       testFile,
-      isolatedDatabaseUrl(process.env.DATABASE_URL!, schemaName),
+      databaseUrl,
     );
   } finally {
     if (connected) {

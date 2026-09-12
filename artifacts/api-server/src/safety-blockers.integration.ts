@@ -355,7 +355,6 @@ async function run() {
     process.stdout.write("Safety blocker integration check passed\n");
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-    await restoreBaseline();
   }
 }
 
