@@ -47,4 +47,7 @@ test("marks overdue follow-ups and exposes status and target filters", () => {
   assert.match(markup, /data-testid="follow-up-reminder-overdue"/);
   assert.match(markup, /Filter recommendations by follow-up status/);
   assert.match(markup, /Filter recommendations by target date/);
+  assert.match(markup, /data-testid="trainer-reminder-preferences"/);
+  assert.match(markup, /Receive email reminders/);
+  assert.match(markup, /Operational delivery settings only/);
 });

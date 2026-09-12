@@ -1497,6 +1497,51 @@ export const GetTrainerDashboardResponse = zod.object({
 
 
 /**
+ * @summary Get the current trainer email reminder preferences
+ */
+export const getTrainerReminderPreferencesResponseQuietHoursStartRegExp = new RegExp('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+export const getTrainerReminderPreferencesResponseQuietHoursEndRegExp = new RegExp('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+
+
+export const GetTrainerReminderPreferencesResponse = zod.object({
+  "emailEnabled": zod.boolean(),
+  "timeZone": zod.string(),
+  "quietHoursStart": zod.string().regex(getTrainerReminderPreferencesResponseQuietHoursStartRegExp).nullable(),
+  "quietHoursEnd": zod.string().regex(getTrainerReminderPreferencesResponseQuietHoursEndRegExp).nullable(),
+  "updatedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Record a new operational revision of trainer email reminder preferences
+ */
+export const updateTrainerReminderPreferencesBodyTimeZoneMax = 100;
+
+export const updateTrainerReminderPreferencesBodyQuietHoursStartRegExp = new RegExp('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+export const updateTrainerReminderPreferencesBodyQuietHoursEndRegExp = new RegExp('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+
+
+export const UpdateTrainerReminderPreferencesBody = zod.object({
+  "emailEnabled": zod.boolean(),
+  "timeZone": zod.string().min(1).max(updateTrainerReminderPreferencesBodyTimeZoneMax),
+  "quietHoursStart": zod.string().regex(updateTrainerReminderPreferencesBodyQuietHoursStartRegExp).nullable(),
+  "quietHoursEnd": zod.string().regex(updateTrainerReminderPreferencesBodyQuietHoursEndRegExp).nullable()
+})
+
+export const updateTrainerReminderPreferencesResponseQuietHoursStartRegExp = new RegExp('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+export const updateTrainerReminderPreferencesResponseQuietHoursEndRegExp = new RegExp('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+
+
+export const UpdateTrainerReminderPreferencesResponse = zod.object({
+  "emailEnabled": zod.boolean(),
+  "timeZone": zod.string(),
+  "quietHoursStart": zod.string().regex(updateTrainerReminderPreferencesResponseQuietHoursStartRegExp).nullable(),
+  "quietHoursEnd": zod.string().regex(updateTrainerReminderPreferencesResponseQuietHoursEndRegExp).nullable(),
+  "updatedAt": zod.coerce.date().nullable()
+})
+
+
+/**
  * @summary List practice and evidence reviews
  */
 export const GetTrainerReviewQueueResponseItem = zod.object({

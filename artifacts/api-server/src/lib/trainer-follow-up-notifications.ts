@@ -5,9 +5,10 @@ import {
   diagnosticRecommendationFollowUpsTable,
   diagnosticRecommendationsTable,
   peopleTable,
+  trainerReminderPreferencesTable,
 } from "@workspace/db";
 import { ReplitConnectors } from "@replit/connectors-sdk";
-import { and, asc, eq, inArray, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { logger } from "./logger";
 import { workspaceAssignmentContexts } from "./teras";
 
@@ -46,6 +47,37 @@ export function latestFollowUps(rows: FollowUpSnapshot[]) {
 }
 
 type ReminderEmailInput = { to: string; trainerName: string; learnerName: string; title: string; targetAt: Date; kind: ReminderKind };
+type ReminderPreferences = {
+  emailEnabled: boolean;
+  timeZone: string;
+  quietHoursStart: string | null;
+  quietHoursEnd: string | null;
+};
+
+export function isWithinQuietHours(now: Date, preferences: Pick<ReminderPreferences, "timeZone" | "quietHoursStart" | "quietHoursEnd">) {
+  if (!preferences.quietHoursStart || !preferences.quietHoursEnd) return false;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: preferences.timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const hour = parts.find(part => part.type === "hour")?.value;
+  const minute = parts.find(part => part.type === "minute")?.value;
+  if (!hour || !minute) return false;
+  const current = `${hour}:${minute}`;
+  const { quietHoursStart: start, quietHoursEnd: end } = preferences;
+  if (start === end) return true;
+  return start < end ? current >= start && current < end : current >= start || current < end;
+}
+
+async function latestReminderPreferences(trainerId: string): Promise<ReminderPreferences> {
+  const [latest] = await db.select().from(trainerReminderPreferencesTable)
+    .where(eq(trainerReminderPreferencesTable.trainerId, trainerId))
+    .orderBy(desc(trainerReminderPreferencesTable.createdAt), desc(trainerReminderPreferencesTable.id))
+    .limit(1);
+  return latest ?? { emailEnabled: true, timeZone: "Asia/Jakarta", quietHoursStart: null, quietHoursEnd: null };
+}
 
 async function sendReminderEmail(input: ReminderEmailInput) {
   const from = process.env.TERAS_NOTIFICATION_FROM;
@@ -109,6 +141,8 @@ export async function dispatchTrainerFollowUpReminders(
     const learner = profile && personById.get(profile.learnerId);
     if (!trainer?.email || trainer.status !== "active" || !recommendation || !learner || !followUp.targetAt) continue;
     if (!currentScopes.get(trainer.id)?.has(`${profile.learnerId}:${profile.pathwayId}`)) continue;
+    const preferences = await latestReminderPreferences(trainer.id);
+    if (!preferences.emailEnabled || isWithinQuietHours(now, preferences)) continue;
 
     const deliveryId = `follow-up-reminder-${crypto.randomUUID()}`;
     await db.insert(diagnosticFollowUpReminderDeliveriesTable).values({

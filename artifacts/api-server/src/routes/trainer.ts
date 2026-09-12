@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
-import { GetTrainerDashboardResponse, GetTrainerReviewQueueResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse } from "@workspace/api-zod";
-import { db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable } from "@workspace/db";
+import { GetTrainerDashboardResponse, GetTrainerReminderPreferencesResponse, GetTrainerReviewQueueResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse, UpdateTrainerReminderPreferencesBody, UpdateTrainerReminderPreferencesResponse } from "@workspace/api-zod";
+import { db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, trainerReminderPreferencesTable } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 import { evidenceRecords, gapRecords, remediationRecords, workspaceAssignmentContexts } from "../lib/teras";
 import { authorizeWorkspaceRole } from "../lib/authorization";
@@ -13,6 +13,22 @@ const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const FOLLOW_UP_DUE_SOON_DAYS = 7;
 const followUpFingerprint = (value: { status: string; targetAt: string | null; note: string }) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const DEFAULT_REMINDER_PREFERENCES = {
+  emailEnabled: true,
+  timeZone: "Asia/Jakarta",
+  quietHoursStart: null,
+  quietHoursEnd: null,
+  updatedAt: null,
+};
+
+function isTimeZone(value: string) {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function followUpReminder(followUps: { status: string; targetAt: Date | null }[], now = new Date()) {
   const latest = followUps[0];
@@ -155,6 +171,46 @@ router.get("/trainer/dashboard", async (req, res): Promise<void> => {
   ].sort((a, b) => b.recordedAt.getTime() - a.recordedAt.getTime() || b.id.localeCompare(a.id));
   const [bottlenecks, diagnosticFollowUpItems] = await Promise.all([trainerBottlenecks(contexts), diagnosticFollowUps(contexts)]);
   res.json(GetTrainerDashboardResponse.parse({ trainer, assignedLearnerCount: new Set(contexts.map((context) => context.learner.id)).size, pendingFeedbackCount: items.filter((item) => item.kind === "Practice").length, pendingEvidenceCount: scoped.flatMap((item) => item.evidence).filter((item) => item.status === "Under review").length, activeRemediationCount: scoped.flatMap((item) => item.plans).filter((item) => item.status !== "Completed").length, blockedLearnerCount: new Set(contexts.filter((context, index) => scoped[index]!.gaps.some((gap) => gap.severity === "Critical" && gap.status !== "Resolved")).map((context) => context.learner.id)).size, bottlenecks, diagnosticFollowUps: diagnosticFollowUpItems, recentActivity: items, reviewHistory }));
+});
+router.get("/trainer/reminder-preferences", async (req, res): Promise<void> => {
+  const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;
+  const [latest] = await db.select().from(trainerReminderPreferencesTable)
+    .where(eq(trainerReminderPreferencesTable.trainerId, trainerId))
+    .orderBy(desc(trainerReminderPreferencesTable.createdAt), desc(trainerReminderPreferencesTable.id))
+    .limit(1);
+  res.json(GetTrainerReminderPreferencesResponse.parse(latest ? {
+    emailEnabled: latest.emailEnabled,
+    timeZone: latest.timeZone,
+    quietHoursStart: latest.quietHoursStart,
+    quietHoursEnd: latest.quietHoursEnd,
+    updatedAt: latest.createdAt,
+  } : DEFAULT_REMINDER_PREFERENCES));
+});
+router.put("/trainer/reminder-preferences", async (req, res): Promise<void> => {
+  const body = UpdateTrainerReminderPreferencesBody.safeParse(req.body);
+  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+  if (!isTimeZone(body.data.timeZone)) { res.status(400).json({ error: "Time zone must be a valid IANA time zone" }); return; }
+  if ((body.data.quietHoursStart === null) !== (body.data.quietHoursEnd === null)) {
+    res.status(400).json({ error: "Quiet hours start and end must both be set or both be empty" });
+    return;
+  }
+  const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;
+  const [revision] = await db.insert(trainerReminderPreferencesTable).values({
+    id: id("trainer-reminder-preference"),
+    trainerId,
+    emailEnabled: body.data.emailEnabled,
+    timeZone: body.data.timeZone,
+    quietHoursStart: body.data.quietHoursStart,
+    quietHoursEnd: body.data.quietHoursEnd,
+    createdBy: trainerId,
+  }).returning();
+  res.json(UpdateTrainerReminderPreferencesResponse.parse({
+    emailEnabled: revision!.emailEnabled,
+    timeZone: revision!.timeZone,
+    quietHoursStart: revision!.quietHoursStart,
+    quietHoursEnd: revision!.quietHoursEnd,
+    updatedAt: revision!.createdAt,
+  }));
 });
 router.post("/trainer/diagnostic-recommendations/:recommendationId/follow-ups", async (req, res): Promise<void> => {
   const params = RecordDiagnosticRecommendationFollowUpParams.safeParse(req.params);

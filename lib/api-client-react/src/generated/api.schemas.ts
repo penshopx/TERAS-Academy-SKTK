@@ -202,6 +202,42 @@ export interface DiagnosticRecommendationFollowUpInput {
   note: string;
 }
 
+export interface TrainerReminderPreferences {
+  emailEnabled: boolean;
+  timeZone: string;
+  /**
+     * @nullable
+     * @pattern ^([01][0-9]|2[0-3]):[0-5][0-9]$
+     */
+  quietHoursStart: string | null;
+  /**
+     * @nullable
+     * @pattern ^([01][0-9]|2[0-3]):[0-5][0-9]$
+     */
+  quietHoursEnd: string | null;
+  /** @nullable */
+  updatedAt: string | null;
+}
+
+export interface TrainerReminderPreferencesInput {
+  emailEnabled: boolean;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  timeZone: string;
+  /**
+     * @nullable
+     * @pattern ^([01][0-9]|2[0-3]):[0-5][0-9]$
+     */
+  quietHoursStart: string | null;
+  /**
+     * @nullable
+     * @pattern ^([01][0-9]|2[0-3]):[0-5][0-9]$
+     */
+  quietHoursEnd: string | null;
+}
+
 export type TrainerDiagnosticFollowUpDimensionSummaries = {[key: string]: number};
 
 export interface TrainerDiagnosticSafetyFinding {

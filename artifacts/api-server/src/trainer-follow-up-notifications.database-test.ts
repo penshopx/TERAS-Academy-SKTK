@@ -12,6 +12,7 @@ import {
   pathwaysTable,
   peopleTable,
   programsTable,
+  trainerReminderPreferencesTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { dispatchTrainerFollowUpReminders } from "./lib/trainer-follow-up-notifications";
@@ -48,6 +49,43 @@ async function main() {
   if (sends !== 1) throw new Error(`Concurrent dispatch sent ${sends} emails instead of one`);
   let audit = await db.select().from(diagnosticFollowUpReminderDeliveriesTable).where(eq(diagnosticFollowUpReminderDeliveriesTable.followUpId, "follow-up"));
   if (audit[0]?.status !== "sent" || audit[0]?.attemptCount !== 1) throw new Error("Successful delivery audit was not persisted");
+
+  await db.delete(diagnosticFollowUpReminderDeliveriesTable);
+  sends = 0;
+  await db.insert(trainerReminderPreferencesTable).values({
+    id: "preference-disabled",
+    trainerId: "trainer-a",
+    emailEnabled: false,
+    timeZone: "Asia/Jakarta",
+    createdAt: new Date("2026-09-10T10:00:00Z"),
+    createdBy: "trainer-a",
+  });
+  await dispatchTrainerFollowUpReminders(now, { sendEmail });
+  if (sends !== 0 || (await db.select().from(diagnosticFollowUpReminderDeliveriesTable)).length !== 0) throw new Error("Disabled trainer reminder preference was ignored");
+
+  await db.insert(trainerReminderPreferencesTable).values({
+    id: "preference-quiet",
+    trainerId: "trainer-a",
+    emailEnabled: true,
+    timeZone: "Asia/Jakarta",
+    quietHoursStart: "18:00",
+    quietHoursEnd: "20:00",
+    createdAt: new Date("2026-09-10T10:01:00Z"),
+    createdBy: "trainer-a",
+  });
+  await dispatchTrainerFollowUpReminders(now, { sendEmail });
+  if (sends !== 0 || (await db.select().from(diagnosticFollowUpReminderDeliveriesTable)).length !== 0) throw new Error("Trainer quiet hours were ignored");
+
+  await db.insert(trainerReminderPreferencesTable).values({
+    id: "preference-enabled",
+    trainerId: "trainer-a",
+    emailEnabled: true,
+    timeZone: "Asia/Jakarta",
+    createdAt: new Date("2026-09-10T10:02:00Z"),
+    createdBy: "trainer-a",
+  });
+  await dispatchTrainerFollowUpReminders(now, { sendEmail });
+  if ((sends as number) !== 1) throw new Error("Latest enabled trainer reminder preference was not honored");
 
   await db.delete(diagnosticFollowUpReminderDeliveriesTable);
   await db.update(enrollmentsTable).set({ trainerId: "trainer-b" }).where(eq(enrollmentsTable.id, "enrollment"));

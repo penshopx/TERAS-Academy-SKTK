@@ -115,6 +115,22 @@ export const diagnosticFollowUpReminderDeliveriesTable = pgTable("teras_diagnost
   check("teras_diagnostic_follow_up_reminder_delivery_status_check", sql`${table.status} IN ('pending','sending','sent','failed')`),
   check("teras_diagnostic_follow_up_reminder_delivery_attempt_count_check", sql`${table.attemptCount} >= 0 AND ${table.attemptCount} <= 3`),
 ]);
+export const trainerReminderPreferencesTable = pgTable("teras_trainer_reminder_preferences", {
+  id: text("id").primaryKey(),
+  trainerId: text("trainer_id").notNull().references(() => peopleTable.id, { onDelete: "cascade" }),
+  emailEnabled: boolean("email_enabled").notNull().default(true),
+  timeZone: text("time_zone").notNull().default("Asia/Jakarta"),
+  quietHoursStart: text("quiet_hours_start"),
+  quietHoursEnd: text("quiet_hours_end"),
+  ...audit,
+}, table => [
+  index("teras_trainer_reminder_preferences_trainer_created_idx").on(table.trainerId, table.createdAt),
+  check("teras_trainer_reminder_preferences_quiet_hours_check", sql`
+    (${table.quietHoursStart} IS NULL AND ${table.quietHoursEnd} IS NULL)
+    OR (${table.quietHoursStart} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+      AND ${table.quietHoursEnd} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$')
+  `),
+]);
 export const diagnosticSafetyFlagsTable = pgTable("teras_diagnostic_safety_flags", {
   id: text("id").primaryKey(), profileId: text("profile_id").notNull().references(() => diagnosticProfilesTable.id, { onDelete: "cascade" }), competencyUnitId: text("competency_unit_id").references(() => competencyUnitsTable.id), code: text("code").notNull(), severity: text("severity").notNull(), blocking: boolean("blocking").notNull().default(true), detail: text("detail").notNull(), ...audit,
 });
@@ -129,7 +145,7 @@ export const diagnosticAuditEventsTable = pgTable("teras_diagnostic_audit_events
   }).onDelete("cascade"),
 ]);
 
-const tables = { diagnosticTemplatesTable, diagnosticQuestionsTable, diagnosticOptionsTable, diagnosticSessionsTable, diagnosticResponsesTable, diagnosticProfilesTable, diagnosticProfileItemsTable, diagnosticGapsTable, diagnosticRecommendationsTable, diagnosticRecommendationFollowUpsTable, diagnosticFollowUpReminderDeliveriesTable, diagnosticSafetyFlagsTable, diagnosticAuditEventsTable };
+const tables = { diagnosticTemplatesTable, diagnosticQuestionsTable, diagnosticOptionsTable, diagnosticSessionsTable, diagnosticResponsesTable, diagnosticProfilesTable, diagnosticProfileItemsTable, diagnosticGapsTable, diagnosticRecommendationsTable, diagnosticRecommendationFollowUpsTable, diagnosticFollowUpReminderDeliveriesTable, trainerReminderPreferencesTable, diagnosticSafetyFlagsTable, diagnosticAuditEventsTable };
 export const diagnosticInsertSchemas = Object.fromEntries(Object.entries(tables).map(([name, table]) => [name, createInsertSchema(table).omit({ createdAt: true, updatedAt: true })]));
 export type DiagnosticSession = typeof diagnosticSessionsTable.$inferSelect;
 export type DiagnosticProfile = typeof diagnosticProfilesTable.$inferSelect;

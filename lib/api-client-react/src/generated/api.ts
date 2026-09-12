@@ -120,6 +120,8 @@ import type {
   TrainerDashboard,
   TrainerEvidenceReviewInput,
   TrainerPracticeReviewInput,
+  TrainerReminderPreferences,
+  TrainerReminderPreferencesInput,
   UnauthorizedResponse
 } from './api.schemas';
 
@@ -2252,6 +2254,154 @@ export function useGetTrainerDashboard<TData = Awaited<ReturnType<typeof getTrai
 
 
 
+
+export const getGetTrainerReminderPreferencesUrl = () => {
+
+
+
+
+  return `/api/trainer/reminder-preferences`
+}
+
+/**
+ * @summary Get the current trainer email reminder preferences
+ */
+export const getTrainerReminderPreferences = async ( options?: Parameters<typeof customFetch>[1]): Promise<TrainerReminderPreferences> => {
+
+  return customFetch<TrainerReminderPreferences>(getGetTrainerReminderPreferencesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTrainerReminderPreferencesQueryKey = () => {
+    return [
+    `/api/trainer/reminder-preferences`
+    ] as const;
+    }
+
+
+export const getGetTrainerReminderPreferencesQueryOptions = <TData = Awaited<ReturnType<typeof getTrainerReminderPreferences>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrainerReminderPreferences>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTrainerReminderPreferencesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTrainerReminderPreferences>>> = ({ signal }) => getTrainerReminderPreferences({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTrainerReminderPreferences>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTrainerReminderPreferencesQueryResult = NonNullable<Awaited<ReturnType<typeof getTrainerReminderPreferences>>>
+export type GetTrainerReminderPreferencesQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse>
+
+
+/**
+ * @summary Get the current trainer email reminder preferences
+ */
+
+export function useGetTrainerReminderPreferences<TData = Awaited<ReturnType<typeof getTrainerReminderPreferences>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrainerReminderPreferences>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTrainerReminderPreferencesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateTrainerReminderPreferencesUrl = () => {
+
+
+
+
+  return `/api/trainer/reminder-preferences`
+}
+
+/**
+ * @summary Record a new operational revision of trainer email reminder preferences
+ */
+export const updateTrainerReminderPreferences = async (trainerReminderPreferencesInput: TrainerReminderPreferencesInput, options?: Parameters<typeof customFetch>[1]): Promise<TrainerReminderPreferences> => {
+
+  return customFetch<TrainerReminderPreferences>(getUpdateTrainerReminderPreferencesUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(trainerReminderPreferencesInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateTrainerReminderPreferencesMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTrainerReminderPreferences>>, TError,{data: BodyType<TrainerReminderPreferencesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateTrainerReminderPreferences>>, TError,{data: BodyType<TrainerReminderPreferencesInput>}, TContext> => {
+
+const mutationKey = ['updateTrainerReminderPreferences'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTrainerReminderPreferences>>, {data: BodyType<TrainerReminderPreferencesInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateTrainerReminderPreferences(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateTrainerReminderPreferencesMutationResult = NonNullable<Awaited<ReturnType<typeof updateTrainerReminderPreferences>>>
+    export type UpdateTrainerReminderPreferencesMutationBody = BodyType<TrainerReminderPreferencesInput>
+    export type UpdateTrainerReminderPreferencesMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>
+
+    /**
+ * @summary Record a new operational revision of trainer email reminder preferences
+ */
+export const useUpdateTrainerReminderPreferences = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTrainerReminderPreferences>>, TError,{data: BodyType<TrainerReminderPreferencesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateTrainerReminderPreferences>>,
+        TError,
+        {data: BodyType<TrainerReminderPreferencesInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateTrainerReminderPreferencesMutationOptions(options));
+    }
 
 export const getGetTrainerReviewQueueUrl = () => {
 

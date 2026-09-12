@@ -1,6 +1,6 @@
-import { AlertTriangle, ArrowUpRight, CalendarClock, ClipboardList, ShieldAlert } from "lucide-react";
-import { getGetTrainerDashboardQueryKey, type DiagnosticRecommendation, type TrainerDiagnosticFollowUp, useRecordDiagnosticRecommendationFollowUp } from "@workspace/api-client-react";
-import React, { useState } from "react";
+import { AlertTriangle, ArrowUpRight, BellRing, CalendarClock, ClipboardList, ShieldAlert } from "lucide-react";
+import { getGetTrainerDashboardQueryKey, getGetTrainerReminderPreferencesQueryKey, type DiagnosticRecommendation, type TrainerDiagnosticFollowUp, useGetTrainerReminderPreferences, useRecordDiagnosticRecommendationFollowUp, useUpdateTrainerReminderPreferences } from "@workspace/api-client-react";
+import React, { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 
 const statusLabels = { planned: "Planned", in_progress: "In progress", completed: "Completed" } as const;
@@ -21,6 +22,86 @@ const timingLabels = {
 } as const;
 
 const newDraftKey = () => crypto.randomUUID();
+const timeZones = ["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura", "UTC"];
+
+function ReminderPreferences() {
+  const preferences = useGetTrainerReminderPreferences({
+    query: { queryKey: getGetTrainerReminderPreferencesQueryKey(), staleTime: 30_000 },
+  });
+  const mutation = useUpdateTrainerReminderPreferences();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [emailEnabled, setEmailEnabled] = useState(true);
+  const [timeZone, setTimeZone] = useState("Asia/Jakarta");
+  const [quietHoursEnabled, setQuietHoursEnabled] = useState(false);
+  const [quietHoursStart, setQuietHoursStart] = useState("20:00");
+  const [quietHoursEnd, setQuietHoursEnd] = useState("07:00");
+
+  useEffect(() => {
+    if (!preferences.data) return;
+    setEmailEnabled(preferences.data.emailEnabled);
+    setTimeZone(preferences.data.timeZone);
+    setQuietHoursEnabled(Boolean(preferences.data.quietHoursStart && preferences.data.quietHoursEnd));
+    setQuietHoursStart(preferences.data.quietHoursStart ?? "20:00");
+    setQuietHoursEnd(preferences.data.quietHoursEnd ?? "07:00");
+  }, [preferences.data]);
+
+  const save = () => mutation.mutate({
+    data: {
+      emailEnabled,
+      timeZone,
+      quietHoursStart: quietHoursEnabled ? quietHoursStart : null,
+      quietHoursEnd: quietHoursEnabled ? quietHoursEnd : null,
+    },
+  }, {
+    onSuccess: (updated) => {
+      queryClient.setQueryData(getGetTrainerReminderPreferencesQueryKey(), updated);
+      toast({ title: "Reminder preferences saved", description: "The scheduler will use these settings for future email attempts." });
+    },
+    onError: () => toast({ title: "Preferences not saved", description: "Please check the settings and try again.", variant: "destructive" }),
+  });
+
+  return (
+    <section className="rounded-lg border border-border bg-background/40 p-4" data-testid="trainer-reminder-preferences">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="flex items-center gap-2 font-semibold"><BellRing className="h-4 w-4" />Email reminder preferences</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Operational delivery settings only. They do not change follow-ups, diagnostic evidence, or readiness decisions.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="trainer-reminder-email" className="text-sm font-medium">Receive email reminders</label>
+          <Switch id="trainer-reminder-email" checked={emailEnabled} onCheckedChange={setEmailEnabled} />
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="space-y-1.5">
+          <label htmlFor="trainer-reminder-time-zone" className="text-xs font-medium">Delivery time zone</label>
+          <Select value={timeZone} onValueChange={setTimeZone}>
+            <SelectTrigger id="trainer-reminder-time-zone"><SelectValue /></SelectTrigger>
+            <SelectContent>{timeZones.map((zone) => <SelectItem key={zone} value={zone}>{zone}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-end gap-2 pb-2 md:col-span-2">
+          <Switch id="trainer-reminder-quiet-hours" checked={quietHoursEnabled} onCheckedChange={setQuietHoursEnabled} />
+          <label htmlFor="trainer-reminder-quiet-hours" className="text-sm">Use quiet hours</label>
+        </div>
+        {quietHoursEnabled && <>
+          <div className="space-y-1.5">
+            <label htmlFor="trainer-reminder-quiet-start" className="text-xs font-medium">Quiet hours start</label>
+            <Input id="trainer-reminder-quiet-start" type="time" value={quietHoursStart} onChange={(event) => setQuietHoursStart(event.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="trainer-reminder-quiet-end" className="text-xs font-medium">Quiet hours end</label>
+            <Input id="trainer-reminder-quiet-end" type="time" value={quietHoursEnd} onChange={(event) => setQuietHoursEnd(event.target.value)} />
+          </div>
+        </>}
+      </div>
+      <Button className="mt-4" size="sm" onClick={save} disabled={preferences.isLoading || mutation.isPending}>
+        {mutation.isPending ? "Saving…" : "Save reminder preferences"}
+      </Button>
+    </section>
+  );
+}
 
 function ReminderBadge({ recommendation }: { recommendation: DiagnosticRecommendation }) {
   const timing = recommendation.followUpReminder?.timing;
@@ -125,6 +206,7 @@ export function DiagnosticFollowUps({ items }: { items: TrainerDiagnosticFollowU
         <p className="text-sm text-muted-foreground">Baseline diagnostic, priority gaps, and recommended learning or practice for each assigned learner pathway.</p>
       </CardHeader>
       <CardContent className="space-y-4">
+        <ReminderPreferences />
         <div className="grid gap-2 sm:grid-cols-2" aria-label="Follow-up filters">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger aria-label="Filter recommendations by follow-up status"><SelectValue /></SelectTrigger>
