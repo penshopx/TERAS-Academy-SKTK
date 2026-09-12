@@ -53,9 +53,16 @@ export function readinessAuditPublicKeys(): ReadinessAuditPublicKey[] {
 }
 
 export function readinessAuditSigner() {
-  const active = configuredKeys().filter(key => key.active);
+  const keys = configuredKeys();
+  const active = keys.filter(key => key.active);
   if (active.length !== 1 || !active[0].privateKeyPem) {
     throw new Error("Exactly one active readiness audit signing key with a private key is required");
+  }
+  const highestPublishedVersion = Math.max(...keys.map(key => key.version));
+  if (active[0].version < highestPublishedVersion) {
+    throw new Error(
+      `Readiness audit signing key ${active[0].keyId} version ${active[0].version} cannot be activated because published version ${highestPublishedVersion} is newer`,
+    );
   }
   return (checksum: string) => ({
       algorithm: active[0].algorithm,

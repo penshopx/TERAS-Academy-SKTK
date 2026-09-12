@@ -10,6 +10,7 @@ import {
   db, enrollmentsTable, pathwaysTable, peopleTable, programsTable, readinessEventsTable, readinessGatesTable,
 } from "@workspace/db";
 import { createIntegrationTestApp } from "./integration-test-app";
+import { readinessAuditSigner } from "./lib/readiness-audit-signing";
 
 function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
@@ -192,6 +193,26 @@ async function run() {
       && exported.integrity.signature.keyId === "teras-audit-2026-09"
       && exported.integrity.signature.keyVersion === 2, "Export signature must identify the active versioned key");
     assert(verify(null, Buffer.from(checksum, "hex"), activeKeyPair.publicKey, Buffer.from(exported.integrity.signature.value, "base64")), "Export signature must verify over the canonical checksum");
+    process.env.TERAS_READINESS_AUDIT_SIGNING_KEYS = JSON.stringify([
+      { keyId: "teras-audit-2026-09", version: 2, active: false, publicKeyPem: publicPem },
+      { keyId: "teras-audit-2026-01", version: 1, active: true, publicKeyPem: retiredPublicPem, privateKeyPem: retiredPrivatePem },
+    ]);
+    let rollbackError: Error | undefined;
+    try {
+      readinessAuditSigner();
+    } catch (error) {
+      rollbackError = error instanceof Error ? error : new Error(String(error));
+    }
+    assert(rollbackError, "Reactivating a retired key must fail");
+    assert(rollbackError.message.includes("teras-audit-2026-01")
+      && rollbackError.message.includes("version 1")
+      && rollbackError.message.includes("version 2"),
+    "Reactivating a retired key must identify its key ID and conflicting versions");
+    assert(!rollbackError.message.includes(retiredPrivatePem), "Retired key rejection must not expose private key material");
+    process.env.TERAS_READINESS_AUDIT_SIGNING_KEYS = JSON.stringify([
+      { keyId: "teras-audit-2026-09", version: 2, active: true, publicKeyPem: publicPem, privateKeyPem: privatePem },
+      { keyId: "teras-audit-2026-01", version: 1, active: false, publicKeyPem: retiredPublicPem },
+    ]);
     const publicKeysResponse = await request("/readiness-audit/public-keys", "learner");
     const publicKeys = await publicKeysResponse.json() as any;
     assert(publicKeysResponse.status === 200 && publicKeys.issuer === "TERAS", "Public verification keys must be available without admin authorization");
