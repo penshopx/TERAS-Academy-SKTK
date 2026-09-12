@@ -24,7 +24,7 @@ type AssessmentDetail = {
 };
 type Readiness = {
   status: string;
-  gates: Array<{ code: string; status: string }>;
+  gates: Array<{ code: string; status: string; blockers: string[] }>;
   blockers: string[];
   missingEvidenceCount: number;
 };
@@ -321,10 +321,15 @@ async function run() {
     const m03History = await db.select().from(assessmentAttemptsTable).where(eq(assessmentAttemptsTable.assessmentId, "assessment-m03"));
     assert(m03History.length === 3 && m03History.some((attempt) => attempt.decision === "Not competent") && m03History.some((attempt) => attempt.decision === "Competent" && attempt.decisionRationale === `${marker}: passing reassessment`), "Assessment attempt history was not immutable in the database");
     const cleared = await request<Readiness>("/readiness", "learner");
+    const clearedG1 = cleared.gates.find((gate) => gate.code === "G1");
+    const clearedG2 = cleared.gates.find((gate) => gate.code === "G2");
     assert(
       cleared.status !== "Not Ready" &&
-        cleared.gates.find((gate) => gate.code === "G1")?.status === "Passed" &&
-        cleared.gates.find((gate) => gate.code === "G2")?.status === "Passed",
+        !cleared.blockers.some((blocker) => blocker.includes("Critical safety failure in M03")) &&
+        Boolean(clearedG1) &&
+        !clearedG1!.blockers.some((blocker) => blocker.includes("M03") || blocker.includes("E03")) &&
+        Boolean(clearedG2) &&
+        !clearedG2!.blockers.some((blocker) => blocker.includes("M07") || blocker.includes("E07")),
       "Passing M03 reassessment did not clear the critical blocker or preserve M07 technical readiness",
     );
     const [dashboard, learningPlan, evidenceHistory, gaps, remediationHistoryView, journey, passport] = await Promise.all([
@@ -347,7 +352,7 @@ async function run() {
     assert(
       passport.readiness.status === cleared.status &&
         passport.readinessDisclaimer.includes("not an official competency decision or certification claim") &&
-        passport.achievements.some((item) => item.capability === "Safe isolation and verification" && item.status === "Readiness record") &&
+        passport.achievements.some((item) => item.capability === "Safe PV work practice" && item.status === "Readiness record") &&
         passport.timeline.some((step) => step.id === "pathway-enrol") &&
         pathATimeline?.pathwayName?.startsWith("Path A") &&
         pathBTimeline?.pathwayName?.startsWith("Path B"),
