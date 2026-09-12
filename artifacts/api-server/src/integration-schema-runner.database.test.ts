@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +18,9 @@ const schemaPrefix = "schema_runner_test";
 const staleSchemaAgeMs = 60 * 60 * 1000;
 const setupFixture = "./src/fixtures/integration-schema-runner-setup.fixture.ts";
 const afterSetupFixture = "./src/fixtures/integration-schema-runner-after-setup.fixture.ts";
+const forcedTerminationRunnerFixture =
+  "./src/fixtures/integration-schema-runner-forced-termination-runner.fixture.ts";
+const successFixture = "./src/fixtures/integration-schema-runner-success.fixture.ts";
 
 async function withMarkerFile(run: (markerFile: string) => Promise<void>) {
   const directory = await mkdtemp(join(tmpdir(), "schema-runner-contract-"));
@@ -44,6 +49,19 @@ async function schemaExists(client: InstanceType<typeof Client>, name: string) {
     [name],
   );
   return result.rows[0]?.exists ?? false;
+}
+
+async function waitForFile(file: string, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      return (await readFile(file, "utf8")).trim();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+  throw new Error(`Timed out waiting for fixture marker ${file}`);
 }
 
 test("initialization interruption cannot leave an unowned schema", {
@@ -104,6 +122,80 @@ test("cleanup keeps an active old schema, drops it once inactive, and ignores un
     await cleaner.query(`DROP SCHEMA IF EXISTS "${activeName}" CASCADE`);
     await cleaner.query(`DROP SCHEMA IF EXISTS "${unknownName}" CASCADE`);
     await cleaner.end();
+  }
+});
+
+test("the next harness run reaps a schema orphaned by forced termination without touching active or unknown schemas", {
+  skip: !databaseUrl,
+}, async () => {
+  const directory = await mkdtemp(join(tmpdir(), "schema-runner-forced-termination-"));
+  const markerFile = join(directory, "orphan-schema.txt");
+  const contractPrefix = "schema_runner_forced";
+  const activeName = `${contractPrefix}_active_${crypto.randomUUID().replaceAll("-", "")}`;
+  const unknownName = `${contractPrefix}_unknown_${crypto.randomUUID().replaceAll("-", "")}`;
+  const owner = new Client({ connectionString: databaseUrl });
+  const inspector = new Client({ connectionString: databaseUrl });
+  let orphanName = "";
+  let harness: ReturnType<typeof spawn> | undefined;
+  await owner.connect();
+  await inspector.connect();
+  try {
+    await initializeIntegrationSchema(owner, activeName, contractPrefix);
+    await owner.query(`CREATE SCHEMA "${unknownName}"`);
+
+    harness = spawn(
+      "pnpm",
+      [
+        "--filter",
+        "@workspace/api-server",
+        "exec",
+        "tsx",
+        forcedTerminationRunnerFixture,
+      ],
+      {
+        cwd: process.cwd(),
+        detached: true,
+        env: {
+          ...process.env,
+          NODE_ENV: "test",
+          SCHEMA_RUNNER_FORCED_PREFIX: contractPrefix,
+          SCHEMA_RUNNER_MARKER_FILE: markerFile,
+        },
+        stdio: "ignore",
+      },
+    );
+    assert.ok(harness.pid);
+    orphanName = await waitForFile(markerFile);
+    assert.equal(await schemaExists(inspector, orphanName), true);
+
+    process.kill(-harness.pid, "SIGKILL");
+    await once(harness, "exit");
+
+    await runIsolatedIntegrationTest({
+      schemaPrefix: contractPrefix,
+      testFile: successFixture,
+      staleSchemaAgeMs: 0,
+    });
+
+    assert.equal(await schemaExists(inspector, orphanName), false);
+    assert.equal(await schemaExists(inspector, activeName), true);
+    assert.equal(await schemaExists(inspector, unknownName), true);
+  } finally {
+    if (harness?.pid && harness.exitCode === null && harness.signalCode === null) {
+      try {
+        process.kill(-harness.pid, "SIGKILL");
+      } catch {
+        // The process group may already have exited.
+      }
+    }
+    if (orphanName) {
+      await inspector.query(`DROP SCHEMA IF EXISTS "${orphanName}" CASCADE`);
+    }
+    await inspector.query(`DROP SCHEMA IF EXISTS "${unknownName}" CASCADE`);
+    await owner.query(`DROP SCHEMA IF EXISTS "${activeName}" CASCADE`);
+    await owner.end();
+    await inspector.end();
+    await rm(directory, { recursive: true, force: true });
   }
 });
 

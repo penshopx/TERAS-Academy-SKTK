@@ -1,0 +1,1 @@
+// A successful no-op fixture lets the harness complete its normal cleanup.
