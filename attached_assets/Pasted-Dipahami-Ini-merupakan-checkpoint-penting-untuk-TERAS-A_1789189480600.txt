@@ -1,0 +1,74 @@
+Dipahami. Ini merupakan **checkpoint penting untuk TERAS Academy**.
+
+### Baseline baru
+
+**M01–M10 Solar PV Installation sekarang dapat diperlakukan sebagai:**
+
+> **Canonical → MERGED → Post-merge VERIFIED → Baseline**
+
+Artinya, baseline Solar PV tidak lagi hanya berupa rancangan atau implementasi parsial. **Golden Journey M01–M10 sudah mempunyai baseline teknis yang tervalidasi**, termasuk safety-critical readiness behavior.
+
+Yang terkunci dari verifikasi #49:
+
+* **M03 — Safe PV work practice** tetap menjadi canonical naming.
+* Critical failure pada M03 → **readiness tetap terblokir**.
+* Reassessment M03 yang berhasil → **critical blocker dapat terhapus**.
+* Valid readiness M07 → **tidak ikut hilang** akibat reassessment M03.
+* G1/G2 → tidak boleh dipaksa `Passed` apabila kontrak modul lain yang menjadi bagiannya belum terpenuhi.
+* Safety gate sekarang konsisten dengan cakupan **M01–M07**, bukan lagi asumsi lama M03/M07.
+* Capability Passport mengikuti vocabulary canonical.
+* Full workspace dan post-merge verification → **lulus**.
+
+### Dampaknya terhadap konsep Path B
+
+Ini justru memperkuat arsitektur yang kita bahas sebelumnya.
+
+Sekarang kita mempunyai **reference implementation Path A yang jauh lebih solid**:
+
+> **Path A — Solar PV M01–M10 = canonical capability-development journey.**
+
+Dari sini kita dapat mengekstraksi pola engine yang sama untuk:
+
+> **Path B — TERAS SKTTK = Certification Preparation & Readiness.**
+
+Tetapi **jangan langsung menganggap M01–M10 sebagai konten SKTTK**. Yang sudah canonical adalah **engine + domain implementation Solar PV**, sementara pemetaan SKTTK tetap menjadi layer domain tersendiri.
+
+### Boundary berikutnya
+
+Karena **Task #50 tidak disentuh**, maka tidak ada alasan untuk mengambilnya secara otomatis.
+
+Checkpoint konseptual sekarang:
+
+```text
+TERAS Academy
+│
+├── Platform / Capability Engine
+│
+├── PATH A — CANONICAL
+│   └── Solar PV Installation
+│       └── M01–M10
+│           └── MERGED + VERIFIED
+│
+└── PATH B — NEXT DOMAIN
+    └── TERAS SKTTK
+        ├── Competency Mapping
+        ├── Diagnostic
+        ├── Targeted Learning
+        ├── Mentoring
+        ├── Practice / Simulation
+        ├── Evidence
+        ├── Remediation
+        ├── Reassessment
+        └── Readiness
+                ↓
+        Recommended for Official
+        Competency Testing
+```
+
+Dengan demikian, **M01–M10 sekarang bisa dijadikan reference implementation untuk membangun Path B**, bukan dijadikan alasan untuk mengklaim bahwa SKTTK Elektrikal sudah selesai.
+
+Dan boundary engineering tetap:
+
+**Canonical → Additive → Isolated → Verify → Reconcile → Lock**
+
+**Task #50 tetap untouched sampai ada assignment eksplisit.**
