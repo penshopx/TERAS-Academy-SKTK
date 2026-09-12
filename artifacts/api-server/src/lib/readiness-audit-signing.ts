@@ -18,6 +18,7 @@ function configuredKeys(): ReadinessAuditSigningKey[] {
   const keys = JSON.parse(raw) as unknown;
   if (!Array.isArray(keys) || keys.length === 0) throw new Error("Readiness audit signing keyring must be a non-empty array");
   const seen = new Set<string>();
+  const keyIdByVersion = new Map<number, string>();
   return keys.map((value: any) => {
     if (!value || typeof value.keyId !== "string" || !value.keyId
       || !Number.isInteger(value.version) || value.version < 1
@@ -26,6 +27,13 @@ function configuredKeys(): ReadinessAuditSigningKey[] {
     }
     if (seen.has(value.keyId)) throw new Error(`Duplicate readiness audit signing key ID: ${value.keyId}`);
     seen.add(value.keyId);
+    const conflictingKeyId = keyIdByVersion.get(value.version);
+    if (conflictingKeyId) {
+      throw new Error(
+        `Duplicate readiness audit signing key version ${value.version}: key IDs ${conflictingKeyId} and ${value.keyId}`,
+      );
+    }
+    keyIdByVersion.set(value.version, value.keyId);
     const publicKey = createPublicKey(value.publicKeyPem);
     if (publicKey.asymmetricKeyType !== "ed25519") throw new Error(`Signing key ${value.keyId} is not Ed25519`);
     if (value.privateKeyPem) {

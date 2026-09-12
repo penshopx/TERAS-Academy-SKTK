@@ -209,6 +209,32 @@ async function run() {
       && rollbackError.message.includes("version 2"),
     "Reactivating a retired key must identify its key ID and conflicting versions");
     assert(!rollbackError.message.includes(retiredPrivatePem), "Retired key rejection must not expose private key material");
+
+    process.env.TERAS_READINESS_AUDIT_SIGNING_KEYS = JSON.stringify([
+      { keyId: "teras-audit-unique-2", version: 2, active: true, publicKeyPem: publicPem, privateKeyPem: privatePem },
+      { keyId: "teras-audit-unique-1", version: 1, active: false, publicKeyPem: retiredPublicPem },
+    ]);
+    assert(typeof readinessAuditSigner() === "function", "Keyring must accept distinct publication versions");
+
+    process.env.TERAS_READINESS_AUDIT_SIGNING_KEYS = JSON.stringify([
+      { keyId: "teras-audit-conflict-a", version: 2, active: true, publicKeyPem: publicPem, privateKeyPem: privatePem },
+      { keyId: "teras-audit-conflict-b", version: 2, active: false, publicKeyPem: retiredPublicPem },
+    ]);
+    let duplicateVersionError: Error | undefined;
+    try {
+      readinessAuditSigner();
+    } catch (error) {
+      duplicateVersionError = error instanceof Error ? error : new Error(String(error));
+    }
+    assert(duplicateVersionError, "Different key IDs must not share a publication version");
+    assert(duplicateVersionError.message.includes("version 2")
+      && duplicateVersionError.message.includes("teras-audit-conflict-a")
+      && duplicateVersionError.message.includes("teras-audit-conflict-b"),
+    "Duplicate version rejection must identify the version and both conflicting key IDs");
+    assert(!duplicateVersionError.message.includes(privatePem)
+      && !duplicateVersionError.message.includes(retiredPublicPem),
+    "Duplicate version rejection must not expose key material");
+
     process.env.TERAS_READINESS_AUDIT_SIGNING_KEYS = JSON.stringify([
       { keyId: "teras-audit-2026-09", version: 2, active: true, publicKeyPem: publicPem, privateKeyPem: privatePem },
       { keyId: "teras-audit-2026-01", version: 1, active: false, publicKeyPem: retiredPublicPem },
