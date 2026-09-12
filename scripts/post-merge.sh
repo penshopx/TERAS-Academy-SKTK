@@ -120,7 +120,7 @@ else
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0004_content_resource_uri_http_check.sql
 fi
-pnpm --filter @workspace/db run push
+bash scripts/bootstrap-causal-link-ownership.sh
 TERAS_MIGRATION_ACTOR=post-merge-upgrade \
   bash scripts/apply-resource-uri-upgrade.sh
 # New databases receive their tables from Drizzle, while existing databases
@@ -169,8 +169,6 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0030_trainer_reminder_permanent_failures.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0031_trainer_review_idempotency.sql
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
-  -f lib/db/migrations/0032_learning_record_link_ownership.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0033_enrollment_event_context.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \

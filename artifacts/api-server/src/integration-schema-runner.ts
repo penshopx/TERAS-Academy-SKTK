@@ -9,6 +9,8 @@ type IsolatedIntegrationOptions = {
   testFile: string;
   setupCommand?: readonly string[];
   setupEnvironment?: Readonly<Record<string, string>>;
+  testEnvironment?: Readonly<Record<string, string>>;
+  useEmptyDatabase?: boolean;
   excludeTables?: readonly string[];
   staleSchemaAgeMs?: number;
 };
@@ -190,7 +192,14 @@ export async function initializeIntegrationSchema(
 
 function isolatedDatabaseUrl(databaseUrl: string, schemaName: string) {
   const url = new URL(databaseUrl);
-  url.searchParams.set("options", `-c search_path=${schemaName}`);
+  url.searchParams.set("options", `-csearch_path=${schemaName}`);
+  return url.toString();
+}
+
+function disposableDatabaseUrl(databaseUrl: string, databaseName: string) {
+  const url = new URL(databaseUrl);
+  url.pathname = `/${databaseName}`;
+  url.searchParams.delete("options");
   return url.toString();
 }
 
@@ -226,10 +235,15 @@ async function runCommand(
   }
 }
 
-async function runTestFile(testFile: string, databaseUrl: string) {
+async function runTestFile(
+  testFile: string,
+  databaseUrl: string,
+  testEnvironment: Readonly<Record<string, string>> = {},
+) {
   await runCommand(
     ["pnpm", "--filter", "@workspace/api-server", "exec", "tsx", testFile],
     databaseUrl,
+    testEnvironment,
   );
 }
 
@@ -238,6 +252,8 @@ export async function runIsolatedIntegrationTest({
   testFile,
   setupCommand,
   setupEnvironment,
+  testEnvironment,
+  useEmptyDatabase = false,
   excludeTables = [],
   staleSchemaAgeMs = DEFAULT_STALE_SCHEMA_AGE_MS,
 }: IsolatedIntegrationOptions) {
@@ -250,6 +266,16 @@ export async function runIsolatedIntegrationTest({
   try {
     await admin.connect();
     connected = true;
+    if (useEmptyDatabase) {
+      await admin.query(`CREATE DATABASE ${quoteIdentifier(schemaName)} TEMPLATE template0`);
+      const databaseUrl = disposableDatabaseUrl(process.env.DATABASE_URL!, schemaName);
+      if (setupCommand) {
+        await runCommand(setupCommand, databaseUrl, setupEnvironment);
+      }
+      await runTestFile(testFile, databaseUrl, testEnvironment);
+      return;
+    }
+
     await cleanupStaleIntegrationSchemas(admin, prefix, staleSchemaAgeMs);
     await initializeIntegrationSchema(admin, schemaName, prefix);
     const sourceTables = await admin.query<{ tablename: string }>(
@@ -277,19 +303,28 @@ export async function runIsolatedIntegrationTest({
     await runTestFile(
       testFile,
       databaseUrl,
+      testEnvironment,
     );
   } finally {
     if (connected) {
-      try {
-        await admin.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
-      } finally {
+      if (useEmptyDatabase) {
         try {
-          await admin.query(
-            "SELECT pg_advisory_unlock(hashtextextended($1, $2))",
-            [schemaName, ADVISORY_LOCK_SEED],
-          );
+          await admin.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(schemaName)} WITH (FORCE)`);
         } finally {
           await admin.end();
+        }
+      } else {
+        try {
+          await admin.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
+        } finally {
+          try {
+            await admin.query(
+              "SELECT pg_advisory_unlock(hashtextextended($1, $2))",
+              [schemaName, ADVISORY_LOCK_SEED],
+            );
+          } finally {
+            await admin.end();
+          }
         }
       }
     }

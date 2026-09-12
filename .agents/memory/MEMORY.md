@@ -34,3 +34,4 @@
 - [Append-only mutation retries](append-only-mutation-retries.md) — idempotency must cover both the immutable record and every transition appended in the same transaction.
 - [Retryable trainer revisions](retryable-trainer-revisions.md) — keep needs-revision practice items actionable so post-commit response loss can be retried after reload.
 - [Causal parent ownership](causal-parent-ownership.md) — keep learner ownership and transitive parent identity immutable so validated causal links cannot drift across learners.
+- [Drizzle empty database tests](drizzle-empty-database-tests.md) — clean-bootstrap tests need a disposable database because Drizzle 0.31 introspects public despite search_path.

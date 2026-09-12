@@ -14,6 +14,7 @@ const migration = await readFile(
   "utf8",
 );
 const client = new Client({ connectionString: databaseUrl });
+const isBootstrapTest = process.env.CAUSAL_LINK_BOOTSTRAP_TEST === "1";
 
 async function assertMixedOwnershipRejected(sql: string, values: unknown[], constraint: string) {
   await assert.rejects(
@@ -29,6 +30,40 @@ async function assertMixedOwnershipRejected(sql: string, values: unknown[], cons
 
 await client.connect();
 try {
+  if (isBootstrapTest) {
+    const installedTriggers = await client.query<{ trigger_name: string }>(`
+      SELECT trigger_name
+      FROM information_schema.triggers
+      WHERE event_object_schema = current_schema()
+        AND trigger_name = ANY(ARRAY[
+          'teras_learning_record_links_learner_ownership_trigger',
+          'teras_reassessment_links_learner_ownership_trigger',
+          'teras_practice_attempts_learner_ownership_trigger',
+          'teras_evidence_learner_ownership_trigger',
+          'teras_gaps_learner_ownership_trigger',
+          'teras_assessment_attempts_learner_ownership_trigger',
+          'teras_evidence_reviews_evidence_ownership_trigger',
+          'teras_remediation_plans_gap_ownership_trigger'
+        ])
+      GROUP BY trigger_name
+      ORDER BY trigger_name
+    `);
+    assert.deepEqual(
+      installedTriggers.rows.map(row => row.trigger_name),
+      [
+        "teras_assessment_attempts_learner_ownership_trigger",
+        "teras_evidence_learner_ownership_trigger",
+        "teras_evidence_reviews_evidence_ownership_trigger",
+        "teras_gaps_learner_ownership_trigger",
+        "teras_learning_record_links_learner_ownership_trigger",
+        "teras_practice_attempts_learner_ownership_trigger",
+        "teras_reassessment_links_learner_ownership_trigger",
+        "teras_remediation_plans_gap_ownership_trigger",
+      ],
+      "empty-schema bootstrap must install both junction and all parent ownership triggers",
+    );
+  }
+
   await client.query(`
     INSERT INTO teras_people (id, name, initials, role)
     VALUES ('causal-owner-b', 'Causal Owner B', 'CB', 'Learner');
@@ -74,42 +109,44 @@ try {
       ('causal-assessment-b2', 'assessment-m01', 'causal-owner-b', 'path-a', 102, 'Completed');
   `);
 
-  await client.query(`
-    INSERT INTO teras_learning_record_links
-      (id, learner_id, pathway_id, activity_id, practice_attempt_id, evidence_id,
-       evidence_review_id, gap_id, remediation_plan_id, reassessment_attempt_id, relation)
-    VALUES
-      ('causal-legacy-mismatch', 'learner-demo', 'path-a', 'activity-m03-safe-isolation',
-       'causal-practice-b', 'causal-evidence-a', 'causal-review-a', 'causal-gap-a',
-       'causal-plan-a', 'causal-assessment-a2', 'causes')
-  `);
-  await assert.rejects(
-    client.query(migration),
-    /Cannot enforce causal link ownership: parent learner differs from link learner in teras_learning_record_links/,
-  );
-  await client.query("ROLLBACK");
-  await client.query("DELETE FROM teras_learning_record_links WHERE id = 'causal-legacy-mismatch'");
+  if (!isBootstrapTest) {
+    await client.query(`
+      INSERT INTO teras_learning_record_links
+        (id, learner_id, pathway_id, activity_id, practice_attempt_id, evidence_id,
+         evidence_review_id, gap_id, remediation_plan_id, reassessment_attempt_id, relation)
+      VALUES
+        ('causal-legacy-mismatch', 'learner-demo', 'path-a', 'activity-m03-safe-isolation',
+         'causal-practice-b', 'causal-evidence-a', 'causal-review-a', 'causal-gap-a',
+         'causal-plan-a', 'causal-assessment-a2', 'causes')
+    `);
+    await assert.rejects(
+      client.query(migration),
+      /Cannot enforce causal link ownership: parent learner differs from link learner in teras_learning_record_links/,
+    );
+    await client.query("ROLLBACK");
+    await client.query("DELETE FROM teras_learning_record_links WHERE id = 'causal-legacy-mismatch'");
 
-  await client.query(`
-    INSERT INTO teras_reassessment_links
+    await client.query(`
+      INSERT INTO teras_reassessment_links
       (id, learner_id, pathway_id, original_gap_id, remediation_plan_id,
        practice_attempt_id, evidence_id, reassessment_attempt_id, previous_assessment_attempt_id)
     VALUES
       ('causal-legacy-reassessment-mismatch', 'learner-demo', 'path-a', 'causal-gap-a',
        'causal-plan-a', 'causal-practice-a', 'causal-evidence-a',
        'causal-assessment-a2', 'causal-assessment-b1')
-  `);
-  await assert.rejects(
-    client.query(migration),
-    /Cannot enforce causal link ownership: parent learner differs from link learner in teras_reassessment_links/,
-  );
-  await client.query("ROLLBACK");
-  await client.query(
-    "DELETE FROM teras_reassessment_links WHERE id = 'causal-legacy-reassessment-mismatch'",
-  );
+    `);
+    await assert.rejects(
+      client.query(migration),
+      /Cannot enforce causal link ownership: parent learner differs from link learner in teras_reassessment_links/,
+    );
+    await client.query("ROLLBACK");
+    await client.query(
+      "DELETE FROM teras_reassessment_links WHERE id = 'causal-legacy-reassessment-mismatch'",
+    );
 
-  await client.query(migration);
-  await client.query(migration);
+    await client.query(migration);
+    await client.query(migration);
+  }
 
   await client.query(`
     INSERT INTO teras_learning_record_links
