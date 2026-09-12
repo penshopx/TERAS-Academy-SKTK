@@ -61,6 +61,11 @@ type ReminderPreferences = {
   quietHoursEnd: string | null;
 };
 
+export type ReminderDeliveryAvailability = {
+  deliveryStatus: "active" | "paused_quiet_hours" | "disabled";
+  nextDeliveryAt: Date | null;
+};
+
 export function isWithinQuietHours(now: Date, preferences: Pick<ReminderPreferences, "timeZone" | "quietHoursStart" | "quietHoursEnd">) {
   if (!preferences.quietHoursStart || !preferences.quietHoursEnd) return false;
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -76,6 +81,25 @@ export function isWithinQuietHours(now: Date, preferences: Pick<ReminderPreferen
   const { quietHoursStart: start, quietHoursEnd: end } = preferences;
   if (start === end) return true;
   return start < end ? current >= start && current < end : current >= start || current < end;
+}
+
+export function reminderDeliveryAvailability(
+  now: Date,
+  preferences: ReminderPreferences,
+): ReminderDeliveryAvailability {
+  if (!preferences.emailEnabled) return { deliveryStatus: "disabled", nextDeliveryAt: null };
+  if (!isWithinQuietHours(now, preferences)) return { deliveryStatus: "active", nextDeliveryAt: null };
+
+  const nextMinute = new Date(now);
+  nextMinute.setUTCSeconds(0, 0);
+  nextMinute.setUTCMinutes(nextMinute.getUTCMinutes() + 1);
+  for (let offset = 0; offset <= 48 * 60; offset += 1) {
+    const candidate = new Date(nextMinute.getTime() + offset * 60_000);
+    if (!isWithinQuietHours(candidate, preferences)) {
+      return { deliveryStatus: "paused_quiet_hours", nextDeliveryAt: candidate };
+    }
+  }
+  return { deliveryStatus: "paused_quiet_hours", nextDeliveryAt: null };
 }
 
 async function latestReminderPreferences(trainerId: string): Promise<ReminderPreferences> {

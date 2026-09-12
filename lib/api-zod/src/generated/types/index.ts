@@ -261,6 +261,7 @@ export * from './trainerPracticeReviewInput';
 export * from './trainerPracticeReviewInputStatus';
 export * from './trainerReminderPreferenceRevision';
 export * from './trainerReminderPreferences';
+export * from './trainerReminderPreferencesDeliveryStatus';
 export * from './trainerReminderPreferencesInput';
 export * from './trainerReviewHistoryEvent';
 export * from './trainerReviewHistoryEventKind';

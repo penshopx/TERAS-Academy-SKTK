@@ -7,6 +7,7 @@ import { evidenceRecords, gapRecords, pathwayHasModule, remediationRecords, sele
 import { authorizeWorkspaceRole } from "../lib/authorization";
 import { learningNextAction } from "../lib/learning-transition";
 import { trainerBottlenecks } from "../lib/trainer-bottlenecks";
+import { reminderDeliveryAvailability } from "../lib/trainer-follow-up-notifications";
 
 const router: IRouter = Router();
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
@@ -15,13 +16,28 @@ const followUpFingerprint = (value: { status: string; targetAt: string | null; n
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const reviewFingerprint = (value: object) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const DEFAULT_REMINDER_PREFERENCES = {
+type ReminderPreferencesResponseSource = {
+  emailEnabled: boolean;
+  timeZone: string;
+  quietHoursStart: string | null;
+  quietHoursEnd: string | null;
+  updatedAt: Date | null;
+};
+
+const DEFAULT_REMINDER_PREFERENCES: ReminderPreferencesResponseSource = {
   emailEnabled: true,
   timeZone: "Asia/Jakarta",
   quietHoursStart: null,
   quietHoursEnd: null,
   updatedAt: null,
 };
+
+function reminderPreferencesResponse(preferences: ReminderPreferencesResponseSource) {
+  return {
+    ...preferences,
+    ...reminderDeliveryAvailability(new Date(), preferences),
+  };
+}
 
 function isTimeZone(value: string) {
   try {
@@ -181,13 +197,13 @@ router.get("/trainer/reminder-preferences", async (req, res): Promise<void> => {
     .where(eq(trainerReminderPreferencesTable.trainerId, trainerId))
     .orderBy(desc(trainerReminderPreferencesTable.createdAt), desc(trainerReminderPreferencesTable.id))
     .limit(1);
-  res.json(GetTrainerReminderPreferencesResponse.parse(latest ? {
+  res.json(GetTrainerReminderPreferencesResponse.parse(reminderPreferencesResponse(latest ? {
     emailEnabled: latest.emailEnabled,
     timeZone: latest.timeZone,
     quietHoursStart: latest.quietHoursStart,
     quietHoursEnd: latest.quietHoursEnd,
     updatedAt: latest.createdAt,
-  } : DEFAULT_REMINDER_PREFERENCES));
+  } : DEFAULT_REMINDER_PREFERENCES)));
 });
 router.get("/trainer/reminder-preferences/history", async (req, res): Promise<void> => {
   const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;
@@ -221,13 +237,13 @@ router.put("/trainer/reminder-preferences", async (req, res): Promise<void> => {
     quietHoursEnd: body.data.quietHoursEnd,
     createdBy: trainerId,
   }).returning();
-  res.json(UpdateTrainerReminderPreferencesResponse.parse({
+  res.json(UpdateTrainerReminderPreferencesResponse.parse(reminderPreferencesResponse({
     emailEnabled: revision!.emailEnabled,
     timeZone: revision!.timeZone,
     quietHoursStart: revision!.quietHoursStart,
     quietHoursEnd: revision!.quietHoursEnd,
     updatedAt: revision!.createdAt,
-  }));
+  })));
 });
 router.post("/trainer/diagnostic-recommendations/:recommendationId/follow-ups", async (req, res): Promise<void> => {
   const params = RecordDiagnosticRecommendationFollowUpParams.safeParse(req.params);

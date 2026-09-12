@@ -26,7 +26,11 @@ const timeZones = ["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura", "UTC"];
 
 function ReminderPreferences() {
   const preferences = useGetTrainerReminderPreferences({
-    query: { queryKey: getGetTrainerReminderPreferencesQueryKey(), staleTime: 30_000 },
+    query: {
+      queryKey: getGetTrainerReminderPreferencesQueryKey(),
+      staleTime: 30_000,
+      refetchInterval: 60_000,
+    },
   });
   const history = useGetTrainerReminderPreferenceHistory({
     query: { queryKey: getGetTrainerReminderPreferenceHistoryQueryKey(), staleTime: 30_000 },
@@ -39,6 +43,7 @@ function ReminderPreferences() {
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(false);
   const [quietHoursStart, setQuietHoursStart] = useState("20:00");
   const [quietHoursEnd, setQuietHoursEnd] = useState("07:00");
+  const availability = preferences.data;
 
   useEffect(() => {
     if (!preferences.data) return;
@@ -77,6 +82,22 @@ function ReminderPreferences() {
           <Switch id="trainer-reminder-email" checked={emailEnabled} onCheckedChange={setEmailEnabled} />
         </div>
       </div>
+      {availability ? (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-md border border-border bg-background/60 px-3 py-2 text-sm" data-testid="trainer-reminder-delivery-status">
+          <Badge variant={availability.deliveryStatus === "active" ? "secondary" : "outline"}>
+            {availability.deliveryStatus === "active" ? "Delivery active" : availability.deliveryStatus === "disabled" ? "Delivery inactive" : "Delivery paused"}
+          </Badge>
+          <span className="text-muted-foreground">
+            {availability.deliveryStatus === "active"
+              ? `Email reminders may be sent now (${availability.timeZone}).`
+              : availability.deliveryStatus === "disabled"
+                ? "Email reminders are turned off."
+                : availability.nextDeliveryAt
+                  ? `Quiet hours are active. Delivery resumes ${new Intl.DateTimeFormat("en-GB", { timeZone: availability.timeZone, weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZoneName: "short" }).format(new Date(availability.nextDeliveryAt))}.`
+                  : "Quiet hours are active."}
+          </span>
+        </div>
+      ) : null}
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         <div className="space-y-1.5">
           <label htmlFor="trainer-reminder-time-zone" className="text-xs font-medium">Delivery time zone</label>

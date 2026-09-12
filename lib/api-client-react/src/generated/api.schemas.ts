@@ -226,6 +226,15 @@ export interface DiagnosticRecommendationFollowUpInput {
   note: string;
 }
 
+export type TrainerReminderPreferencesDeliveryStatus = typeof TrainerReminderPreferencesDeliveryStatus[keyof typeof TrainerReminderPreferencesDeliveryStatus];
+
+
+export const TrainerReminderPreferencesDeliveryStatus = {
+  active: 'active',
+  paused_quiet_hours: 'paused_quiet_hours',
+  disabled: 'disabled',
+} as const;
+
 export interface TrainerReminderPreferences {
   emailEnabled: boolean;
   timeZone: string;
@@ -239,6 +248,9 @@ export interface TrainerReminderPreferences {
      * @pattern ^([01][0-9]|2[0-3]):[0-5][0-9]$
      */
   quietHoursEnd: string | null;
+  deliveryStatus: TrainerReminderPreferencesDeliveryStatus;
+  /** @nullable */
+  nextDeliveryAt: string | null;
   /** @nullable */
   updatedAt: string | null;
 }

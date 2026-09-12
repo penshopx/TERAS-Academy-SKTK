@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isWithinQuietHours } from "./lib/trainer-follow-up-notifications";
+import { isWithinQuietHours, reminderDeliveryAvailability } from "./lib/trainer-follow-up-notifications";
 
 test("quiet hours use the trainer time zone and can cross midnight", () => {
   const preferences = {
@@ -25,4 +25,29 @@ test("quiet hours can use a same-day interval or be disabled", () => {
     quietHoursStart: null,
     quietHoursEnd: null,
   }), false);
+});
+
+test("delivery availability exposes the next local opening for cross-midnight quiet hours", () => {
+  const preferences = {
+    emailEnabled: true,
+    timeZone: "Asia/Jakarta",
+    quietHoursStart: "20:00",
+    quietHoursEnd: "07:00",
+  };
+  assert.deepEqual(reminderDeliveryAvailability(new Date("2026-09-12T14:00:30Z"), preferences), {
+    deliveryStatus: "paused_quiet_hours",
+    nextDeliveryAt: new Date("2026-09-12T24:00:00Z"),
+  });
+});
+
+test("delivery availability distinguishes active and disabled delivery", () => {
+  const preferences = { timeZone: "Asia/Jakarta", quietHoursStart: "20:00", quietHoursEnd: "07:00" };
+  assert.deepEqual(reminderDeliveryAvailability(new Date("2026-09-12T05:00:00Z"), { ...preferences, emailEnabled: true }), {
+    deliveryStatus: "active",
+    nextDeliveryAt: null,
+  });
+  assert.deepEqual(reminderDeliveryAvailability(new Date("2026-09-12T14:00:00Z"), { ...preferences, emailEnabled: false }), {
+    deliveryStatus: "disabled",
+    nextDeliveryAt: null,
+  });
 });

@@ -2030,6 +2030,8 @@ export const GetTrainerReminderPreferencesResponse = zod.object({
   "timeZone": zod.string(),
   "quietHoursStart": zod.string().regex(getTrainerReminderPreferencesResponseQuietHoursStartRegExp).nullable(),
   "quietHoursEnd": zod.string().regex(getTrainerReminderPreferencesResponseQuietHoursEndRegExp).nullable(),
+  "deliveryStatus": zod.enum(['active', 'paused_quiet_hours', 'disabled']),
+  "nextDeliveryAt": zod.coerce.date().nullable(),
   "updatedAt": zod.coerce.date().nullable()
 })
 
@@ -2059,6 +2061,8 @@ export const UpdateTrainerReminderPreferencesResponse = zod.object({
   "timeZone": zod.string(),
   "quietHoursStart": zod.string().regex(updateTrainerReminderPreferencesResponseQuietHoursStartRegExp).nullable(),
   "quietHoursEnd": zod.string().regex(updateTrainerReminderPreferencesResponseQuietHoursEndRegExp).nullable(),
+  "deliveryStatus": zod.enum(['active', 'paused_quiet_hours', 'disabled']),
+  "nextDeliveryAt": zod.coerce.date().nullable(),
   "updatedAt": zod.coerce.date().nullable()
 })
 

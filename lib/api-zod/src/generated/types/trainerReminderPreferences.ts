@@ -5,6 +5,7 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { TrainerReminderPreferencesDeliveryStatus } from './trainerReminderPreferencesDeliveryStatus';
 
 export interface TrainerReminderPreferences {
   emailEnabled: boolean;
@@ -19,6 +20,9 @@ export interface TrainerReminderPreferences {
      * @pattern ^([01][0-9]|2[0-3]):[0-5][0-9]$
      */
   quietHoursEnd: string | null;
+  deliveryStatus: TrainerReminderPreferencesDeliveryStatus;
+  /** @nullable */
+  nextDeliveryAt: Date | null;
   /** @nullable */
   updatedAt: Date | null;
 }
