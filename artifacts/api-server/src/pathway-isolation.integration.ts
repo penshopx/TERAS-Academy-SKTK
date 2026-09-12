@@ -135,6 +135,7 @@ async function completeB04WithCausalApiFlow() {
     idempotencyKey: "pathway-isolation-b04-evidence",
   }, 201);
   await post(`/trainer/evidence/${evidence.id}/review`, {
+    idempotencyKey: `pathway-isolation-review-${evidence.id}`,
     status: "Valid",
     comment: "Path B b04 evidence verified",
     quality: { valid: true, relevant: true, sufficient: true, traceable: true },
@@ -298,12 +299,13 @@ async function run() {
   await request("/assessments/assessment-b01", undefined, 403);
   await post(
     `/trainer/practice/${practice.id}/review`,
-    { status: "Reviewed", feedback: "Must be rejected outside Path B" },
+    { idempotencyKey: "pathway-isolation-rejected-practice-review", status: "Reviewed", feedback: "Must be rejected outside Path B" },
     403,
   );
   await post(
     `/trainer/evidence/${evidence.id}/review`,
     {
+      idempotencyKey: "pathway-isolation-rejected-evidence-review",
       status: "Valid",
       comment: "Must be rejected outside Path B",
       quality: { valid: true, relevant: true, sufficient: true, traceable: true },

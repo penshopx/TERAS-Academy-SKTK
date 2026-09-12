@@ -13,6 +13,8 @@ const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const FOLLOW_UP_DUE_SOON_DAYS = 7;
 const followUpFingerprint = (value: { status: string; targetAt: string | null; note: string }) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const reviewFingerprint = (value: object) =>
+  createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const DEFAULT_REMINDER_PREFERENCES = {
   emailEnabled: true,
   timeZone: "Asia/Jakarta",
@@ -289,9 +291,25 @@ router.post("/trainer/practice/:attemptId/review", async (req, res): Promise<voi
   const context = contexts.find((item) => item.learner.id === attempt.learnerId && item.pathway.id === attempt.pathwayId);
   const [module] = task ? await db.select().from(modulesTable).where(eq(modulesTable.id, task.moduleId)) : [];
   if (!context || !task || !module || module.pathwayId !== context.pathway.id || module.programId !== context.program.id) { res.status(403).json({ error: "Practice attempt is outside your assigned active pathway" }); return; }
-  await db.transaction(async (tx) => { await tx.insert(practiceReviewsTable).values({ id: id("practice-review"), attemptId: attempt.id, reviewerId, status: body.data.status, feedback: body.data.feedback, createdBy: reviewerId }); if (body.data.status === "Needs revision") await appendModuleRevisionState(tx, task.moduleId, attempt.learnerId, attempt.pathwayId, reviewerId); });
-  const review = (await db.select().from(practiceReviewsTable).where(eq(practiceReviewsTable.attemptId, attempt.id))).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+  const fingerprint = reviewFingerprint({ status: body.data.status, feedback: body.data.feedback });
+  const review = await db.transaction(async (tx) => {
+    const [inserted] = await tx.insert(practiceReviewsTable).values({
+      id: id("practice-review"), attemptId: attempt.id, reviewerId, status: body.data.status, feedback: body.data.feedback,
+      idempotencyKey: body.data.idempotencyKey, idempotencyFingerprint: fingerprint, createdBy: reviewerId,
+    }).onConflictDoNothing().returning();
+    if (inserted) {
+      if (body.data.status === "Needs revision") await appendModuleRevisionState(tx, task.moduleId, attempt.learnerId, attempt.pathwayId, reviewerId);
+      return inserted;
+    }
+    const [existing] = await tx.select().from(practiceReviewsTable).where(and(
+      eq(practiceReviewsTable.attemptId, attempt.id),
+      eq(practiceReviewsTable.reviewerId, reviewerId),
+      eq(practiceReviewsTable.idempotencyKey, body.data.idempotencyKey),
+    )).limit(1);
+    return existing;
+  });
   if (!review) throw new Error("Practice review was not recorded");
+  if (review.idempotencyFingerprint !== fingerprint) { res.status(409).json({ error: "The idempotency key was already used with a different practice review." }); return; }
   const [link] = await db.select().from(learningRecordLinksTable).where(eq(learningRecordLinksTable.practiceAttemptId, attempt.id)).limit(1);
   if (!link) throw new Error("Practice attempt has no causal learning record");
   res.json(ReviewPracticeAttemptResponse.parse({ id: attempt.id, taskId: attempt.taskId, submittedAt: attempt.createdAt, status: review.status, reflection: attempt.reflection, outputSummary: attempt.outputSummary, pathwayId: attempt.pathwayId, sourceActivityId: link.activityId, nextAction: learningNextAction("REVISION_REQUIRED", { activityId: link.activityId, taskId: attempt.taskId, practiceAttemptId: attempt.id }), feedback: review.feedback }));
@@ -306,7 +324,25 @@ router.post("/trainer/evidence/:evidenceId/review", async (req, res): Promise<vo
   if (!evidence) { res.status(404).json({ error: "Evidence not found" }); return; }
   const contexts = await workspaceAssignmentContexts(reviewerId, "trainer");
   if (!contexts.some((item) => item.learner.id === evidence.learnerId && item.pathway.id === evidence.pathwayId)) { res.status(403).json({ error: "Evidence is outside your assigned active pathway" }); return; }
-  await db.transaction(async (tx) => { await tx.insert(evidenceReviewsTable).values({ id: id("evidence-review"), evidenceId: evidence.id, reviewerId, status: body.data.status, comment: body.data.comment, quality: body.data.quality, createdBy: reviewerId }); if (body.data.status === "Needs revision") await appendModuleRevisionState(tx, evidence.moduleId, evidence.learnerId, evidence.pathwayId, reviewerId); });
+  const fingerprint = reviewFingerprint({ status: body.data.status, comment: body.data.comment, quality: body.data.quality });
+  const review = await db.transaction(async (tx) => {
+    const [inserted] = await tx.insert(evidenceReviewsTable).values({
+      id: id("evidence-review"), evidenceId: evidence.id, reviewerId, status: body.data.status, comment: body.data.comment,
+      quality: body.data.quality, idempotencyKey: body.data.idempotencyKey, idempotencyFingerprint: fingerprint, createdBy: reviewerId,
+    }).onConflictDoNothing().returning();
+    if (inserted) {
+      if (body.data.status === "Needs revision") await appendModuleRevisionState(tx, evidence.moduleId, evidence.learnerId, evidence.pathwayId, reviewerId);
+      return inserted;
+    }
+    const [existing] = await tx.select().from(evidenceReviewsTable).where(and(
+      eq(evidenceReviewsTable.evidenceId, evidence.id),
+      eq(evidenceReviewsTable.reviewerId, reviewerId),
+      eq(evidenceReviewsTable.idempotencyKey, body.data.idempotencyKey),
+    )).limit(1);
+    return existing;
+  });
+  if (!review) throw new Error("Evidence review was not recorded");
+  if (review.idempotencyFingerprint !== fingerprint) { res.status(409).json({ error: "The idempotency key was already used with a different evidence review." }); return; }
   res.json(ReviewEvidenceByTrainerResponse.parse((await evidenceRecords(evidence.learnerId, evidence.pathwayId)).find((item) => item.id === evidence.id)));
 });
 export default router;

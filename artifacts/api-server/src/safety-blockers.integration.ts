@@ -162,6 +162,7 @@ async function run() {
       .where(eq(assessmentAttemptsTable.assessmentId, "assessment-m03"));
     assert(attemptsAfterUnauthorizedDecision.length === 1, "Unauthorized learner decision mutated assessment history");
     await post("/trainer/evidence/evidence-m07/review", "assessor", {
+      idempotencyKey: `${marker}-unauthorized-review`,
       status: "Valid", comment: "Must not be accepted.",
       quality: { valid: true, relevant: true, sufficient: true, traceable: true },
     }, 403);
@@ -203,12 +204,12 @@ async function run() {
       "M07 technical assessment bypassed its valid-evidence requirement",
     );
     const quality = { valid: true, relevant: true, sufficient: true, traceable: true };
-    await post("/trainer/evidence/evidence-m07/review", "trainer", { status: "Needs revision", comment: `${marker}: revision`, quality: { ...quality, sufficient: false } });
+    await post("/trainer/evidence/evidence-m07/review", "trainer", { idempotencyKey: `${marker}-revision-review`, status: "Needs revision", comment: `${marker}: revision`, quality: { ...quality, sufficient: false } });
     const revised = await request<Evidence>("/evidence", "learner");
     assert(revised.find(({ id }) => id === "evidence-m07")?.status === "Needs revision", "Evidence revision was not persisted to GET");
     // Readiness projections order append-only reviews by timestamp.
     await new Promise((resolve) => setTimeout(resolve, 5));
-    await post("/trainer/evidence/evidence-m07/review", "trainer", { status: "Valid", comment: `${marker}: valid`, quality });
+    await post("/trainer/evidence/evidence-m07/review", "trainer", { idempotencyKey: `${marker}-valid-review`, status: "Valid", comment: `${marker}: valid`, quality });
     const valid = await request<Evidence>("/evidence", "learner");
     assert(valid.find(({ id }) => id === "evidence-m07")?.status === "Valid", "Valid M07 evidence was not persisted to GET");
     const reviewHistory = await db.select().from(evidenceReviewsTable).where(eq(evidenceReviewsTable.evidenceId, "evidence-m07"));

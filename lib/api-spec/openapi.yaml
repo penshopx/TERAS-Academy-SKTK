@@ -575,6 +575,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /trainer/practice/{attemptId}/review:
     post:
       operationId: reviewPracticeAttempt
@@ -603,6 +605,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /assessor/dashboard:
     get:
       operationId: getAssessorDashboard
@@ -1543,6 +1547,7 @@ x-pathway-selection-components:
     TrainerEvidenceReviewInput:
       type: object
       properties:
+        idempotencyKey: { type: string, minLength: 8, maxLength: 160 }
         status:
           type: string
           enum: [Valid, Needs revision]
@@ -1550,16 +1555,17 @@ x-pathway-selection-components:
           type: string
         quality:
           $ref: "#/components/schemas/EvidenceQuality"
-      required: [status, comment, quality]
+      required: [idempotencyKey, status, comment, quality]
     TrainerPracticeReviewInput:
       type: object
       properties:
+        idempotencyKey: { type: string, minLength: 8, maxLength: 160 }
         status:
           type: string
           enum: [Reviewed, Needs revision]
         feedback:
           type: string
-      required: [status, feedback]
+      required: [idempotencyKey, status, feedback]
     EvidenceRequirement:
       type: object
       properties:
@@ -3633,6 +3639,7 @@ components:
     TrainerEvidenceReviewInput:
       type: object
       properties:
+        idempotencyKey: { type: string, minLength: 8, maxLength: 160 }
         status:
           type: string
           enum: [Valid, Needs revision]
@@ -3640,16 +3647,17 @@ components:
           type: string
         quality:
           $ref: "#/components/schemas/EvidenceQuality"
-      required: [status, comment, quality]
+      required: [idempotencyKey, status, comment, quality]
     TrainerPracticeReviewInput:
       type: object
       properties:
+        idempotencyKey: { type: string, minLength: 8, maxLength: 160 }
         status:
           type: string
           enum: [Reviewed, Needs revision]
         feedback:
           type: string
-      required: [status, feedback]
+      required: [idempotencyKey, status, feedback]
     EvidenceRequirement:
       type: object
       properties:

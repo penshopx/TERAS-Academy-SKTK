@@ -1989,6 +1989,11 @@ export const TrainerEvidenceReviewInputStatus = {
 } as const;
 
 export interface TrainerEvidenceReviewInput {
+  /**
+     * @minLength 8
+     * @maxLength 160
+     */
+  idempotencyKey: string;
   status: TrainerEvidenceReviewInputStatus;
   comment: string;
   quality: EvidenceQuality;
@@ -2003,6 +2008,11 @@ export const TrainerPracticeReviewInputStatus = {
 } as const;
 
 export interface TrainerPracticeReviewInput {
+  /**
+     * @minLength 8
+     * @maxLength 160
+     */
+  idempotencyKey: string;
   status: TrainerPracticeReviewInputStatus;
   feedback: string;
 }

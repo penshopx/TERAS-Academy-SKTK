@@ -1602,7 +1602,13 @@ export const ReviewEvidenceByTrainerParams = zod.object({
   "evidenceId": zod.coerce.string()
 })
 
+export const reviewEvidenceByTrainerBodyIdempotencyKeyMin = 8;
+export const reviewEvidenceByTrainerBodyIdempotencyKeyMax = 160;
+
+
+
 export const ReviewEvidenceByTrainerBody = zod.object({
+  "idempotencyKey": zod.string().min(reviewEvidenceByTrainerBodyIdempotencyKeyMin).max(reviewEvidenceByTrainerBodyIdempotencyKeyMax),
   "status": zod.enum(['Valid', 'Needs revision']),
   "comment": zod.string(),
   "quality": zod.object({
@@ -1645,7 +1651,13 @@ export const ReviewPracticeAttemptParams = zod.object({
   "attemptId": zod.coerce.string()
 })
 
+export const reviewPracticeAttemptBodyIdempotencyKeyMin = 8;
+export const reviewPracticeAttemptBodyIdempotencyKeyMax = 160;
+
+
+
 export const ReviewPracticeAttemptBody = zod.object({
+  "idempotencyKey": zod.string().min(reviewPracticeAttemptBodyIdempotencyKeyMin).max(reviewPracticeAttemptBodyIdempotencyKeyMax),
   "status": zod.enum(['Reviewed', 'Needs revision']),
   "feedback": zod.string()
 })

@@ -141,7 +141,7 @@ async function run() {
       const actionableAssessmentIds = new Set((await db.select({ assessmentId: assessmentCriteriaTable.assessmentId }).from(assessmentCriteriaTable)).map(({ assessmentId }) => assessmentId));
       assert(assessorAQueue.every((item) => actionableAssessmentIds.has(item.id)) && assessorBQueue.every((item) => actionableAssessmentIds.has(item.id)), "Assessor queue exposed an assessment without decision criteria");
 
-      await request(trainerAServer.baseUrl, `/trainer/evidence/${evidenceB}/review`, { method: "POST", body: JSON.stringify({ status: "Needs revision", comment: "must not write", quality: { valid: false, relevant: false, sufficient: false, traceable: false } }) }, 403);
+      await request(trainerAServer.baseUrl, `/trainer/evidence/${evidenceB}/review`, { method: "POST", body: JSON.stringify({ idempotencyKey: `readiness-rejected-review-${suffix}`, status: "Needs revision", comment: "must not write", quality: { valid: false, relevant: false, sufficient: false, traceable: false } }) }, 403);
       await request(trainerAServer.baseUrl, "/assessments", undefined, 403);
       await request(assessorAServer.baseUrl, "/assessments", undefined, 403);
       await request(trainerAServer.baseUrl, `/assessments/${assessmentA.id}?learnerId=${learnerA}`, undefined, 403);
@@ -151,8 +151,8 @@ async function run() {
 
       const revisionQuality = { valid: false, relevant: true, sufficient: false, traceable: true };
       const validQuality = { valid: true, relevant: true, sufficient: true, traceable: true };
-      await request(trainerAServer.baseUrl, `/trainer/evidence/${evidenceA}/review`, { method: "POST", body: JSON.stringify({ status: "Needs revision", comment: "first trainer review", quality: revisionQuality }) });
-      await request(trainerAServer.baseUrl, `/trainer/evidence/${evidenceA}/review`, { method: "POST", body: JSON.stringify({ status: "Valid", comment: "second trainer review", quality: validQuality }) });
+      await request(trainerAServer.baseUrl, `/trainer/evidence/${evidenceA}/review`, { method: "POST", body: JSON.stringify({ idempotencyKey: `readiness-first-review-${suffix}`, status: "Needs revision", comment: "first trainer review", quality: revisionQuality }) });
+      await request(trainerAServer.baseUrl, `/trainer/evidence/${evidenceA}/review`, { method: "POST", body: JSON.stringify({ idempotencyKey: `readiness-second-review-${suffix}`, status: "Valid", comment: "second trainer review", quality: validQuality }) });
       await db.insert(practiceReviewsTable).values([
         { id: `readiness-practice-review-1-${suffix}`, attemptId: practiceA, reviewerId: trainerA, status: "Reviewed", feedback: "first practice feedback", createdBy: trainerA },
         { id: `readiness-practice-review-2-${suffix}`, attemptId: practiceA, reviewerId: trainerA, status: "Needs revision", feedback: "second practice feedback", createdBy: trainerA },

@@ -149,8 +149,8 @@ export const practiceAttemptsTable = pgTable("teras_practice_attempts", {
 export const practiceReviewsTable = pgTable("teras_practice_reviews", {
   id: text("id").primaryKey(), attemptId: text("attempt_id").notNull().references(() => practiceAttemptsTable.id),
   reviewerId: text("reviewer_id").references(() => peopleTable.id), status: text("status").notNull(),
-  feedback: text("feedback").notNull(), ...audit,
-});
+  feedback: text("feedback").notNull(), idempotencyKey: text("idempotency_key"), idempotencyFingerprint: text("idempotency_fingerprint"), ...audit,
+}, table => [uniqueIndex("teras_practice_reviews_idempotency_unique").on(table.attemptId, table.reviewerId, table.idempotencyKey)]);
 export const evidenceTable = pgTable("teras_evidence", {
   id: text("id").primaryKey(), learnerId: text("learner_id").notNull().references(() => peopleTable.id),
   pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id), moduleId: text("module_id").notNull().references(() => modulesTable.id), taskId: text("task_id").notNull().references(() => practiceTasksTable.id),
@@ -159,8 +159,9 @@ export const evidenceTable = pgTable("teras_evidence", {
 export const evidenceReviewsTable = pgTable("teras_evidence_reviews", {
   id: text("id").primaryKey(), evidenceId: text("evidence_id").notNull().references(() => evidenceTable.id),
   reviewerId: text("reviewer_id").references(() => peopleTable.id), status: text("status").notNull(),
-  comment: text("comment"), quality: jsonb("quality").$type<{ valid: boolean; relevant: boolean; sufficient: boolean; traceable: boolean }>().notNull(), ...audit,
-});
+  comment: text("comment"), quality: jsonb("quality").$type<{ valid: boolean; relevant: boolean; sufficient: boolean; traceable: boolean }>().notNull(),
+  idempotencyKey: text("idempotency_key"), idempotencyFingerprint: text("idempotency_fingerprint"), ...audit,
+}, table => [uniqueIndex("teras_evidence_reviews_idempotency_unique").on(table.evidenceId, table.reviewerId, table.idempotencyKey)]);
 export const assessmentAttemptsTable = pgTable("teras_assessment_attempts", {
   id: text("id").primaryKey(), assessmentId: text("assessment_id").notNull().references(() => assessmentsTable.id),
   learnerId: text("learner_id").notNull().references(() => peopleTable.id), pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id), number: integer("number").notNull(),

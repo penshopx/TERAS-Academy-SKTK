@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { trackReadinessDecisionRecorded, trackReadinessQueueOpened } from "@/lib/analytics";
 import { getGetCapabilityPassportQueryKey, getGetLearnerDashboardQueryKey, getGetLearnerReadinessQueryKey, getGetTrainerDashboardQueryKey, getGetTrainerReviewQueueQueryKey, getListEvidenceQueryKey, useReviewEvidenceByTrainer, useReviewPracticeAttempt, TrainerDashboard } from "@workspace/api-client-react";
 import { DiagnosticFollowUps } from "./diagnostic-follow-ups";
+import { clearDraftIdempotencyKey, getDraftIdempotencyKey } from "@/lib/draft-idempotency";
 
 type QueueItem = { id: string; kind: string; title: string; moduleName: string; learnerName: string; pathwayName: string; priority: string; };
 
@@ -71,10 +72,21 @@ export function ReviewQueue({ dashboard }: { dashboard: TrainerDashboard }) {
       setSelected(null); refresh();
     };
     const failed = () => toast({ title: "Review failed", description: "The review could not be recorded. Please try again.", variant: "destructive" });
+    const flow = `trainer-review:${selected.kind}:${selected.id}`;
     if (selected.kind === "Practice") {
-      practiceReview.mutate({ attemptId: selected.id, data: { status: status as "Reviewed" | "Needs revision", feedback: comment } }, { onSuccess: done, onError: failed });
+      const payload = JSON.stringify({ status, feedback: comment });
+      const idempotencyKey = getDraftIdempotencyKey(window.localStorage, flow, payload);
+      practiceReview.mutate({ attemptId: selected.id, data: { idempotencyKey, status: status as "Reviewed" | "Needs revision", feedback: comment } }, {
+        onSuccess: () => { clearDraftIdempotencyKey(window.localStorage, flow); done(); },
+        onError: failed,
+      });
     } else {
-      evidenceReview.mutate({ evidenceId: selected.id, data: { status: status as "Valid" | "Needs revision", comment, quality } }, { onSuccess: done, onError: failed });
+      const payload = JSON.stringify({ status, comment, quality });
+      const idempotencyKey = getDraftIdempotencyKey(window.localStorage, flow, payload);
+      evidenceReview.mutate({ evidenceId: selected.id, data: { idempotencyKey, status: status as "Valid" | "Needs revision", comment, quality } }, {
+        onSuccess: () => { clearDraftIdempotencyKey(window.localStorage, flow); done(); },
+        onError: failed,
+      });
     }
   };
 

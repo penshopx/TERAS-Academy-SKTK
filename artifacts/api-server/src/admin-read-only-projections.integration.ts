@@ -37,7 +37,7 @@ await withServer("admin", async baseUrl => {
   assert(learnerMutation.status === 403, "Admin-only session must not create learner work");
   const trainerMutation = await fetch(`${baseUrl}/trainer/practice/not-authorized/review`, {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ status: "Reviewed", feedback: "x" }),
+    body: JSON.stringify({ idempotencyKey: "admin-denial-review", status: "Reviewed", feedback: "x" }),
   });
   assert(trainerMutation.status === 403, "Admin-only session must not review trainer work");
   const assessorMutation = await fetch(`${baseUrl}/assessor/assessments/not-authorized/decision`, {

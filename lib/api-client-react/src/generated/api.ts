@@ -2579,7 +2579,7 @@ export const reviewEvidenceByTrainer = async (evidenceId: string,
 
 
 
-export const getReviewEvidenceByTrainerMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>,
+export const getReviewEvidenceByTrainerMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewEvidenceByTrainer>>, TError,{evidenceId: string;data: BodyType<TrainerEvidenceReviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof reviewEvidenceByTrainer>>, TError,{evidenceId: string;data: BodyType<TrainerEvidenceReviewInput>}, TContext> => {
 
@@ -2608,12 +2608,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type ReviewEvidenceByTrainerMutationResult = NonNullable<Awaited<ReturnType<typeof reviewEvidenceByTrainer>>>
     export type ReviewEvidenceByTrainerMutationBody = BodyType<TrainerEvidenceReviewInput>
-    export type ReviewEvidenceByTrainerMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>
+    export type ReviewEvidenceByTrainerMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>
 
     /**
  * @summary Record a trainer evidence review
  */
-export const useReviewEvidenceByTrainer = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>,
+export const useReviewEvidenceByTrainer = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewEvidenceByTrainer>>, TError,{evidenceId: string;data: BodyType<TrainerEvidenceReviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof reviewEvidenceByTrainer>>,
@@ -2651,7 +2651,7 @@ export const reviewPracticeAttempt = async (attemptId: string,
 
 
 
-export const getReviewPracticeAttemptMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>,
+export const getReviewPracticeAttemptMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewPracticeAttempt>>, TError,{attemptId: string;data: BodyType<TrainerPracticeReviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof reviewPracticeAttempt>>, TError,{attemptId: string;data: BodyType<TrainerPracticeReviewInput>}, TContext> => {
 
@@ -2680,12 +2680,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type ReviewPracticeAttemptMutationResult = NonNullable<Awaited<ReturnType<typeof reviewPracticeAttempt>>>
     export type ReviewPracticeAttemptMutationBody = BodyType<TrainerPracticeReviewInput>
-    export type ReviewPracticeAttemptMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>
+    export type ReviewPracticeAttemptMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>
 
     /**
  * @summary Record trainer feedback on a practice attempt
  */
-export const useReviewPracticeAttempt = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>,
+export const useReviewPracticeAttempt = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewPracticeAttempt>>, TError,{attemptId: string;data: BodyType<TrainerPracticeReviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof reviewPracticeAttempt>>,

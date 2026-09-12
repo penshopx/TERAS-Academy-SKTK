@@ -31,3 +31,4 @@
 - [Auditable readiness decisions](auditable-readiness-decisions.md) — publish immutable rule versions and snapshot every decision; critical safety is globally non-compensable.
 - [Operational recommendation follow-ups](operational-recommendation-follow-ups.md) — keep trainer action history append-only and separate from diagnostic and readiness decisions.
 - [Integration governance](integration-governance.md) — inspect and map to canonical systems before additive work; verify each merge in isolation before locking it.
+- [Append-only mutation retries](append-only-mutation-retries.md) — idempotency must cover both the immutable record and every transition appended in the same transaction.

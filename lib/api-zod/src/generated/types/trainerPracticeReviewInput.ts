@@ -8,6 +8,11 @@
 import type { TrainerPracticeReviewInputStatus } from './trainerPracticeReviewInputStatus';
 
 export interface TrainerPracticeReviewInput {
+  /**
+     * @minLength 8
+     * @maxLength 160
+     */
+  idempotencyKey: string;
   status: TrainerPracticeReviewInputStatus;
   feedback: string;
 }

@@ -9,6 +9,11 @@ import type { EvidenceQuality } from './evidenceQuality';
 import type { TrainerEvidenceReviewInputStatus } from './trainerEvidenceReviewInputStatus';
 
 export interface TrainerEvidenceReviewInput {
+  /**
+     * @minLength 8
+     * @maxLength 160
+     */
+  idempotencyKey: string;
   status: TrainerEvidenceReviewInputStatus;
   comment: string;
   quality: EvidenceQuality;
