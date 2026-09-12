@@ -5,6 +5,7 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { ReadinessContractRequirement } from './readinessContractRequirement';
 
 export interface GateProgress {
   id: string;
@@ -27,4 +28,6 @@ export interface GateProgress {
   competencyUnitId: string | null;
   /** @minimum 1 */
   ruleVersion: number;
+  blockers?: string[];
+  contracts?: ReadinessContractRequirement[];
 }

@@ -81,9 +81,9 @@ async function cleanup() {
 async function run() {
   await cleanup();
   const [taskA] = await db.select().from(practiceTasksTable).where(eq(practiceTasksTable.moduleId, "m03")).limit(1);
-  const [taskB] = await db.select().from(practiceTasksTable).where(eq(practiceTasksTable.moduleId, "b01")).limit(1);
+  const [taskB] = await db.select().from(practiceTasksTable).where(eq(practiceTasksTable.moduleId, "m01")).limit(1);
   const [assessmentA] = await db.select().from(assessmentsTable).where(eq(assessmentsTable.moduleId, "m03")).limit(1);
-  const [assessmentB] = await db.select().from(assessmentsTable).where(eq(assessmentsTable.moduleId, "b01")).limit(1);
+  const [assessmentB] = await db.select().from(assessmentsTable).where(eq(assessmentsTable.moduleId, "m01")).limit(1);
   assert(taskA && taskB && assessmentA && assessmentB, "Seeded pathway A and B readiness catalogue is required");
 
   const criteriaA = await db.select().from(assessmentCriteriaTable).where(eq(assessmentCriteriaTable.assessmentId, assessmentA.id));
@@ -114,7 +114,7 @@ async function run() {
     ]);
     await db.insert(evidenceTable).values([
       { id: evidenceA, learnerId: learnerA, pathwayId: "path-a", moduleId: "m03", taskId: taskA.id, title: "A readiness evidence", type: "Report", description: "Readiness dashboard isolation A", fileName: null, createdBy: learnerA },
-      { id: evidenceB, learnerId: learnerB, pathwayId: "path-b", moduleId: "b01", taskId: taskB.id, title: "B readiness evidence", type: "Report", description: "Readiness dashboard isolation B", fileName: null, createdBy: learnerB },
+      { id: evidenceB, learnerId: learnerB, pathwayId: "path-b", moduleId: "m01", taskId: taskB.id, title: "B readiness evidence", type: "Report", description: "Readiness dashboard isolation B", fileName: null, createdBy: learnerB },
     ]);
     await db.insert(evidenceReviewsTable).values([
       { id: `readiness-review-a-${suffix}`, evidenceId: evidenceA, status: "Under review", quality: { valid: false, relevant: false, sufficient: false, traceable: false }, createdBy: learnerA },

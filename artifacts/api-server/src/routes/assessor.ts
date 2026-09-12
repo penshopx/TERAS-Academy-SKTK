@@ -35,10 +35,11 @@ import {
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   assessmentSummary,
-  activeLearnerPathwayContext,
   evidenceRecords,
   gapRecords,
   learnerContext,
+  pathwayHasModule,
+  selectedBaselineModuleIds,
   workspaceAssignmentContexts,
 } from "../lib/teras";
 import { authorizeLearner, authorizeLearningActor, authorizeWorkspaceRole, type LearnerContext } from "../lib/authorization";
@@ -113,9 +114,8 @@ async function activeAssessments(requestContext?: LearnerContext) {
     db.select().from(modulesTable),
     db.select().from(assessmentsTable),
   ]);
-  const pathwayModules = modules.filter(
-    (module) => module.pathwayId === context.pathway.id,
-  );
+  const selected = await selectedBaselineModuleIds(context.pathway.id);
+  const pathwayModules = modules.filter((module) => selected.has(module.id));
   const moduleIds = new Set(pathwayModules.map((module) => module.id));
   const summaries = await Promise.all(
     assessments
@@ -172,13 +172,15 @@ router.get("/assessments/:assessmentId", async (req, res): Promise<void> => {
     return;
   }
   const contexts = actor.role === "learner"
-    ? [await activeLearnerPathwayContext(requestedLearnerId, module.pathwayId)]
+    ? [await learnerContext(requestedLearnerId)]
     : await workspaceAssignmentContexts(actor.id, actor.role);
-  const context = contexts.find((item) => item &&
-    item.learner.id === requestedLearnerId &&
-    item.program.id === module.programId &&
-    item.pathway.id === module.pathwayId,
+  const context = contexts.find((item) =>
+    item && item.learner.id === requestedLearnerId && item.program.id === module.programId,
   );
+  if (context && !await pathwayHasModule(context.pathway.id, module.id)) {
+    res.status(403).json({ error: "Assessment is outside the selected pathway baseline" });
+    return;
+  }
   if (!context) {
     res.status(403).json({ error: "Assessment is outside your active assigned learner pathway" });
     return;
@@ -296,8 +298,12 @@ router.post(
     const contexts = await workspaceAssignmentContexts(assessorId, "assessor");
     const context = assessmentModule ? contexts.find((item) =>
       item.learner.id === body.data.learnerId &&
-      item.program.id === assessmentModule.programId && item.pathway.id === assessmentModule.pathwayId,
+      item.program.id === assessmentModule.programId,
     ) : undefined;
+    if (context && !await pathwayHasModule(context.pathway.id, assessmentModule.id)) {
+      res.status(403).json({ error: "Assessment module is not selected by the learner pathway" });
+      return;
+    }
     if (!assessmentModule || !context) {
       req.log.warn(
         { assessmentId: assessment.id, assessorId },
@@ -366,7 +372,7 @@ router.post(
           .from(learningActivitiesTable)
           .innerJoin(lessonsTable, eq(learningActivitiesTable.lessonId, lessonsTable.id))
           .innerJoin(courseModulesTable, eq(lessonsTable.courseModuleId, courseModulesTable.id))
-          .where(and(eq(courseModulesTable.moduleId, assessment.moduleId), eq(learningActivitiesTable.pathwayId, context.pathway.id)));
+          .where(eq(courseModulesTable.moduleId, assessment.moduleId));
         const activityIds = moduleActivities.map(activity => activity.id);
         const [latestTransition] = activityIds.length ? await tx.select().from(learningTransitionEventsTable)
           .where(and(eq(learningTransitionEventsTable.learnerId, context.learner.id), eq(learningTransitionEventsTable.pathwayId, context.pathway.id), inArray(learningTransitionEventsTable.activityId, activityIds)))

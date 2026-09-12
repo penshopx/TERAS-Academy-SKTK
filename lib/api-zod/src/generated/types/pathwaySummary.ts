@@ -5,6 +5,7 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { PathwayLearningContract } from './pathwayLearningContract';
 import type { PathwaySummaryPurpose } from './pathwaySummaryPurpose';
 import type { ReadinessGateSummary } from './readinessGateSummary';
 
@@ -15,6 +16,8 @@ export interface PathwaySummary {
   purpose: PathwaySummaryPurpose;
   outcome: string;
   moduleCount: number;
+  baselineModuleCount?: number;
   gateCount: number;
   gates: ReadinessGateSummary[];
+  contract?: PathwayLearningContract;
 }

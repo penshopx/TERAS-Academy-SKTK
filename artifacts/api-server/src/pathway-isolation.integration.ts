@@ -1,8 +1,11 @@
 import {
+  activityCompletionEventsTable,
   db,
   evidenceReviewsTable,
   evidenceTable,
+  learningActivitiesTable,
   learningTransitionEventsTable,
+  outcomeVerificationEventsTable,
   practiceAttemptsTable,
   practiceReviewsTable,
 } from "@workspace/db";
@@ -38,13 +41,33 @@ const post = <T>(path: string, body: unknown, expectedStatus = 200) =>
     expectedStatus,
   );
 
+const postAs = <T>(path: string, body: unknown, role: "learner" | "trainer" | "assessor", expectedStatus = 200) =>
+  request<T>(
+    path,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "x-pathway-isolation-role": role },
+    },
+    expectedStatus,
+  );
+
 type AssessmentDetail = {
   criteria: Array<{ id: string }>;
 };
 
 type Readiness = {
   pathway: { id: string };
-  gates: Array<{ code: string; status: string }>;
+  gates: Array<{
+    code: string;
+    status: string;
+    contracts?: Array<{
+      moduleId: string;
+      assessmentId: string;
+      evidenceRequirementId: string;
+      gateCode: string;
+    }>;
+  }>;
 };
 
 type Dashboard = {
@@ -55,6 +78,12 @@ type Dashboard = {
 type ReviewQueue = {
   recentActivity: Array<{ pathwayId: string }>;
 };
+type ProgramView = {
+  modules: Array<{ code: string }>;
+};
+type PracticeTaskList = Array<{ moduleId: string }>;
+type LearningPlan = Array<{ module: { code: string } }>;
+type Courses = Array<{ modules: Array<{ moduleCode: string }> }>;
 
 async function seedReadinessEvidence(moduleId: string) {
   const evidenceId = `pathway-isolation-evidence-${moduleId}`;
@@ -148,11 +177,12 @@ async function run() {
     learnerId: "learner-demo",
     // The learner identity is the default. Staff-only transitions use their
     // corresponding injected test actor, never an unauthenticated demo path.
-    role: req.path.includes("/assessor/")
-      ? "assessor"
-      : req.path.includes("/trainer/")
-        ? "trainer"
-        : "learner",
+    role: (req.get("x-pathway-isolation-role") as "learner" | "trainer" | "assessor" | undefined) ??
+      (req.path.includes("/assessor/")
+        ? "assessor"
+        : req.path.includes("/trainer/")
+          ? "trainer"
+          : "learner"),
   }));
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
     const listener = app.listen(0, () => resolve(listener));
@@ -186,9 +216,9 @@ async function run() {
   const readiness = await request<Readiness>("/readiness");
   if (
     readiness.pathway.id !== "path-b" ||
-    readiness.gates.find((gate) => gate.code === "B1")?.status !== "Passed"
+    readiness.gates.find((gate) => gate.code === "B1")?.status === "Passed"
   ) {
-    throw new Error("Path B assessment did not update the Path B readiness gate");
+    throw new Error("Retired Path B B01 assessment incorrectly satisfied the active B1 baseline gate");
   }
 
   const practice = { id: "pathway-isolation-practice-b01" };
@@ -254,44 +284,122 @@ async function run() {
     createdBy: "trainer-aria",
   });
 
+  // B01-B08 are retained as Path B compatibility records and still support
+  // historical assessment/practice/evidence references, but they must not
+  // drive the active Path B readiness projection.
   const b02Detail = await request<AssessmentDetail>("/assessments/assessment-b02");
   await post(
     "/assessor/assessments/assessment-b02/decision",
     {
       learnerId: "learner-demo",
       decision: "Competent",
-      observation: "Partial B2 verification",
+      observation: "Historical B2 compatibility verification",
       criteria: b02Detail.criteria.map((criterion) => ({
         criterionId: criterion.id,
         score: 3,
-        observation: "Meets the Path B standard",
+        observation: "Retained historical Path B record",
         evidenceId: null,
       })),
     },
     201,
   );
-  const partialB2 = await request<Readiness>("/readiness");
-  if (partialB2.gates.find((gate) => gate.code === "B2")?.status === "Passed") {
-    throw new Error("B2 passed after only one of its required assessments");
-  }
   await seedReadinessEvidence("b02");
   for (const moduleId of ["b03", "b05", "b06"]) {
     await completePathBModule(moduleId);
   }
   await completePathBModule("b04", false);
-  await completeB04WithCausalApiFlow();
-  const completeB2 = await request<Readiness>("/readiness");
-  if (
-    completeB2.gates.find((gate) => gate.code === "B2")?.status !== "Passed" ||
-    completeB2.gates.find((gate) => gate.code === "B4")?.status === "Passed"
-  ) {
-    throw new Error("B2 did not pass after all requirements, or B4 passed prematurely");
-  }
+  // B04 is retained only as a historical compatibility assessment. Active
+  // practice/evidence projections must not expose its retired record.
   await completePathBModule("b07");
   await completePathBModule("b08");
-  const completeB4 = await request<Readiness>("/readiness");
-  if (completeB4.gates.find((gate) => gate.code === "B4")?.status !== "Passed") {
-    throw new Error("B4 did not pass after all Path B assessments and evidence");
+
+  await postAs("/learning/transitions", {
+    currentState: "NOT_STARTED",
+    targetState: "IN_PROGRESS",
+    learnerId: "learner-demo",
+    pathwayId: "path-b",
+    programId: "solar-pv-tech",
+    activityId: "activity-m01",
+    entityReference: "pathway-isolation-m01-start",
+    reason: "Start shared M01 from Path B",
+    idempotencyKey: "pathway-isolation-m01-start",
+  }, "learner", 201);
+  await postAs("/learning/transitions", {
+    currentState: "IN_PROGRESS",
+    targetState: "LEARNING_COMPLETED",
+    learnerId: "learner-demo",
+    pathwayId: "path-b",
+    programId: "solar-pv-tech",
+    activityId: "activity-m01",
+    entityReference: "pathway-isolation-m01-complete",
+    reason: "Complete shared M01 from Path B",
+    idempotencyKey: "pathway-isolation-m01-complete",
+  }, "learner", 201);
+  await postAs("/learning/transitions", {
+    currentState: "LEARNING_COMPLETED",
+    targetState: "OUTCOME_VERIFIED",
+    learnerId: "learner-demo",
+    pathwayId: "path-b",
+    programId: "solar-pv-tech",
+    activityId: "activity-m01",
+    entityReference: "pathway-isolation-m01-verify",
+    reason: "Verify shared M01 from Path B",
+    idempotencyKey: "pathway-isolation-m01-verify",
+    references: { outcomeId: "outcome-m01" },
+  }, "trainer", 201);
+  const [sharedM01Activity] = await db.select().from(learningActivitiesTable)
+    .where(eq(learningActivitiesTable.id, "activity-m01"));
+  const m01Completions = await db.select().from(activityCompletionEventsTable)
+    .where(eq(activityCompletionEventsTable.activityId, "activity-m01"));
+  const m01Verifications = await db.select().from(outcomeVerificationEventsTable)
+    .where(eq(outcomeVerificationEventsTable.activityId, "activity-m01"));
+  if (
+    sharedM01Activity?.pathwayId !== "path-a" ||
+    !m01Completions.some((event) => event.pathwayId === "path-b" && event.status === "STARTED") ||
+    !m01Completions.some((event) => event.pathwayId === "path-b" && event.status === "COMPLETED") ||
+    !m01Verifications.some((event) => event.pathwayId === "path-b" && event.outcomeId === "outcome-m01")
+  ) {
+    throw new Error("Path B shared M01 transitions did not preserve Path-A ownership and Path-B event scope");
+  }
+  const activeProgram = await request<ProgramView>("/programs/solar-pv-tech");
+  const activeTasks = await request<PracticeTaskList>("/practice/tasks");
+  const activePlan = await request<LearningPlan>("/learner/learning-plan");
+  const activeCourses = await request<Courses>("/learning/courses");
+  const activeReadiness = await request<Readiness>("/readiness");
+  const activeCodes = new Set(["M01", "M02", "M03", "M04", "M05", "M06", "M07", "M08", "M09", "M10"]);
+  if (
+    activeProgram.modules.length !== 10 ||
+    activeProgram.modules.some((module) => !activeCodes.has(module.code)) ||
+    activeTasks.length !== 10 ||
+    activeTasks.some((task) => !task.moduleId.startsWith("m")) ||
+    activePlan.some((item) => !activeCodes.has(item.module.code)) ||
+    activeCourses.some((course) => course.modules.some((module) => !activeCodes.has(module.moduleCode))) ||
+    activeReadiness.gates.some((gate) => !gate.contracts?.length || gate.contracts.some((contract) =>
+      !activeCodes.has(`M${contract.moduleId.slice(1).padStart(2, "0")}`) ||
+      contract.assessmentId !== `assessment-${contract.moduleId}` ||
+      contract.evidenceRequirementId !== `req-${contract.moduleId}` ||
+      contract.gateCode !== gate.code
+    )) ||
+    activeReadiness.gates.some((gate) => gate.status === "Passed")
+  ) {
+    throw new Error("Path B active projections exposed retired B01-B08 or passed before canonical prerequisites");
+  }
+  for (const [gateCode, moduleIds] of [
+    ["B1", ["m01", "m02", "m03"]],
+    ["B2", ["m04", "m05", "m06", "m07"]],
+    ["B3", ["m08", "m09"]],
+    ["B4", ["m10"]],
+  ] as const) {
+    for (const moduleId of moduleIds) await completePathBModule(moduleId);
+    const gateProgress = await request<Readiness>("/readiness");
+    const gate = gateProgress.gates.find((item) => item.code === gateCode);
+    const gateIndex = gateProgress.gates.findIndex((item) => item.code === gateCode);
+    if (
+      gate?.status !== "Passed" ||
+      gateProgress.gates.slice(gateIndex + 1).some((item) => item.status === "Passed")
+    ) {
+      throw new Error(`Path B ${gateCode} did not pass only after its mapped canonical prerequisites`);
+    }
   }
 
   await post("/learner/pathway", { pathwayId: "path-a" }, 201);

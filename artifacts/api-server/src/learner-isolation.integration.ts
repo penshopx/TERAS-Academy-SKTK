@@ -7,11 +7,14 @@ import {
   enrollmentsTable,
   evidenceReviewsTable,
   evidenceTable,
+  enrollmentPathwayEventsTable,
   gapEventsTable,
   gapsTable,
   learningTransitionEventsTable,
   learningResourceProgressTable,
+  outcomeVerificationEventsTable,
   peopleTable,
+  readinessEventsTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { createIntegrationTestApp } from "./integration-test-app";
@@ -47,6 +50,12 @@ async function cleanup() {
   await db.delete(gapsTable).where(eq(gapsTable.id, gapB));
   await db.delete(evidenceReviewsTable).where(eq(evidenceReviewsTable.id, reviewB));
   await db.delete(evidenceTable).where(eq(evidenceTable.id, evidenceB));
+  await db.delete(readinessEventsTable).where(eq(readinessEventsTable.enrollmentId, enrollmentB));
+  await db.delete(enrollmentPathwayEventsTable).where(eq(enrollmentPathwayEventsTable.enrollmentId, enrollmentB));
+  await db.delete(learningResourceProgressTable).where(eq(learningResourceProgressTable.enrollmentId, enrollmentB));
+  await db.delete(activityCompletionEventsTable).where(eq(activityCompletionEventsTable.enrollmentId, enrollmentB));
+  await db.delete(outcomeVerificationEventsTable).where(eq(outcomeVerificationEventsTable.enrollmentId, enrollmentB));
+  await db.delete(learningTransitionEventsTable).where(eq(learningTransitionEventsTable.enrollmentId, enrollmentB));
   await db.delete(enrollmentsTable).where(eq(enrollmentsTable.id, enrollmentB));
   await db.delete(peopleTable).where(eq(peopleTable.id, learnerB));
 }
@@ -169,11 +178,10 @@ async function run() {
       request<any>("/passport", "learner-b"),
     ]);
     assert(dashboardA.learner.id === "learner-demo" && dashboardB.learner.id === learnerB, "Dashboards did not resolve the authenticated learner");
-    assert(evidenceA.every((item) => item.id !== evidenceB) && evidenceForB.length === 1 && evidenceForB[0].id === evidenceB, "Evidence leaked across learners");
+    assert(evidenceA.every((item) => item.id !== evidenceB) && evidenceForB.every((item) => item.id !== evidenceB), "Retired evidence leaked into an active learner projection");
     assert(gapsA.every((item) => item.id !== gapB) && gapsForB.length === 1 && gapsForB[0].id === gapB, "Gaps leaked across learners");
     assert(coursesA.every((course) => course.pathwayId === "path-a") && coursesB.every((course) => course.pathwayId === "path-b"), "Learning hierarchy leaked across pathways");
-    assert(assessmentsA.every((assessment) => assessment.id.startsWith("assessment-m")) && assessmentsB.every((assessment) => assessment.id.startsWith("assessment-b")), "Assessment summaries leaked across pathways");
-    assert(assessmentsB.find((assessment) => assessment.id === "assessment-b04")?.attemptCount === 1, "Learner B assessment history was not resolved from its own account");
+    assert(assessmentsA.every((assessment) => assessment.id.startsWith("assessment-m")) && assessmentsB.every((assessment) => assessment.id.startsWith("assessment-m")), "Active assessment summaries exposed retired B01-B08 records");
     assert(passportA.learner.id === "learner-demo" && passportB.learner.id === learnerB, "Passport used another learner context");
     assert(passportB.achievements.every((item: any) => item.capability !== "Electrical safety"), "Learner A achievement leaked into learner B Passport");
 
@@ -183,8 +191,8 @@ async function run() {
       learnerId: learnerB,
       pathwayId: "path-b",
       programId: "solar-pv-tech",
-      activityId: "activity-b04-protection",
-      entityReference: `${learnerB}:activity-b04-protection`,
+      activityId: "activity-m02",
+      entityReference: `${learnerB}:activity-m02`,
       reason: "Isolation verification",
       idempotencyKey: transitionKey,
     };
@@ -201,22 +209,25 @@ async function run() {
       request<any[]>("/learning/courses", "learner-b"),
     ]);
     assert(
-      coursesAfterB.some(course => course.resumeAction?.activityId === "activity-b04-protection"),
+      coursesAfterB.some(course => course.resumeAction?.activityId === "activity-m02"),
       "Learner B did not resume the activity they most recently started",
     );
     assert(
-      coursesAfterA.every(course => course.resumeAction?.activityId !== "activity-b04-protection"),
+      coursesAfterA.every(course => course.resumeAction?.activityId !== "activity-m02"),
       "Learner B resume state leaked into learner A courses",
     );
-    await request(`/learning/resources/${resourceB}/progress`, "learner-a", undefined, 404);
-    const savedPosition = await request<any>(`/learning/resources/${resourceB}/progress`, "learner-b", {
+    const learnerAInitialPosition = await request<any>("/learning/resources/resource-m02/progress", "learner-a");
+    assert(learnerAInitialPosition.position === 0, "Shared resource progress was not initially scoped to learner A");
+    const savedPosition = await request<any>("/learning/resources/resource-m02/progress", "learner-b", {
       method: "PUT",
       body: JSON.stringify({ position: 184 }),
     });
-    assert(savedPosition.position === 184 && savedPosition.activityId === "activity-b04-protection", "Resource position was not saved in learner B scope");
+    assert(savedPosition.position === 184 && savedPosition.activityId === "activity-m02", "Shared resource position was not saved in learner B scope");
     // A fresh read models reloading the lesson in another browser session.
-    const restoredPosition = await request<any>(`/learning/resources/${resourceB}/progress`, "learner-b");
+    const restoredPosition = await request<any>("/learning/resources/resource-m02/progress", "learner-b");
     assert(restoredPosition.position === 184, "Resource position was not restored after reload");
+    const learnerARestoredPosition = await request<any>("/learning/resources/resource-m02/progress", "learner-a");
+    assert(learnerARestoredPosition.position === 0, "Learner B shared resource progress leaked into learner A");
 
     for (const path of ["/learner/dashboard", "/evidence", "/gaps", "/readiness", "/passport", "/learning/courses", "/assessments"]) {
       await request(path, "anonymous", undefined, 401);

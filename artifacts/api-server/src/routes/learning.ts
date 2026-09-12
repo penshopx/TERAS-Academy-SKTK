@@ -6,6 +6,8 @@ import {
   courseVersionsTable,
   coursesTable,
   db,
+  baselineModulesTable,
+  pathwayBaselineModulesTable,
   learningActivitiesTable,
   learningResourceProgressTable,
   learningRecordLinksTable,
@@ -34,7 +36,7 @@ import {
   type LearningState,
   type LearningTransitionCommand,
 } from "../lib/learning-transition";
-import { activeLearnerPathwayContext, learnerContext } from "../lib/teras";
+import { learnerContext, pathwayHasActivity } from "../lib/teras";
 import { RESOURCE_URI_ERROR, validateResourceUri } from "../lib/resource-uri";
 import { applyCourseAuthoring, trainerHasAssignment } from "../lib/course-authoring";
 import { resolveLearningResumeAction } from "../lib/learning-resume";
@@ -48,12 +50,12 @@ router.get("/learning/courses", async (req, res): Promise<void> => {
   if (!learnerId) return;
   const context = await learnerContext(learnerId);
 
-  const [courses, courseModules, modules, lessons, activities, resources, outcomes, transitions, practiceTasks, recordLinks, versions] = await Promise.all([
-    db.select().from(coursesTable).where(and(eq(coursesTable.pathwayId, context.pathway.id), ne(coursesTable.status, "ARCHIVED"))),
-    db.select().from(courseModulesTable).where(eq(courseModulesTable.pathwayId, context.pathway.id)),
-    db.select().from(modulesTable).where(eq(modulesTable.pathwayId, context.pathway.id)),
-    db.select().from(lessonsTable).where(eq(lessonsTable.pathwayId, context.pathway.id)),
-    db.select().from(learningActivitiesTable).where(eq(learningActivitiesTable.pathwayId, context.pathway.id)),
+  const [courses, courseModules, modules, lessons, activities, resources, outcomes, transitions, practiceTasks, recordLinks, versions, pathwayBaselineModules, baselineModules] = await Promise.all([
+    db.select().from(coursesTable).where(ne(coursesTable.status, "ARCHIVED")),
+    db.select().from(courseModulesTable),
+    db.select().from(modulesTable),
+    db.select().from(lessonsTable),
+    db.select().from(learningActivitiesTable),
     db.select().from(contentResourcesTable),
     db.select().from(learningOutcomesTable),
     db.select().from(learningTransitionEventsTable).where(and(
@@ -66,8 +68,26 @@ router.get("/learning/courses", async (req, res): Promise<void> => {
       eq(learningRecordLinksTable.pathwayId, context.pathway.id),
     )),
     db.select().from(courseVersionsTable),
+    db.select().from(pathwayBaselineModulesTable).where(eq(pathwayBaselineModulesTable.pathwayId, context.pathway.id)),
+    db.select().from(baselineModulesTable),
   ]);
 
+  const selectedBaselineIds = new Set(pathwayBaselineModules.map(selection => selection.baselineModuleId));
+  const sharedModuleIds = new Set(baselineModules.filter(module => selectedBaselineIds.has(module.id)).map(module => module.moduleId));
+  const activeCourseModules = courseModules.filter(link =>
+    link.status !== "ARCHIVED" && sharedModuleIds.has(link.moduleId),
+  );
+  const sharedCourseIds = new Set(courseModules
+    .filter(link =>
+      link.status !== "ARCHIVED" &&
+      sharedModuleIds.has(link.moduleId) &&
+      link.pathwayId !== context.pathway.id,
+    )
+    .map(link => link.courseId));
+  const availableCourseIds = new Set(courses
+    .filter(course => (context.pathway.id === "path-a" && course.pathwayId === context.pathway.id) || sharedCourseIds.has(course.id))
+    .map(course => course.id));
+  const availableCourseModules = activeCourseModules.filter(link => availableCourseIds.has(link.courseId));
   const moduleById = new Map(modules.map(module => [module.id, module]));
   const latestState = new Map<string, { state: LearningState; createdAt: Date; eventId: string }>();
   for (const event of transitions) {
@@ -85,17 +105,17 @@ router.get("/learning/courses", async (req, res): Promise<void> => {
     }
   }
 
-  const response = courses.filter(learnerCourseAvailable)
+  const response = courses.filter(course => availableCourseIds.has(course.id) && learnerCourseAvailable(course))
     .sort((a, b) => a.sequence - b.sequence)
     .map(course => ({
       id: course.id,
       programId: course.programId,
-      pathwayId: course.pathwayId,
+      pathwayId: context.pathway.id,
       title: course.title,
       description: course.description,
       status: course.status,
       sequence: course.sequence,
-      modules: courseModules
+      modules: availableCourseModules
         .filter(link => link.courseId === course.id)
         .sort((a, b) => a.sequence - b.sequence)
         .map(link => {
@@ -130,7 +150,7 @@ router.get("/learning/courses", async (req, res): Promise<void> => {
                     return ({
                     id: activity.id,
                     lessonId: activity.lessonId,
-                    pathwayId: activity.pathwayId,
+                    pathwayId: context.pathway.id,
                     type: activity.type,
                     title: activity.title,
                     description: activity.description,
@@ -181,7 +201,13 @@ router.get("/learning/courses", async (req, res): Promise<void> => {
       : undefined;
     if (!snapshot || typeof snapshot !== "object") return mutableCourse;
     const course = structuredClone(snapshot) as typeof mutableCourse;
+    course.pathwayId = context.pathway.id;
+    // Published snapshots are immutable history, but they must never widen the
+    // learner's active pathway selection. Legacy snapshots can contain retired
+    // B modules or archived duplicate M links from before the shared baseline.
+    course.modules = course.modules.filter(module => sharedModuleIds.has(module.moduleId));
     for (const module of course.modules) for (const lesson of module.lessons) for (const activity of lesson.activities) {
+      activity.pathwayId = context.pathway.id;
       const currentState = latestState.get(activity.id)?.state ?? "NOT_STARTED";
       activity.currentState = currentState;
       const task = practiceTasks.find(item => item.moduleId === module.moduleId);
@@ -289,9 +315,9 @@ async function authorizedResourceProgressScope(learnerId: string, resourceId: st
     .where(eq(contentResourcesTable.id, resourceId))
     .limit(1);
   if (!resource || resource.resourceStatus === "ARCHIVED" || resource.activityStatus === "ARCHIVED") return null;
-  const context = await activeLearnerPathwayContext(learnerId, resource.pathwayId);
-  if (!context || context.program.id !== resource.programId) return null;
-  return { resource, context };
+  const context = await learnerContext(learnerId);
+  if (context.program.id !== resource.programId || !await pathwayHasActivity(context.pathway.id, resource.activityId)) return null;
+  return { resource: { ...resource, pathwayId: context.pathway.id }, context };
 }
 
 router.get("/learning/resources/:resourceId/progress", async (req, res): Promise<void> => {

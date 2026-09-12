@@ -226,11 +226,6 @@ export const activityCompletionEventsTable = pgTable("teras_activity_completion_
     foreignColumns: [enrollmentsTable.id, enrollmentsTable.learnerId],
     name: "teras_activity_completion_enrollment_learner_fk",
   }),
-  foreignKey({
-    columns: [table.activityId, table.pathwayId],
-    foreignColumns: [learningActivitiesTable.id, learningActivitiesTable.pathwayId],
-    name: "teras_activity_completion_activity_pathway_fk",
-  }),
   index("teras_activity_completion_lookup_idx").on(table.activityId, table.learnerId, table.pathwayId, table.createdAt),
 ]);
 
@@ -251,11 +246,6 @@ export const outcomeVerificationEventsTable = pgTable("teras_outcome_verificatio
     columns: [table.enrollmentId, table.learnerId],
     foreignColumns: [enrollmentsTable.id, enrollmentsTable.learnerId],
     name: "teras_outcome_verification_enrollment_learner_fk",
-  }),
-  foreignKey({
-    columns: [table.activityId, table.pathwayId],
-    foreignColumns: [learningActivitiesTable.id, learningActivitiesTable.pathwayId],
-    name: "teras_outcome_verification_activity_pathway_fk",
   }),
   foreignKey({
     columns: [table.outcomeId, table.activityId],
@@ -355,11 +345,6 @@ export const learningTransitionEventsTable = pgTable("teras_learning_transition_
     columns: [table.enrollmentId, table.programId],
     foreignColumns: [enrollmentsTable.id, enrollmentsTable.programId],
     name: "teras_learning_transition_enrollment_program_fk",
-  }),
-  foreignKey({
-    columns: [table.activityId, table.programId, table.pathwayId],
-    foreignColumns: [learningActivitiesTable.id, learningActivitiesTable.programId, learningActivitiesTable.pathwayId],
-    name: "teras_learning_transition_activity_context_fk",
   }),
   uniqueIndex("teras_learning_transition_idempotency_unique").on(table.idempotencyKey),
   index("teras_learning_transition_state_lookup_idx").on(table.activityId, table.learnerId, table.pathwayId, table.createdAt),

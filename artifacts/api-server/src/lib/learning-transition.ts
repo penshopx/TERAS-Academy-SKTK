@@ -4,6 +4,7 @@ import {
   activityCompletionEventsTable,
   assessmentAttemptsTable,
   assessmentsTable,
+  baselineModulesTable,
   courseModulesTable,
   db,
   evidenceReviewsTable,
@@ -17,6 +18,7 @@ import {
   outcomeVerificationEventsTable,
   practiceAttemptsTable,
   practiceTasksTable,
+  pathwayBaselineModulesTable,
   readinessTransferEventsTable,
   reassessmentLinksTable,
   remediationPlansTable,
@@ -270,9 +272,6 @@ export async function transitionLearningState(
       .where(eq(learningActivitiesTable.id, command.activityId))
       .limit(1);
     if (!activity) return reject("CAUSAL_REFERENCE_INVALID", "Learning activity was not found.", command.currentState, 404);
-    if (activity.pathwayId !== command.pathwayId) {
-      return reject("PATHWAY_MISMATCH", "Learning activity belongs to another pathway.", command.currentState, 403);
-    }
     if (activity.programId !== command.programId) {
       return reject("PROGRAM_MISMATCH", "Learning activity belongs to another program.", command.currentState, 403);
     }
@@ -296,7 +295,19 @@ export async function transitionLearningState(
     const [courseModule] = lesson
       ? await tx.select().from(courseModulesTable).where(eq(courseModulesTable.id, lesson.courseModuleId)).limit(1)
       : [];
-    if (!lesson || !courseModule || lesson.pathwayId !== command.pathwayId || courseModule.pathwayId !== command.pathwayId) {
+    const [sharedSelection] = courseModule && courseModule.pathwayId !== command.pathwayId
+      ? await tx.select({ id: pathwayBaselineModulesTable.id })
+        .from(pathwayBaselineModulesTable)
+        .innerJoin(baselineModulesTable, eq(pathwayBaselineModulesTable.baselineModuleId, baselineModulesTable.id))
+        .where(and(
+          eq(pathwayBaselineModulesTable.pathwayId, command.pathwayId),
+          eq(baselineModulesTable.moduleId, courseModule.moduleId),
+        ))
+        .limit(1)
+      : [];
+    const hierarchyAccessible = Boolean(lesson && courseModule &&
+      (courseModule.pathwayId === command.pathwayId || sharedSelection));
+    if (!hierarchyAccessible) {
       return reject("PATHWAY_MISMATCH", "The learning hierarchy is not valid for this pathway.", storedState, 403);
     }
 

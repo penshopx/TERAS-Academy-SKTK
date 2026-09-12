@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { GetTrainerDashboardResponse, GetTrainerReminderPreferencesResponse, GetTrainerReviewQueueResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse, UpdateTrainerReminderPreferencesBody, UpdateTrainerReminderPreferencesResponse } from "@workspace/api-zod";
 import { db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, trainerReminderPreferencesTable } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
-import { evidenceRecords, gapRecords, remediationRecords, workspaceAssignmentContexts } from "../lib/teras";
+import { evidenceRecords, gapRecords, pathwayHasModule, remediationRecords, selectedBaselineModuleIds, workspaceAssignmentContexts } from "../lib/teras";
 import { authorizeWorkspaceRole } from "../lib/authorization";
 import { learningNextAction } from "../lib/learning-transition";
 import { trainerBottlenecks } from "../lib/trainer-bottlenecks";
@@ -61,7 +61,8 @@ async function queue(trainerId: string) {
   const latestReviews = new Map<string, typeof reviews[number]>();
   for (const review of reviews) if (!latestReviews.has(review.attemptId) || latestReviews.get(review.attemptId)!.createdAt < review.createdAt) latestReviews.set(review.attemptId, review);
   const items = await Promise.all(contexts.map(async (context) => {
-    const pathwayModules = modules.filter((module) => module.pathwayId === context.pathway.id && module.programId === context.program.id);
+    const selected = await selectedBaselineModuleIds(context.pathway.id);
+    const pathwayModules = modules.filter((module) => (module.pathwayId === context.pathway.id || selected.has(module.id)) && module.programId === context.program.id);
     const moduleIds = new Set(pathwayModules.map((module) => module.id));
     const evidence = await evidenceRecords(context.learner.id, context.pathway.id);
     return [
@@ -290,7 +291,7 @@ router.post("/trainer/practice/:attemptId/review", async (req, res): Promise<voi
   const contexts = await workspaceAssignmentContexts(reviewerId, "trainer");
   const context = contexts.find((item) => item.learner.id === attempt.learnerId && item.pathway.id === attempt.pathwayId);
   const [module] = task ? await db.select().from(modulesTable).where(eq(modulesTable.id, task.moduleId)) : [];
-  if (!context || !task || !module || module.pathwayId !== context.pathway.id || module.programId !== context.program.id) { res.status(403).json({ error: "Practice attempt is outside your assigned active pathway" }); return; }
+  if (!context || !task || !module || !await pathwayHasModule(context.pathway.id, module.id) || module.programId !== context.program.id) { res.status(403).json({ error: "Practice attempt is outside your assigned active pathway" }); return; }
   const fingerprint = reviewFingerprint({ status: body.data.status, feedback: body.data.feedback });
   const review = await db.transaction(async (tx) => {
     const [inserted] = await tx.insert(practiceReviewsTable).values({

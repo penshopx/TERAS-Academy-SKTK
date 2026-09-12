@@ -1,16 +1,16 @@
-import { db, programsTable, pathwaysTable, modulesTable, practiceTasksTable, evidenceRequirementsTable, assessmentsTable, assessmentCriteriaTable, enrollmentsTable, evidenceTable, evidenceReviewsTable, assessmentAttemptsTable, criterionObservationsTable, gapsTable, gapEventsTable, remediationPlansTable, remediationActivitiesTable, remediationEventsTable, readinessGatesTable, readinessEventsTable, coursesTable, courseModulesTable, lessonsTable, learningActivitiesTable, contentResourcesTable, learningOutcomesTable, competencyFrameworksTable, competencyUnitsTable, pathwayCompetencyUnitsTable, competencyUnitOutcomesTable, competencyUnitPracticeTasksTable, competencyUnitEvidenceRequirementsTable, competencyUnitSimulationsTable, competencyUnitSafetyRulesTable, diagnosticTemplatesTable, diagnosticQuestionsTable, diagnosticOptionsTable } from "@workspace/db";
+import { db, programsTable, pathwaysTable, modulesTable, practiceTasksTable, evidenceRequirementsTable, assessmentsTable, assessmentCriteriaTable, enrollmentsTable, evidenceTable, evidenceReviewsTable, assessmentAttemptsTable, criterionObservationsTable, gapsTable, gapEventsTable, remediationPlansTable, remediationActivitiesTable, remediationEventsTable, readinessGatesTable, readinessEventsTable, coursesTable, courseVersionsTable, courseModulesTable, lessonsTable, learningActivitiesTable, contentResourcesTable, learningOutcomesTable, competencyFrameworksTable, competencyUnitsTable, pathwayCompetencyUnitsTable, competencyUnitOutcomesTable, competencyUnitPracticeTasksTable, competencyUnitEvidenceRequirementsTable, competencyUnitSimulationsTable, competencyUnitSafetyRulesTable, diagnosticTemplatesTable, diagnosticQuestionsTable, diagnosticOptionsTable, learningBaselinesTable, baselineModulesTable, pathwayBaselineModulesTable, pathwayModuleContractsTable, legacyModuleMappingsTable } from "@workspace/db";
 import { seedManagedPeople } from "@workspace/db/admin-membership";
 import { allowsDemoFixtures } from "@workspace/db/demo-access";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 const now = new Date("2025-02-14T10:00:00.000Z");
 const includeDemoFixtures = process.argv.includes("--demo");
 const modules = [
-  ["m01","path-a","M01","PV foundations","System fundamentals"], ["m02","path-a","M02","Site assessment","Survey and shading"],
-  ["m03","path-a","M03","Electrical safety","Safe isolation and verification"], ["m04","path-a","M04","Array design","PV array configuration"],
-  ["m05","path-a","M05","Mounting systems","Mechanical installation"], ["m06","path-a","M06","DC installation","Cabling and protection"],
-  ["m07","path-a","M07","Inverter commissioning","Commissioning and test"], ["m08","path-a","M08","Monitoring","Performance monitoring"],
-  ["m09","path-a","M09","Fault finding","Diagnosis and rectification"], ["m10","path-a","M10","Handover","Customer handover"],
+  ["m01","path-a","M01","Fundamentals","PV principles and terminology"], ["m02","path-a","M02","Measurement & Interpretation","Measurement and data interpretation"],
+  ["m03","path-a","M03","Safety & Work Practice","Safe PV work practice"], ["m04","path-a","M04","System Architecture","PV system architecture"],
+  ["m05","path-a","M05","Drawing & Work Preparation","Drawing and work preparation"], ["m06","path-a","M06","Mechanical Installation","PV mechanical installation"],
+  ["m07","path-a","M07","Electrical Installation","PV electrical installation"], ["m08","path-a","M08","System Configuration & Integration","PV system configuration and integration"],
+  ["m09","path-a","M09","Testing & Commissioning","PV testing and commissioning"], ["m10","path-a","M10","O&M & Basic Troubleshooting","PV O&M and basic troubleshooting"],
 ];
 
 const pathBModules = [
@@ -23,6 +23,23 @@ const pathBModules = [
   ["b07","path-b","B07","Design assurance","Review risks, standards, and design decisions"],
   ["b08","path-b","B08","Design pack","Produce a traceable client-ready design pack"],
 ];
+const baselineOutcomes = [
+  "Explain PV principles, terminology, and system purpose.",
+  "Measure and interpret site and system data to identify relevant PV conditions.",
+  "Apply safe work practices, isolation, and risk controls for PV work.",
+  "Describe PV system architecture and explain component interfaces.",
+  "Produce accurate drawings and work preparation records for PV installation.",
+  "Install and secure PV mechanical components in accordance with drawings and manufacturer requirements.",
+  "Install PV electrical components, cabling, protection, and terminations safely.",
+  "Configure and integrate inverter, monitoring, and system controls.",
+  "Test, commission, and document PV system performance and safety.",
+  "Perform routine O&M and basic troubleshooting using safe diagnostic steps.",
+];
+const baselineEvidence = baselineOutcomes.map((_, index) => `E${String(index + 1).padStart(2, "0")}`);
+const contractGate = (pathwayId: string, index: number) => pathwayId === "path-a"
+  ? index < 3 ? "G1" : index < 7 ? "G2" : "G3"
+  : index < 3 ? "B1" : index < 7 ? "B2" : index < 9 ? "B3" : "B4";
+const baselineOnly = process.argv.includes("--baseline-only");
 async function seed(): Promise<void> {
   if (includeDemoFixtures && !allowsDemoFixtures()) {
     throw new Error("Refusing to seed TERAS demo learner fixtures outside an explicitly enabled safe demo environment");
@@ -34,8 +51,51 @@ async function seed(): Promise<void> {
       { id:"assessor-sam", name:"Sam Assessor", initials:"SA", role:"Assessor", organization:"TERAS Academy" },
     ]);
   }
+  if (baselineOnly) {
+    await db.transaction(async tx => {
+      const upsert = async (table: any, values: any[]) => {
+        for (const value of values) {
+          const { id, ...updates } = value;
+          await tx.insert(table).values(value).onConflictDoUpdate({ target: table.id, set: updates });
+        }
+      };
+      await tx.insert(programsTable).values({ id: "solar-pv-tech", domain: "Solar PV", track: "Solar PV Installation", name: "Solar PV Installation", description: "Solar PV", status: "Active" }).onConflictDoNothing();
+      await tx.insert(pathwaysTable).values([
+        { id: "path-a", programId: "solar-pv-tech", name: "Path A", type: "Capability", purpose: "capability-development", outcome: "Capability" },
+        { id: "path-b", programId: "solar-pv-tech", name: "Path B", type: "Pre-Certification", purpose: "pre-certification", outcome: "Readiness" },
+      ]).onConflictDoNothing();
+      await upsert(modulesTable, [...modules, ...pathBModules].map(([id, pathwayId, code, name, capability], index) => ({
+        id, programId: "solar-pv-tech", pathwayId, sequence: index + 1, code, name, capability,
+        evidence: "E00", learningOutcomes: ["Seeded module"], theory: ["Seeded module"],
+      })));
+      await upsert(learningBaselinesTable, [{ id: "baseline-solar-pv-v1", code: "SOLAR-PV-BASELINE", name: "Solar PV Learning Baseline", description: "Shared M01-M10 Solar PV learning baseline.", version: "1.0", status: "active" }]);
+      await upsert(baselineModulesTable, modules.map(([moduleId, , code, name], index) => ({
+        id: `baseline-module-${moduleId}`, baselineId: "baseline-solar-pv-v1", moduleId, sequence: index + 1,
+        code, name, learningOutcome: baselineOutcomes[index], evidenceId: baselineEvidence[index], status: "active",
+      })));
+      await upsert(pathwayBaselineModulesTable, ["path-a", "path-b"].flatMap(pathwayId => modules.map(([moduleId, , code], index) => ({
+        id: `pathway-${pathwayId}-baseline-${code}`, pathwayId, baselineModuleId: `baseline-module-${moduleId}`, sequence: index + 1, required: true, status: "active",
+      }))));
+      await upsert(pathwayModuleContractsTable, ["path-a", "path-b"].flatMap(pathwayId => modules.map(([moduleId, , code], index) => ({
+        id: `contract-${pathwayId}-${code}`, pathwayId, moduleId, assessmentId: `assessment-${moduleId}`, evidenceRequirementId: `req-${moduleId}`, gateCode: contractGate(pathwayId, index), assessment: pathwayId === "path-a" ? "Observed capability assessment" : "Pre-certification readiness assessment",
+        evidence: `${baselineEvidence[index]} — baseline evidence requirement`, output: pathwayId === "path-a" ? "Capability Portfolio entry" : "Certification Readiness Portfolio entry",
+        kpi: pathwayId === "path-a" ? "capability achievement" : "readiness", portfolio: pathwayId === "path-a" ? "Capability Portfolio" : "Certification Readiness Portfolio",
+      }))));
+      await upsert(legacyModuleMappingsTable, Object.entries({ b01: "m05", b02: "m02", b03: "m04", b04: "m07", b05: "m06", b06: "m08", b07: "m09", b08: "m10" }).map(([legacyModuleId, moduleId]) => ({
+        id: `legacy-map-${legacyModuleId}`, legacyModuleId, baselineModuleId: `baseline-module-${moduleId}`, pathwayId: "path-b", status: "retired",
+        note: "Legacy Path B catalogue record retained for historical learner references.",
+      })));
+    });
+    return;
+  }
   await db.transaction(async tx => {
   const insert = async (table: any, values: any[]) => tx.insert(table).values(values).onConflictDoNothing();
+  const upsert = async (table: any, values: any[]) => {
+    for (const value of values) {
+      const { id, ...updates } = value;
+      await tx.insert(table).values(value).onConflictDoUpdate({ target: table.id, set: { ...updates, ...(table.updatedAt ? { updatedAt: now } : {}) } });
+    }
+  };
   await insert(programsTable, [{ id:"solar-pv-tech", domain:"Solar PV", track:"Solar PV Installation", name:"Solar PV Installation", description:"Capability development and pre-certification preparation for safe Solar PV installation.", status:"Active" }]);
   await insert(pathwaysTable, [
     {id:"path-a",programId:"solar-pv-tech",name:"Path A — Capability Development",type:"Capability",purpose:"capability-development",outcome:"Capability Achievement supported by a traceable Capability Portfolio"},
@@ -44,7 +104,42 @@ async function seed(): Promise<void> {
   await tx.update(programsTable).set({domain:"Solar PV",track:"Solar PV Installation",name:"Solar PV Installation",description:"Capability development and pre-certification preparation for safe Solar PV installation."}).where(eq(programsTable.id,"solar-pv-tech"));
   await tx.update(pathwaysTable).set({name:"Path A — Capability Development",type:"Capability",purpose:"capability-development",outcome:"Capability Achievement supported by a traceable Capability Portfolio"}).where(eq(pathwaysTable.id,"path-a"));
   await tx.update(pathwaysTable).set({name:"Path B — Pre-Certification",type:"Pre-Certification",purpose:"pre-certification",outcome:"Certification Readiness supported by a traceable Readiness Portfolio"}).where(eq(pathwaysTable.id,"path-b"));
-  await insert(modulesTable, [...modules, ...pathBModules].map(([id, pathwayId, code, name, capability], i) => ({id, programId:"solar-pv-tech", pathwayId, sequence:i < modules.length ? i+1 : i - modules.length + 1, code, name, capability, evidence:`${code} practical evidence`, learningOutcomes:[`Apply ${name.toLowerCase()} procedures`], theory:[`${name} guide`]})));
+  await upsert(modulesTable, [...modules, ...pathBModules].map(([id, pathwayId, code, name, capability], i) => {
+    const baselineIndex = modules.findIndex((module) => module[0] === id);
+    return {
+      id, programId:"solar-pv-tech", pathwayId, sequence:i < modules.length ? i+1 : i - modules.length + 1, code, name, capability,
+      evidence: baselineIndex >= 0 ? baselineEvidence[baselineIndex] : `${code} practical evidence`,
+      learningOutcomes: baselineIndex >= 0 ? [baselineOutcomes[baselineIndex]] : [`Apply ${name.toLowerCase()} procedures`],
+      theory:[`${name} guide`],
+    };
+  }));
+  await upsert(learningBaselinesTable, [{
+    id:"baseline-solar-pv-v1", code:"SOLAR-PV-BASELINE", name:"Solar PV Learning Baseline",
+    description:"Shared M01-M10 Solar PV learning baseline used by Path A and Path B.", version:"1.0", status:"active",
+  }]);
+  await upsert(baselineModulesTable, modules.map(([moduleId], index) => ({
+    id:`baseline-module-${moduleId}`, baselineId:"baseline-solar-pv-v1", moduleId, sequence:index + 1,
+    code:`M${String(index + 1).padStart(2, "0")}`, name:modules[index][3], learningOutcome:baselineOutcomes[index],
+    evidenceId:baselineEvidence[index], status:"active",
+  })));
+  await upsert(pathwayBaselineModulesTable, ["path-a", "path-b"].flatMap((pathwayId) => modules.map(([moduleId], index) => ({
+    id:`pathway-${pathwayId}-baseline-M${String(index + 1).padStart(2, "0")}`, pathwayId,
+    baselineModuleId:`baseline-module-${moduleId}`, sequence:index + 1, required:true, status:"active",
+  }))));
+  await upsert(pathwayModuleContractsTable, ["path-a", "path-b"].flatMap((pathwayId) => modules.map(([moduleId], index) => ({
+    id:`contract-${pathwayId}-M${String(index + 1).padStart(2, "0")}`, pathwayId, moduleId,
+    assessmentId:`assessment-${moduleId}`, evidenceRequirementId:`req-${moduleId}`, gateCode:contractGate(pathwayId, index),
+    assessment:pathwayId === "path-a" ? "Observed capability assessment" : "Pre-certification readiness assessment",
+    evidence:`${baselineEvidence[index]} — baseline evidence requirement`,
+    output:pathwayId === "path-a" ? "Capability Portfolio entry" : "Certification Readiness Portfolio entry",
+    kpi:pathwayId === "path-a" ? "capability achievement" : "readiness",
+    portfolio:pathwayId === "path-a" ? "Capability Portfolio" : "Certification Readiness Portfolio",
+  }))));
+  const legacyMappings: Record<string, string> = { b01:"m05", b02:"m02", b03:"m04", b04:"m07", b05:"m06", b06:"m08", b07:"m09", b08:"m10" };
+  await upsert(legacyModuleMappingsTable, Object.entries(legacyMappings).map(([legacyModuleId, moduleId]) => ({
+    id:`legacy-map-${legacyModuleId}`, legacyModuleId, baselineModuleId:`baseline-module-${moduleId}`,
+    pathwayId:"path-b", status:"retired", note:"Legacy Path B catalogue record retained for historical learner references.",
+  })));
   await insert(coursesTable, [
     {id:"course-solar-installation",programId:"solar-pv-tech",pathwayId:"path-a",code:"SPV-INSTALL",title:"Solar PV Installation Learning Core",description:"Learning preparation linked to the existing installation capability pathway.",status:"PUBLISHED",sequence:1},
     {id:"course-solar-design",programId:"solar-pv-tech",pathwayId:"path-b",code:"SPV-DESIGN",title:"Solar PV Design Learning Core",description:"Learning preparation linked to the existing design capability pathway.",status:"PUBLISHED",sequence:1},
@@ -73,10 +168,113 @@ async function seed(): Promise<void> {
     {id:"outcome-b04-protection",activityId:"activity-b04-protection",capabilityModuleId:"b04",description:"Explain and justify protection selection.",verificationMethod:"TRAINER_REVIEW",required:true},
     {id:"outcome-m07-commissioning",activityId:"activity-m07-commissioning",capabilityModuleId:"m07",description:"Apply the inverter commissioning sequence and record test results.",verificationMethod:"TRAINER_REVIEW",required:true},
   ]);
+  // Every shared M01-M10 baseline record is represented in the complete LMS
+  // course -> module -> lesson -> activity -> outcome hierarchy for both
+  // pathways. Existing M03/M07 IDs are deliberately retained.
+  await upsert(courseModulesTable, [
+    {id:"course-module-m03",courseId:"course-solar-installation",moduleId:"m03",programId:"solar-pv-tech",pathwayId:"path-a",sequence:3,status:"PUBLISHED"},
+    {id:"course-module-m07",courseId:"course-solar-installation",moduleId:"m07",programId:"solar-pv-tech",pathwayId:"path-a",sequence:7,status:"PUBLISHED"},
+    {id:"course-module-b04",courseId:"course-solar-design",moduleId:"b04",programId:"solar-pv-tech",pathwayId:"path-b",sequence:11,status:"PUBLISHED"},
+  ]);
+  // The common M01-M10 learning hierarchy has one owner. Path B reaches the
+  // same rows through pathwayBaselineModulesTable; its legacy B04 hierarchy
+  // remains separately addressable below.
+  for (const pathwayId of ["path-a"]) {
+    const courseId = pathwayId === "path-a" ? "course-solar-installation" : "course-solar-design";
+    for (let index = 0; index < modules.length; index += 1) {
+      const moduleId = modules[index][0];
+      const moduleCode = modules[index][2];
+      const courseModuleId = pathwayId === "path-a" && moduleId === "m03"
+        ? "course-module-m03"
+        : pathwayId === "path-a" && moduleId === "m07"
+          ? "course-module-m07"
+          : `course-module-${moduleId}`;
+      const lessonId = pathwayId === "path-a" && moduleId === "m03"
+        ? "lesson-m03-isolation"
+        : pathwayId === "path-a" && moduleId === "m07"
+          ? "lesson-m07-commissioning"
+          : `lesson-${moduleId}`;
+      const activityId = pathwayId === "path-a" && moduleId === "m03"
+        ? "activity-m03-safe-isolation"
+        : pathwayId === "path-a" && moduleId === "m07"
+          ? "activity-m07-commissioning"
+          : `activity-${moduleId}`;
+      await upsert(courseModulesTable, [{
+        id:courseModuleId, courseId, moduleId, programId:"solar-pv-tech", pathwayId, sequence:index + 1, status:"PUBLISHED",
+      }]);
+      await upsert(lessonsTable, [{
+        id:lessonId, courseModuleId, programId:"solar-pv-tech", pathwayId,
+        title:`${moduleCode} ${modules[index][3]}`, description:`Learn ${modules[index][3]} in the shared Solar PV baseline.`,
+        sequence:1, status:"PUBLISHED", estimatedDurationMinutes:25,
+      }]);
+      await upsert(learningActivitiesTable, [{
+        id:activityId, lessonId, programId:"solar-pv-tech", pathwayId, type:"READING",
+        title:`${moduleCode} controlled learning`, description:baselineOutcomes[index],
+        sequence:1, required:true, estimatedDurationMinutes:20, status:"PUBLISHED",
+      }]);
+      await upsert(contentResourcesTable, [{
+        id:moduleId === "m03" ? "resource-m03-isolation" : `resource-${moduleId}`, activityId, type:"TEXT",
+        title:`${moduleCode} learning note`, content:`${baselineOutcomes[index]} Learning guidance only; performance must be practiced and evidenced.`,
+        sequence:1, status:"PUBLISHED",
+      }]);
+      await upsert(learningOutcomesTable, [{
+        id:moduleId === "m03" ? "outcome-m03-sequence" : moduleId === "m07" ? "outcome-m07-commissioning" : `outcome-${moduleId}`,
+        activityId, capabilityModuleId:moduleId,
+        description:baselineOutcomes[index], verificationMethod:"TRAINER_REVIEW", required:true, sequence:1, status:"PUBLISHED",
+      }]);
+    }
+  }
+  // Publish the shared Path A course aggregate so both pathways can consume
+  // the immutable learner projection. Path B resolves these rows through its
+  // baseline selections and never receives a duplicate course hierarchy.
+  for (const course of await tx.select().from(coursesTable).where(eq(coursesTable.pathwayId, "path-a"))) {
+    const links = await tx.select().from(courseModulesTable).where(eq(courseModulesTable.courseId, course.id));
+    const lessons = await tx.select().from(lessonsTable);
+    const activities = await tx.select().from(learningActivitiesTable);
+    const resources = await tx.select().from(contentResourcesTable);
+    const outcomes = await tx.select().from(learningOutcomesTable);
+    const moduleSnapshot = links.sort((a, b) => a.sequence - b.sequence).map((link) => ({
+      ...link,
+      moduleCode: modules.find((module) => module[0] === link.moduleId)?.[2] ?? "UNKNOWN",
+      moduleName: modules.find((module) => module[0] === link.moduleId)?.[3] ?? "Unknown module",
+      lessons: lessons.filter((lesson) => lesson.courseModuleId === link.id).map((lesson) => ({
+        ...lesson,
+        moduleId: link.moduleId,
+        activities: activities.filter((activity) => activity.lessonId === lesson.id).map((activity) => ({
+          ...activity,
+          currentState: "NOT_STARTED",
+          nextAction: { action: "START_ACTIVITY", title: "Start activity", description: "Begin this learning activity.", href: null },
+          resources: resources.filter((resource) => resource.activityId === activity.id),
+          outcomes: outcomes.filter((outcome) => outcome.activityId === activity.id),
+        })),
+      })),
+    }));
+    const [existingVersion] = await tx.select().from(courseVersionsTable).where(and(
+      eq(courseVersionsTable.courseId, course.id),
+      eq(courseVersionsTable.version, 1),
+    ));
+    const versionId = existingVersion?.id ?? `course-version-${course.id}-v1`;
+    const version = {
+      id: versionId, courseId: course.id, version: 1, lifecycle: "PUBLISHED",
+      snapshot: { ...course, modules: moduleSnapshot, authoringRevision: 0 },
+      validationReport: { valid: true, errors: [], warnings: [] }, publishedAt: now, publishedBy: "system-seed",
+    };
+    if (existingVersion) {
+      await tx.update(courseVersionsTable).set({ lifecycle: version.lifecycle, snapshot: version.snapshot, validationReport: version.validationReport, publishedAt: now, publishedBy: version.publishedBy }).where(eq(courseVersionsTable.id, versionId));
+    } else {
+      await tx.insert(courseVersionsTable).values(version);
+    }
+    await tx.update(coursesTable).set({ status: "PUBLISHED", publishedVersionId: versionId }).where(eq(coursesTable.id, course.id));
+  }
   // These catalogue rows are prerequisites for the traceability foreign keys.
   // The later idempotent inserts retain the historical seed ordering.
   await insert(practiceTasksTable, [...modules, ...pathBModules].map(([id, pathwayId, code, name], i) => ({id:`task-${id}`,moduleId:id,title:`${name} ${pathwayId === "path-b" ? "design exercise" : "practical"}`,description:`Complete the ${name.toLowerCase()} supervised exercise.`,mode:i===2 || pathwayId === "path-b" ? "Workshop":"Guided practice",durationMinutes:pathwayId === "path-b" ? 60 : 45,output:pathwayId === "path-b" ? "Traceable design work record":"Supervisor-ready work record",safetyNote:id==="m03"?"Safe isolation procedure is mandatory.":null})));
   await insert(evidenceRequirementsTable, [...modules, ...pathBModules].map(([id, pathwayId, code, name]) => ({id:`req-${id}`,moduleId:id,code:`EV-${code}`,name:`${name} evidence`,description:`Traceable evidence for ${name}.`,allowedTypes:pathwayId === "path-b" ? ["Design brief","Calculation","Drawing","Report"] : ["Photo","Checklist","Report"]})));
+  await upsert(evidenceRequirementsTable, modules.map(([id], index) => ({
+    id:`req-${id}`, moduleId:id, code:baselineEvidence[index], name:`${baselineEvidence[index]} — ${modules[index][3]} evidence`,
+    description:`Traceable evidence demonstrating the controlled outcome: ${baselineOutcomes[index]}`,
+    allowedTypes:["Photo","Checklist","Report"],
+  })));
   // Reusable SKTTK framework: these IDs deliberately point at the existing
   // Solar PV catalogue records so the configuration remains idempotent and
   // traceable after repeated seed runs.
@@ -143,6 +341,16 @@ async function seed(): Promise<void> {
     await tx.update(assessmentsTable).set({ gateCode }).where(eq(assessmentsTable.id, `assessment-${moduleId}`));
   }
   await insert(assessmentCriteriaTable, [
+    ...modules
+      .filter(([moduleId]) => moduleId !== "m03" && moduleId !== "m07")
+      .map(([moduleId, , code, name]) => ({
+        id: `crit-${moduleId}-baseline`,
+        assessmentId: `assessment-${moduleId}`,
+        code: `BASE-${code}`,
+        label: `Demonstrates ${name} baseline outcome`,
+        layer: "Technical",
+        critical: false,
+      })),
     {id:"crit-m03-isolation",assessmentId:"assessment-m03",code:"SAFE-01",label:"Proves safe isolation",layer:"Safety",critical:true},
     {id:"crit-m03-test",assessmentId:"assessment-m03",code:"SAFE-02",label:"Selects and proves test equipment",layer:"Safety",critical:true},
     {id:"crit-m07-commission",assessmentId:"assessment-m07",code:"TECH-01",label:"Completes commissioning sequence",layer:"Technical",critical:false},

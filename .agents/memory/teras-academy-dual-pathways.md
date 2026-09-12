@@ -14,3 +14,9 @@ Both pathways may reuse a common learning foundation, but their purpose, assessm
 **Why:** The controlled production rule is “build the learning once; differentiate the evidence and assessment according to the pathway.” Shared learning must not collapse capability achievement into certification readiness.
 
 **How to apply:** Reuse learning assets where outcomes match, then attach pathway-specific assessment, evidence, decision, portfolio, and KPI contracts. Never duplicate the learning baseline solely to represent a different pathway purpose.
+
+Shared learning authorization must follow the explicit pathway-to-baseline selection, not the pathway that physically owns the reusable activity row. Completion, verification, practice, and evidence events remain scoped to the learner's active pathway.
+
+**Why:** A common activity can be stored once while both pathways use it. Requiring every event pathway to equal the reusable row's owner makes the second pathway read-only; removing all pathway checks would weaken isolation.
+
+**How to apply:** Authorize cross-path use only when the active pathway explicitly selects the canonical baseline module. Keep learner/enrollment ownership and outcome-to-activity integrity enforced for every event.

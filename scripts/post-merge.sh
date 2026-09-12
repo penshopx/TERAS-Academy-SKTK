@@ -101,6 +101,10 @@ if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_people') IS
   # catalogue FKs; pathway guards preserve historical pathway selections.
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0033_enrollment_event_context.sql
+  # Canonicalise M01-M10 as one shared Solar PV baseline before Drizzle
+  # evaluates the additive pathway and legacy compatibility mappings.
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0034_solar_pv_shared_learning_baseline.sql
 fi
 if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_content_resources') IS NOT NULL")" = "t" ]; then
   TERAS_MIGRATION_ACTOR=post-merge-upgrade \
@@ -162,6 +166,9 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0032_learning_record_link_ownership.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0033_enrollment_event_context.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0034_solar_pv_shared_learning_baseline.sql
+pnpm --filter @workspace/scripts run seed
 if [ "$(pnpm --silent --filter @workspace/scripts run demo:fixtures-enabled)" = "1" ]; then
   pnpm --filter @workspace/scripts run seed:demo
 else
@@ -191,4 +198,5 @@ pnpm --filter @workspace/api-server run test:causal-link-ownership
 pnpm --filter @workspace/api-server run test:admin-management
 pnpm --filter @workspace/api-server run test:competency
 pnpm --filter @workspace/api-server run test:course-authoring
+pnpm --filter @workspace/scripts run test:solar-pv-baseline-integration
 pnpm run typecheck

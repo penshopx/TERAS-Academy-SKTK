@@ -1,9 +1,76 @@
 import { and, desc, eq } from "drizzle-orm";
-import { db, assessmentAttemptsTable, assessmentCriteriaTable, assessmentsTable, criterionObservationsTable, enrollmentPathwayEventsTable, enrollmentsTable, evidenceRequirementsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, modulesTable, pathwaysTable, peopleTable, practiceAttemptsTable, practiceTasksTable, programsTable, readinessEventsTable, readinessGatesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable } from "@workspace/db";
+import { db, assessmentAttemptsTable, assessmentCriteriaTable, assessmentsTable, baselineModulesTable, courseModulesTable, criterionObservationsTable, enrollmentPathwayEventsTable, enrollmentsTable, evidenceRequirementsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningActivitiesTable, learningBaselinesTable, legacyModuleMappingsTable, learningRecordLinksTable, lessonsTable, modulesTable, pathwayBaselineModulesTable, pathwayModuleContractsTable, pathwaysTable, peopleTable, practiceAttemptsTable, practiceTasksTable, programsTable, readinessEventsTable, readinessGatesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable } from "@workspace/db";
+import type { BaselineModule, PathwayModuleContract } from "@workspace/db";
 export const DEMO_LEARNER = "learner-demo";
 const latest = <T extends { createdAt: Date }, K extends string>(rows: T[], key: (row: T) => K) => { const result = new Map<K, T>(); for (const row of rows) if (!result.has(key(row)) || result.get(key(row))!.createdAt < row.createdAt) result.set(key(row), row); return result; };
-export async function catalogue() { const [programs, paths, modules, tasks, requirements, assessments, gates, enrollments] = await Promise.all([db.select().from(programsTable), db.select().from(pathwaysTable), db.select().from(modulesTable), db.select().from(practiceTasksTable), db.select().from(evidenceRequirementsTable), db.select().from(assessmentsTable), db.select().from(readinessGatesTable), db.select().from(enrollmentsTable)]); return { programs, paths, modules, tasks, requirements, assessments, gates, enrollments }; }
-export const moduleSummary = (module: { id: string; pathwayId: string; code: string; name: string; capability: string; evidence: string }, progress = 0, status = "Not started") => ({ ...module, progress, status });
+export async function catalogue() {
+  const [programs, paths, modules, tasks, requirements, assessments, gates, enrollments, baselines, baselineModules, pathwayBaselineModules, pathwayContracts, legacyMappings] = await Promise.all([
+    db.select().from(programsTable), db.select().from(pathwaysTable), db.select().from(modulesTable),
+    db.select().from(practiceTasksTable), db.select().from(evidenceRequirementsTable),
+    db.select().from(assessmentsTable), db.select().from(readinessGatesTable), db.select().from(enrollmentsTable),
+    db.select().from(learningBaselinesTable), db.select().from(baselineModulesTable),
+    db.select().from(pathwayBaselineModulesTable), db.select().from(pathwayModuleContractsTable),
+    db.select().from(legacyModuleMappingsTable),
+  ]);
+  return { programs, paths, modules, tasks, requirements, assessments, gates, enrollments, baselines, baselineModules, pathwayBaselineModules, pathwayContracts, legacyMappings };
+}
+type Catalogue = Awaited<ReturnType<typeof catalogue>>;
+/** Canonical M modules are owned by Path A, but become operational in another
+ * pathway only when that pathway has an explicit baseline selection. */
+export async function selectedBaselineModuleIds(pathwayId: string): Promise<Set<string>> {
+  const rows = await db.select({ moduleId: baselineModulesTable.moduleId })
+    .from(pathwayBaselineModulesTable)
+    .innerJoin(baselineModulesTable, eq(pathwayBaselineModulesTable.baselineModuleId, baselineModulesTable.id))
+    .where(eq(pathwayBaselineModulesTable.pathwayId, pathwayId));
+  return new Set(rows.map(row => row.moduleId));
+}
+export async function pathwayHasModule(pathwayId: string, moduleId: string): Promise<boolean> {
+  const [module] = await db.select({ pathwayId: modulesTable.pathwayId }).from(modulesTable).where(eq(modulesTable.id, moduleId)).limit(1);
+  if (module?.pathwayId === pathwayId) return true;
+  return (await selectedBaselineModuleIds(pathwayId)).has(moduleId);
+}
+export async function pathwayHasActivity(pathwayId: string, activityId: string): Promise<boolean> {
+  const [row] = await db.select({ moduleId: courseModulesTable.moduleId })
+    .from(learningActivitiesTable)
+    .innerJoin(lessonsTable, eq(lessonsTable.id, learningActivitiesTable.lessonId))
+    .innerJoin(courseModulesTable, eq(courseModulesTable.id, lessonsTable.courseModuleId))
+    .where(eq(learningActivitiesTable.id, activityId))
+    .limit(1);
+  return Boolean(row && await pathwayHasModule(pathwayId, row.moduleId));
+}
+export const baselineForModule = (moduleId: string, catalogue: Pick<Catalogue, "baselineModules" | "legacyMappings">) => {
+  const canonical = catalogue.baselineModules.find((baseline) => baseline.moduleId === moduleId);
+  if (canonical) return canonical;
+  const legacy = catalogue.legacyMappings.find((mapping) => mapping.legacyModuleId === moduleId);
+  return legacy ? catalogue.baselineModules.find((baseline) => baseline.id === legacy.baselineModuleId) : undefined;
+};
+export const moduleSummary = (
+  module: { id: string; pathwayId: string; code: string; name: string; capability: string; evidence: string },
+  progress = 0,
+  status = "Not started",
+  contractPathwayId = module.pathwayId,
+  baseline?: BaselineModule,
+  pathwayContract?: PathwayModuleContract,
+) => {
+  return {
+    ...module,
+    pathwayId: contractPathwayId,
+    progress,
+    status,
+    baseline: baseline ? { code: baseline.code, name: baseline.name, learningOutcome: baseline.learningOutcome, evidenceId: baseline.evidenceId } : null,
+    pathwayContract: pathwayContract ? {
+      pathwayId: contractPathwayId,
+      assessmentId: pathwayContract.assessmentId,
+      evidenceRequirementId: pathwayContract.evidenceRequirementId,
+      gateCode: pathwayContract.gateCode,
+      assessment: pathwayContract.assessment,
+      evidence: pathwayContract.evidence,
+      output: pathwayContract.output,
+      kpi: pathwayContract.kpi,
+      portfolio: pathwayContract.portfolio,
+    } : null,
+  };
+};
 export const profile = (person: { id: string; name: string; initials: string; role: string; organization: string | null }) => person;
 export async function learnerContext(learnerId = DEMO_LEARNER) {
   const [enrollment] = await db.select().from(enrollmentsTable).where(eq(enrollmentsTable.learnerId, learnerId)).orderBy(desc(enrollmentsTable.createdAt));
@@ -69,26 +136,58 @@ export async function activeLearnerPathwayContext(learnerId: string, pathwayId: 
   );
   return contexts.find((context) => context !== null) ?? null;
 }
-export async function pathwaySummary(pathwayId: string) { const { paths, modules, gates } = await catalogue(); const pathway = paths.find((item) => item.id === pathwayId); if (!pathway) return null; const pathwayGates = gates.filter((gate) => gate.pathwayId === pathwayId).sort((a, b) => a.sequence - b.sequence).map(({ id, code, name, sequence, requirement }) => ({ id, code, name, sequence, requirement })); return { ...pathway, moduleCount: modules.filter((module) => module.pathwayId === pathwayId).length, gateCount: pathwayGates.length, gates: pathwayGates }; }
+export async function pathwaySummary(pathwayId: string, source?: Catalogue) {
+  const { paths, modules, gates, pathwayBaselineModules, pathwayContracts, baselineModules } = source ?? await catalogue();
+  const pathway = paths.find((item) => item.id === pathwayId);
+  if (!pathway) return null;
+  const pathwayGates = gates.filter((gate) => gate.pathwayId === pathwayId).sort((a, b) => a.sequence - b.sequence).map(({ id, code, name, sequence, requirement }) => ({ id, code, name, sequence, requirement }));
+  const selections = pathwayBaselineModules.filter((selection) => selection.pathwayId === pathwayId);
+  const selectedBaselineIds = new Set(selections.map((selection) => selection.baselineModuleId));
+  const selectedBaselineModules = baselineModules.filter((baseline) => selectedBaselineIds.has(baseline.id)).sort((a, b) => a.sequence - b.sequence);
+  const contracts = pathwayContracts.filter((contract) => selectedBaselineModules.some((baseline) => baseline.moduleId === contract.moduleId));
+  const firstContract = contracts[0];
+  return {
+    ...pathway,
+    moduleCount: modules.filter((module) => module.pathwayId === pathwayId).length,
+    baselineModuleCount: selectedBaselineModules.length,
+    gateCount: pathwayGates.length,
+    gates: pathwayGates,
+    contract: firstContract ? {
+      assessment: firstContract.assessment,
+      evidence: contracts.map((contract) => contract.evidence).join(", "),
+      output: firstContract.portfolio,
+      kpi: firstContract.kpi,
+      portfolio: firstContract.portfolio,
+    } : undefined,
+  };
+}
 export async function progressByModule(learnerId = DEMO_LEARNER, pathwayId?: string) { const activePathwayId = pathwayId ?? (await learnerContext(learnerId)).pathway.id; const [attempts, assessments, practiceAttempts, evidence] = await Promise.all([db.select().from(assessmentAttemptsTable).where(and(eq(assessmentAttemptsTable.learnerId, learnerId), eq(assessmentAttemptsTable.pathwayId, activePathwayId))), db.select().from(assessmentsTable), db.select().from(practiceAttemptsTable).where(and(eq(practiceAttemptsTable.learnerId, learnerId), eq(practiceAttemptsTable.pathwayId, activePathwayId))), db.select().from(evidenceTable).where(and(eq(evidenceTable.learnerId, learnerId), eq(evidenceTable.pathwayId, activePathwayId)))]); const assessmentModules = new Map(assessments.map((assessment) => [assessment.id, assessment.moduleId])); const completed = new Set(attempts.filter((attempt) => attempt.decision === "Competent").map((attempt) => assessmentModules.get(attempt.assessmentId))); const practiced = new Set(practiceAttempts.map((attempt) => attempt.taskId.replace(/^task-/, ""))); const evidenced = new Set(evidence.map((item) => item.moduleId)); return (id: string) => completed.has(id) ? { progress: 100, status: "Complete" } : evidenced.has(id) ? { progress: 60, status: "In progress" } : practiced.has(id) ? { progress: 30, status: "In progress" } : { progress: 0, status: "Not started" }; }
-export async function evidenceRecords(learnerId = DEMO_LEARNER, pathwayId?: string) { const activePathwayId = pathwayId ?? (await learnerContext(learnerId)).pathway.id; const [evidence, reviews, modules, people, links] = await Promise.all([db.select().from(evidenceTable), db.select().from(evidenceReviewsTable), db.select().from(modulesTable), db.select().from(peopleTable), db.select().from(learningRecordLinksTable).where(and(eq(learningRecordLinksTable.learnerId, learnerId), eq(learningRecordLinksTable.pathwayId, activePathwayId)))]); const reviewMap = latest(reviews, (review) => review.evidenceId), moduleMap = new Map(modules.map((module) => [module.id, module])), personMap = new Map(people.map((person) => [person.id, person])), linkMap = latest(links.filter((link): link is typeof link & { evidenceId: string } => Boolean(link.evidenceId)), (link) => link.evidenceId); return evidence.filter((item) => item.learnerId === learnerId && item.pathwayId === activePathwayId).map((item) => { const review = reviewMap.get(item.id), module = moduleMap.get(item.moduleId), link = linkMap.get(item.id); return { id: item.id, title: item.title, type: item.type, moduleId: item.moduleId, moduleName: module?.name ?? "Unknown module", taskId: item.taskId, pathwayId: item.pathwayId, sourceActivityId: link?.activityId ?? null, practiceAttemptId: link?.practiceAttemptId ?? null, description: item.description, status: review?.status ?? "Under review", submittedAt: item.createdAt, reviewer: review?.reviewerId ? personMap.get(review.reviewerId)?.name ?? null : null, reviewerComment: review?.comment ?? null, fileName: item.fileName, quality: review?.quality ?? { valid: false, relevant: false, sufficient: false, traceable: false } }; }); }
+export async function evidenceRecords(learnerId = DEMO_LEARNER, pathwayId?: string) { const activePathwayId = pathwayId ?? (await learnerContext(learnerId)).pathway.id; const [evidence, reviews, modules, people, links, selected] = await Promise.all([db.select().from(evidenceTable), db.select().from(evidenceReviewsTable), db.select().from(modulesTable), db.select().from(peopleTable), db.select().from(learningRecordLinksTable).where(and(eq(learningRecordLinksTable.learnerId, learnerId), eq(learningRecordLinksTable.pathwayId, activePathwayId))), selectedBaselineModuleIds(activePathwayId)]); const reviewMap = latest(reviews, (review) => review.evidenceId), moduleMap = new Map(modules.map((module) => [module.id, module])), personMap = new Map(people.map((person) => [person.id, person])), linkMap = latest(links.filter((link): link is typeof link & { evidenceId: string } => Boolean(link.evidenceId)), (link) => link.evidenceId); return evidence.filter((item) => item.learnerId === learnerId && item.pathwayId === activePathwayId && selected.has(item.moduleId)).map((item) => { const review = reviewMap.get(item.id), module = moduleMap.get(item.moduleId), link = linkMap.get(item.id); return { id: item.id, title: item.title, type: item.type, moduleId: item.moduleId, moduleName: module?.name ?? "Unknown module", taskId: item.taskId, pathwayId: item.pathwayId, sourceActivityId: link?.activityId ?? null, practiceAttemptId: link?.practiceAttemptId ?? null, description: item.description, status: review?.status ?? "Under review", submittedAt: item.createdAt, reviewer: review?.reviewerId ? personMap.get(review.reviewerId)?.name ?? null : null, reviewerComment: review?.comment ?? null, fileName: item.fileName, quality: review?.quality ?? { valid: false, relevant: false, sufficient: false, traceable: false } }; }); }
 export async function gapRecords(learnerId = DEMO_LEARNER, pathwayId?: string) { const activePathwayId = pathwayId ?? (await learnerContext(learnerId)).pathway.id; const [gaps, events] = await Promise.all([db.select().from(gapsTable), db.select().from(gapEventsTable)]); const statuses = latest(events, (event) => event.gapId); return gaps.filter((gap) => gap.learnerId === learnerId && gap.pathwayId === activePathwayId).map((gap) => ({ ...gap, status: statuses.get(gap.id)?.status ?? "Open" })); }
 export async function remediationRecords(learnerId = DEMO_LEARNER, pathwayId?: string) { const gaps = await gapRecords(learnerId, pathwayId), gapIds = new Set(gaps.map((gap) => gap.id)); const [plans, activities, events] = await Promise.all([db.select().from(remediationPlansTable), db.select().from(remediationActivitiesTable), db.select().from(remediationEventsTable)]); const state = latest(events, (event) => event.activityId); return plans.filter((plan) => gapIds.has(plan.gapId)).map((plan) => { const planActivities = activities.filter((activity) => activity.planId === plan.id).map((activity) => ({ ...activity, status: state.get(activity.id)?.status ?? "Not started" })); return { ...plan, status: planActivities.every((activity) => activity.status === "Completed") ? "Completed" : planActivities.some((activity) => activity.status === "In progress") ? "In progress" : "Not started", activities: planActivities }; }); }
 export async function assessmentSummary(assessment: { id: string; moduleId: string; name: string; gateCode?: string | null }, learnerId = DEMO_LEARNER, pathwayId?: string) { const activePathwayId = pathwayId ?? (await learnerContext(learnerId)).pathway.id; const [attempts, criteria, observations] = await Promise.all([db.select().from(assessmentAttemptsTable).where(and(eq(assessmentAttemptsTable.assessmentId, assessment.id), eq(assessmentAttemptsTable.learnerId, learnerId), eq(assessmentAttemptsTable.pathwayId, activePathwayId))), db.select().from(assessmentCriteriaTable).where(eq(assessmentCriteriaTable.assessmentId, assessment.id)), db.select().from(criterionObservationsTable)]); const latestAttempt = attempts.sort((a, b) => b.number - a.number || b.createdAt.getTime() - a.createdAt.getTime())[0]; const byCriterion = new Map(observations.filter((observation) => observation.attemptId === latestAttempt?.id).map((observation) => [observation.criterionId, observation])); const scores = criteria.map((criterion) => byCriterion.get(criterion.id)?.score).filter((score): score is number => score !== undefined); return { id: assessment.id, moduleId: assessment.moduleId, name: assessment.name, gateCode: assessment.gateCode ?? null, status: latestAttempt?.status ?? "Not started", score: scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length / 3 * 100) : 0, attemptCount: attempts.length, criticalFailure: Boolean(latestAttempt) && criteria.some((criterion) => criterion.critical && (byCriterion.get(criterion.id)?.score ?? 0) < 2) }; }
 export async function readiness(context?: Awaited<ReturnType<typeof learnerContext>>) {
   const activeContext = context ?? await learnerContext();
-  const [allModules, gates, gaps, evidences, allAssessments, allRequirements] = await Promise.all([
+  const selected = await selectedBaselineModuleIds(activeContext.pathway.id);
+  const [allModules, gates, gaps, evidences, allAssessments, allRequirements, allContracts] = await Promise.all([
     db.select().from(modulesTable),
     db.select().from(readinessGatesTable).where(and(eq(readinessGatesTable.pathwayId, activeContext.pathway.id), eq(readinessGatesTable.active, true))).orderBy(readinessGatesTable.sequence),
     gapRecords(activeContext.learner.id, activeContext.pathway.id),
     evidenceRecords(activeContext.learner.id, activeContext.pathway.id),
     db.select().from(assessmentsTable),
     db.select().from(evidenceRequirementsTable),
+    db.select().from(pathwayModuleContractsTable).where(eq(pathwayModuleContractsTable.pathwayId, activeContext.pathway.id)),
   ]);
-  const modules = allModules.filter((module) => module.pathwayId === activeContext.pathway.id);
+  // Readiness is a baseline projection, not a legacy catalogue projection:
+  // B01-B08 remain addressable history but cannot become active Path B gates.
+  const modules = allModules.filter((module) => selected.has(module.id));
   const moduleIds = new Set(modules.map((module) => module.id));
-  const assessments = allAssessments.filter((assessment) => moduleIds.has(assessment.moduleId));
-  const requirements = allRequirements.filter((requirement) => moduleIds.has(requirement.moduleId));
+  const contracts = allContracts.filter((contract) => moduleIds.has(contract.moduleId));
+  if (!contracts.length) throw new Error(`No active pathway module contracts configured for ${activeContext.pathway.name}`);
+  const assessmentIds = new Set(contracts.map((contract) => contract.assessmentId));
+  const requirementIds = new Set(contracts.map((contract) => contract.evidenceRequirementId));
+  const assessments = allAssessments.filter((assessment) => assessmentIds.has(assessment.id));
+  const requirements = allRequirements.filter((requirement) => requirementIds.has(requirement.id));
   const assessmentStates = await Promise.all(assessments.map((assessment) => assessmentSummary(assessment, activeContext.learner.id, activeContext.pathway.id)));
   const stateByAssessment = new Map(assessmentStates.map((assessment) => [assessment.id, assessment]));
   const validEvidenceModules = new Set(evidences.filter((evidence) => evidence.status === "Valid").map((evidence) => evidence.moduleId));
@@ -111,17 +210,18 @@ export async function readiness(context?: Awaited<ReturnType<typeof learnerConte
     openCriticalGaps: gaps.filter((gap) => gap.status !== "Resolved" && gap.severity === "Critical").map((gap) => gap.id),
   };
   const gateViews = gates.map((gate) => {
-    const gateAssessments = gate.assessmentMode === "All"
-      ? assessments
-      : gate.assessmentMode === "Mapped"
-        ? assessments.filter((assessment) => assessment.gateCode === gate.code)
-        : [];
-    const gateModuleIds = new Set(gateAssessments.map((assessment) => assessment.moduleId));
-    const gateRequirements = gate.evidenceMode === "All"
-      ? requirements
-      : gate.evidenceMode === "Mapped"
-        ? requirements.filter((requirement) => gateModuleIds.has(requirement.moduleId))
-        : [];
+    // Contracts, rather than the legacy global assessment.gateCode, are the
+    // operational pathway mapping. This keeps the same canonical assessment
+    // usable under the distinct Path A and Path B gate partitions.
+    const gateContracts = contracts.filter((contract) => contract.gateCode === gate.code);
+    if (!gateContracts.length) throw new Error(`Readiness gate ${gate.code} has zero active pathway contract requirements`);
+    const gateAssessmentIds = new Set(gateContracts.map((contract) => contract.assessmentId));
+    const gateRequirementIds = new Set(gateContracts.map((contract) => contract.evidenceRequirementId));
+    const gateAssessments = assessments.filter((assessment) => gateAssessmentIds.has(assessment.id));
+    const gateRequirements = requirements.filter((requirement) => gateRequirementIds.has(requirement.id));
+    if (gateAssessments.length !== gateAssessmentIds.size || gateRequirements.length !== gateRequirementIds.size) {
+      throw new Error(`Readiness gate ${gate.code} has unresolved pathway contract prerequisites`);
+    }
     const failedAssessments = gateAssessments.filter((assessment) => {
       const state = stateByAssessment.get(assessment.id);
       return !state || state.status !== "Completed" || state.criticalFailure;
@@ -144,12 +244,22 @@ export async function readiness(context?: Awaited<ReturnType<typeof learnerConte
     const passed = previousPassed && policyBlockers.length === 0 && safetyBlockers.length === 0;
     const status = passed ? "Passed" : previousPassed ? "In progress" : "Locked";
     previousPassed = passed;
-    return { id: gate.id, code: gate.code, name: gate.name, requirement: gate.requirement, status, score, threshold: gate.threshold, hardGate: gate.hardGate, hardGateFailed, competencyUnitId: gate.competencyUnitId, ruleVersion: gate.ruleVersion, blockers: policyBlockers };
+    return {
+      id: gate.id, code: gate.code, name: gate.name, requirement: gate.requirement, status, score,
+      threshold: gate.threshold, hardGate: gate.hardGate, hardGateFailed,
+      competencyUnitId: gate.competencyUnitId, ruleVersion: gate.ruleVersion, blockers: policyBlockers,
+      contracts: gateContracts.map((contract) => ({
+        id: contract.id, moduleId: contract.moduleId, assessmentId: contract.assessmentId,
+        evidenceRequirementId: contract.evidenceRequirementId, gateCode: contract.gateCode,
+        assessment: contract.assessment, evidence: contract.evidence, output: contract.output,
+        kpi: contract.kpi, portfolio: contract.portfolio,
+      })),
+    };
   });
   const activeGate = gateViews.find((gate) => gate.status === "In progress") ?? [...gateViews].reverse().find((gate) => gate.status === "Passed") ?? gateViews[0];
   if (!activeGate) throw new Error(`No readiness gates configured for ${activeContext.pathway.name}`);
   const currentIndex = gateViews.findIndex((gate) => gate.id === activeGate.id);
-  const requiredAssessmentCount = assessments.length;
+  const requiredAssessmentCount = assessmentIds.size;
   const completeAssessmentCount = assessmentStates.filter((assessment) => assessment.status === "Completed" && !assessment.criticalFailure).length;
   const requiredEvidenceCount = requirements.length;
   const validEvidenceCount = requirements.filter((requirement) => validEvidenceModules.has(requirement.moduleId)).length;
@@ -188,6 +298,12 @@ export async function readiness(context?: Awaited<ReturnType<typeof learnerConte
     evaluatedAt,
     createdBy: activeContext.learner.id,
   });
+  const publicGate = (gate: typeof gateViews[number]) => ({
+    id: gate.id, code: gate.code, name: gate.name, requirement: gate.requirement,
+    status: gate.status, score: gate.score, threshold: gate.threshold,
+    hardGate: gate.hardGate, competencyUnitId: gate.competencyUnitId,
+    ruleVersion: gate.ruleVersion, blockers: gate.blockers, contracts: gate.contracts,
+  });
   return {
     pathway: await pathwaySummary(activeContext.pathway.id),
     status,
@@ -196,9 +312,9 @@ export async function readiness(context?: Awaited<ReturnType<typeof learnerConte
     evaluatedAt,
     decisionReason,
     inputEvidence,
-    currentGate: (({ id, code, name, requirement, status, score, threshold, hardGate, competencyUnitId, ruleVersion }) => ({ id, code, name, requirement, status, score, threshold, hardGate, competencyUnitId, ruleVersion }))(activeGate),
-    nextGate: gateViews[currentIndex + 1] ? (({ id, code, name, requirement, status, score, threshold, hardGate, competencyUnitId, ruleVersion }) => ({ id, code, name, requirement, status, score, threshold, hardGate, competencyUnitId, ruleVersion }))(gateViews[currentIndex + 1]) : null,
-    gates: gateViews.map(({ id, code, name, requirement, status, score, threshold, hardGate, competencyUnitId, ruleVersion }) => ({ id, code, name, requirement, status, score, threshold, hardGate, competencyUnitId, ruleVersion })),
+    currentGate: publicGate(activeGate),
+    nextGate: gateViews[currentIndex + 1] ? publicGate(gateViews[currentIndex + 1]) : null,
+    gates: gateViews.map(publicGate),
     blockers,
     outstandingGapCount: gaps.filter((gap) => gap.status !== "Resolved").length,
     missingEvidenceCount: requirements.filter((requirement) => !validEvidenceModules.has(requirement.moduleId)).length,

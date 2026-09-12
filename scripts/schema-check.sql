@@ -28,6 +28,9 @@ BEGIN
       ('teras_reassessment_links', 'reassessment_attempt_id', 'NO'),
       ('teras_readiness_transfer_events', 'source_context', 'NO'),
       ('teras_learning_transition_events', 'idempotency_key', 'NO')
+      ,('teras_pathway_module_contracts', 'assessment_id', 'NO')
+      ,('teras_pathway_module_contracts', 'evidence_requirement_id', 'NO')
+      ,('teras_pathway_module_contracts', 'gate_code', 'NO')
   ) AS expected(table_name, column_name, is_nullable)
   WHERE NOT EXISTS (
     SELECT 1
@@ -147,6 +150,123 @@ BEGIN
     RAISE EXCEPTION 'Canonical pathway curriculum is incomplete or assigned to the wrong pathway';
   END IF;
 
+  IF to_regclass('public.teras_learning_baselines') IS NULL
+    OR to_regclass('public.teras_baseline_modules') IS NULL
+    OR to_regclass('public.teras_pathway_baseline_modules') IS NULL
+    OR to_regclass('public.teras_pathway_module_contracts') IS NULL
+    OR to_regclass('public.teras_legacy_module_mappings') IS NULL THEN
+    RAISE EXCEPTION 'Shared Solar PV baseline tables are missing';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      (1,'M01','Fundamentals','Explain PV principles, terminology, and system purpose.','E01'),
+      (2,'M02','Measurement & Interpretation','Measure and interpret site and system data to identify relevant PV conditions.','E02'),
+      (3,'M03','Safety & Work Practice','Apply safe work practices, isolation, and risk controls for PV work.','E03'),
+      (4,'M04','System Architecture','Describe PV system architecture and explain component interfaces.','E04'),
+      (5,'M05','Drawing & Work Preparation','Produce accurate drawings and work preparation records for PV installation.','E05'),
+      (6,'M06','Mechanical Installation','Install and secure PV mechanical components in accordance with drawings and manufacturer requirements.','E06'),
+      (7,'M07','Electrical Installation','Install PV electrical components, cabling, protection, and terminations safely.','E07'),
+      (8,'M08','System Configuration & Integration','Configure and integrate inverter, monitoring, and system controls.','E08'),
+      (9,'M09','Testing & Commissioning','Test, commission, and document PV system performance and safety.','E09'),
+      (10,'M10','O&M & Basic Troubleshooting','Perform routine O&M and basic troubleshooting using safe diagnostic steps.','E10')
+    ) expected(sequence, code, name, outcome, evidence_id)
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM teras_baseline_modules actual
+      WHERE actual.baseline_id = 'baseline-solar-pv-v1'
+        AND actual.sequence = expected.sequence
+        AND actual.code = expected.code
+        AND actual.name = expected.name
+        AND actual.learning_outcome = expected.outcome
+        AND actual.evidence_id = expected.evidence_id
+    )
+  ) THEN
+    RAISE EXCEPTION 'Solar PV M01-M10 baseline sequence, names, outcomes, or evidence IDs are incorrect';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('m01','E01'),('m02','E02'),('m03','E03'),('m04','E04'),('m05','E05'),
+      ('m06','E06'),('m07','E07'),('m08','E08'),('m09','E09'),('m10','E10')
+    ) expected(module_id, evidence_id)
+    WHERE NOT EXISTS (
+      SELECT 1 FROM teras_evidence_requirements er
+      WHERE er.module_id = expected.module_id AND er.code = expected.evidence_id
+    )
+  ) THEN
+    RAISE EXCEPTION 'Stable E01-E10 evidence requirement records are incomplete';
+  END IF;
+
+  IF (SELECT count(*) FROM teras_pathway_baseline_modules WHERE baseline_module_id IN (SELECT id FROM teras_baseline_modules WHERE baseline_id = 'baseline-solar-pv-v1') AND pathway_id = 'path-a') <> 10
+    OR (SELECT count(*) FROM teras_pathway_baseline_modules WHERE baseline_module_id IN (SELECT id FROM teras_baseline_modules WHERE baseline_id = 'baseline-solar-pv-v1') AND pathway_id = 'path-b') <> 10
+    OR (SELECT count(*) FROM teras_pathway_module_contracts WHERE pathway_id = 'path-a') <> 10
+    OR (SELECT count(*) FROM teras_pathway_module_contracts WHERE pathway_id = 'path-b') <> 10
+    OR EXISTS (
+      SELECT 1 FROM teras_pathway_module_contracts
+      WHERE assessment_id = '' OR evidence_requirement_id = '' OR gate_code = ''
+    )
+    OR EXISTS (
+      SELECT 1 FROM teras_pathway_module_contracts c
+      WHERE c.assessment_id <> 'assessment-' || c.module_id
+         OR c.evidence_requirement_id <> 'req-' || c.module_id
+         OR c.gate_code <> CASE
+           WHEN c.pathway_id = 'path-a' AND c.module_id IN ('m01','m02','m03') THEN 'G1'
+           WHEN c.pathway_id = 'path-a' AND c.module_id IN ('m04','m05','m06','m07') THEN 'G2'
+           WHEN c.pathway_id = 'path-a' THEN 'G3'
+           WHEN c.pathway_id = 'path-b' AND c.module_id IN ('m01','m02','m03') THEN 'B1'
+           WHEN c.pathway_id = 'path-b' AND c.module_id IN ('m04','m05','m06','m07') THEN 'B2'
+           WHEN c.pathway_id = 'path-b' AND c.module_id IN ('m08','m09') THEN 'B3'
+           WHEN c.pathway_id = 'path-b' AND c.module_id = 'm10' THEN 'B4'
+           ELSE ''
+         END
+    )
+    OR EXISTS (
+      SELECT 1 FROM teras_readiness_gates g
+      WHERE g.active
+        AND NOT EXISTS (
+          SELECT 1 FROM teras_pathway_module_contracts c
+          WHERE c.pathway_id = g.pathway_id AND c.gate_code = g.code
+        )
+    )
+    OR EXISTS (
+      SELECT 1 FROM (VALUES
+        ('path-a','G1',3),('path-a','G2',4),('path-a','G3',3),
+        ('path-b','B1',3),('path-b','B2',4),('path-b','B3',2),('path-b','B4',1)
+      ) expected(pathway_id, gate_code, requirement_count)
+      WHERE (SELECT count(*) FROM teras_pathway_module_contracts c
+             WHERE c.pathway_id = expected.pathway_id AND c.gate_code = expected.gate_code) <> expected.requirement_count
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM teras_pathway_module_contracts a
+      JOIN teras_pathway_module_contracts b ON b.module_id = a.module_id
+      WHERE a.pathway_id = 'path-a' AND b.pathway_id = 'path-b'
+        AND (a.assessment = b.assessment OR a.output = b.output OR a.kpi = b.kpi OR a.portfolio = b.portfolio)
+    ) THEN
+    RAISE EXCEPTION 'Shared baseline pathway mappings or differentiated pathway contracts are incomplete';
+  END IF;
+
+  IF (SELECT count(*) FROM teras_legacy_module_mappings WHERE pathway_id = 'path-b' AND status = 'retired') <> 8
+    OR EXISTS (
+      SELECT 1 FROM (VALUES
+        ('b01','M05'),('b02','M02'),('b03','M04'),('b04','M07'),
+        ('b05','M06'),('b06','M08'),('b07','M09'),('b08','M10')
+      ) expected(legacy_id, baseline_code)
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM teras_legacy_module_mappings lm
+        JOIN teras_baseline_modules bm ON bm.id = lm.baseline_module_id
+        WHERE lm.legacy_module_id = expected.legacy_id
+          AND bm.code = expected.baseline_code
+          AND lm.status = 'retired'
+      )
+    ) THEN
+    RAISE EXCEPTION 'Legacy B01-B08 compatibility mappings are incomplete';
+  END IF;
+
   IF EXISTS (
     SELECT 1
     FROM (VALUES
@@ -164,7 +284,30 @@ BEGIN
   IF (SELECT count(*) FROM teras_courses WHERE program_id = 'solar-pv-tech' AND pathway_id = 'path-a') < 1
     OR (SELECT count(*) FROM teras_courses WHERE program_id = 'solar-pv-tech' AND pathway_id = 'path-b') < 1
     OR (SELECT count(*) FROM teras_learning_activities WHERE pathway_id = 'path-a') < 1
-    OR (SELECT count(*) FROM teras_learning_activities WHERE pathway_id = 'path-b') < 1 THEN
+    OR (SELECT count(*) FROM teras_learning_activities WHERE pathway_id = 'path-b') < 1
+    OR (SELECT count(*) FROM teras_course_modules cm JOIN teras_modules m ON m.id = cm.module_id
+        WHERE cm.pathway_id = 'path-a' AND m.code LIKE 'M%') <> 10
+    OR (SELECT count(*) FROM teras_pathway_baseline_modules pbm
+        JOIN teras_baseline_modules bm ON bm.id = pbm.baseline_module_id
+        WHERE pbm.pathway_id = 'path-b' AND bm.code LIKE 'M%') <> 10
+    OR EXISTS (
+      SELECT 1 FROM teras_course_modules cm
+      JOIN teras_modules m ON m.id = cm.module_id
+      WHERE cm.pathway_id = 'path-b' AND cm.status <> 'ARCHIVED' AND m.code LIKE 'M%'
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM teras_course_modules cm
+      JOIN teras_modules m ON m.id = cm.module_id
+      WHERE m.code LIKE 'M%' AND cm.status <> 'ARCHIVED'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM teras_lessons l
+          JOIN teras_learning_activities a ON a.lesson_id = l.id
+          JOIN teras_learning_outcomes o ON o.activity_id = a.id
+          WHERE l.course_module_id = cm.id AND o.capability_module_id = m.id
+        )
+    ) THEN
     RAISE EXCEPTION 'Seeded Phase 1 LMS hierarchy is missing a pathway';
   END IF;
 END $$;

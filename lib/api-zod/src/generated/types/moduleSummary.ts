@@ -5,6 +5,8 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { BaselineModuleContract } from './baselineModuleContract';
+import type { PathwayModuleContract } from './pathwayModuleContract';
 
 export interface ModuleSummary {
   id: string;
@@ -19,4 +21,6 @@ export interface ModuleSummary {
      */
   progress: number;
   status: string;
+  baseline?: BaselineModuleContract | null;
+  pathwayContract?: PathwayModuleContract | null;
 }

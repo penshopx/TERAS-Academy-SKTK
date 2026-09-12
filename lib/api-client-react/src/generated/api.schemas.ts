@@ -303,6 +303,14 @@ export interface ReadinessGateSummary {
   requirement: string;
 }
 
+export interface PathwayLearningContract {
+  assessment: string;
+  evidence: string;
+  output: string;
+  kpi: string;
+  portfolio: string;
+}
+
 export interface PathwaySummary {
   id: string;
   name: string;
@@ -310,8 +318,10 @@ export interface PathwaySummary {
   purpose: PathwaySummaryPurpose;
   outcome: string;
   moduleCount: number;
+  baselineModuleCount?: number;
   gateCount: number;
   gates: ReadinessGateSummary[];
+  contract?: PathwayLearningContract;
 }
 
 export type ReadinessSummaryStatus = typeof ReadinessSummaryStatus[keyof typeof ReadinessSummaryStatus];
@@ -341,6 +351,19 @@ export interface ReadinessEvidenceSnapshot {
   openCriticalGaps: string[];
 }
 
+export interface ReadinessContractRequirement {
+  id: string;
+  moduleId: string;
+  assessmentId: string;
+  evidenceRequirementId: string;
+  gateCode: string;
+  assessment: string;
+  evidence: string;
+  output: string;
+  kpi: string;
+  portfolio: string;
+}
+
 export interface GateProgress {
   id: string;
   code: string;
@@ -362,6 +385,8 @@ export interface GateProgress {
   competencyUnitId: string | null;
   /** @minimum 1 */
   ruleVersion: number;
+  blockers?: string[];
+  contracts?: ReadinessContractRequirement[];
 }
 
 export interface ReadinessSummary {
@@ -1727,6 +1752,27 @@ export interface ProgramSummary {
   status: string;
 }
 
+export interface BaselineModuleContract {
+  /** @pattern ^M(0[1-9]|10)$ */
+  code: string;
+  name: string;
+  learningOutcome: string;
+  /** @pattern ^E(0[1-9]|10)$ */
+  evidenceId: string;
+}
+
+export interface PathwayModuleContract {
+  pathwayId: string;
+  assessmentId: string;
+  evidenceRequirementId: string;
+  gateCode: string;
+  assessment: string;
+  evidence: string;
+  output: string;
+  kpi: string;
+  portfolio: string;
+}
+
 export interface ModuleSummary {
   id: string;
   code: string;
@@ -1740,6 +1786,8 @@ export interface ModuleSummary {
      */
   progress: number;
   status: string;
+  baseline?: BaselineModuleContract | null;
+  pathwayContract?: PathwayModuleContract | null;
 }
 
 export type ProgramDetail = ProgramSummary & {

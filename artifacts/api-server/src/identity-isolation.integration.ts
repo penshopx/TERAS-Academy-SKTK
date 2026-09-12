@@ -1,7 +1,9 @@
 import { createIntegrationTestApp } from "./integration-test-app";
 import {
   db, enrollmentsTable, evidenceReviewsTable, evidenceTable,
-  learningActivitiesTable, learningTransitionEventsTable, modulesTable,
+  enrollmentPathwayEventsTable, learningActivitiesTable, learningResourceProgressTable,
+  learningTransitionEventsTable, modulesTable,
+  activityCompletionEventsTable, outcomeVerificationEventsTable, readinessEventsTable,
   peopleTable, practiceTasksTable,
 } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
@@ -100,6 +102,12 @@ async function run() {
     }
   } finally {
     await db.delete(learningTransitionEventsTable).where(eq(learningTransitionEventsTable.id, transitionA));
+    await db.delete(enrollmentPathwayEventsTable).where(inArray(enrollmentPathwayEventsTable.enrollmentId, [enrollmentA, enrollmentB]));
+    await db.delete(learningResourceProgressTable).where(inArray(learningResourceProgressTable.enrollmentId, [enrollmentA, enrollmentB]));
+    await db.delete(activityCompletionEventsTable).where(inArray(activityCompletionEventsTable.enrollmentId, [enrollmentA, enrollmentB]));
+    await db.delete(outcomeVerificationEventsTable).where(inArray(outcomeVerificationEventsTable.enrollmentId, [enrollmentA, enrollmentB]));
+    await db.delete(readinessEventsTable).where(inArray(readinessEventsTable.enrollmentId, [enrollmentA, enrollmentB]));
+    await db.delete(learningTransitionEventsTable).where(inArray(learningTransitionEventsTable.enrollmentId, [enrollmentA, enrollmentB]));
     await db.delete(evidenceReviewsTable).where(inArray(evidenceReviewsTable.evidenceId, [evidenceA, evidenceB]));
     await db.delete(evidenceTable).where(inArray(evidenceTable.id, [evidenceA, evidenceB]));
     await db.delete(enrollmentsTable).where(inArray(enrollmentsTable.id, [enrollmentA, enrollmentB]));

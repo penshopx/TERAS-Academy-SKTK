@@ -57,6 +57,8 @@ export const GetProgramParams = zod.object({
 export const getProgramResponseTwoModulesItemProgressMin = 0;
 export const getProgramResponseTwoModulesItemProgressMax = 100;
 
+export const getProgramResponseTwoModulesItemBaselineOneCodeRegExp = new RegExp('^M(0[1-9]|10)$');
+export const getProgramResponseTwoModulesItemBaselineOneEvidenceIdRegExp = new RegExp('^E(0[1-9]|10)$');
 
 
 export const GetProgramResponse = zod.object({
@@ -76,6 +78,7 @@ export const GetProgramResponse = zod.object({
   "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
   "outcome": zod.string(),
   "moduleCount": zod.int(),
+  "baselineModuleCount": zod.int().optional(),
   "gateCount": zod.int(),
   "gates": zod.array(zod.object({
   "id": zod.string(),
@@ -83,7 +86,14 @@ export const GetProgramResponse = zod.object({
   "name": zod.string(),
   "sequence": zod.int(),
   "requirement": zod.string()
-}))
+})),
+  "contract": zod.object({
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+}).optional()
 })),
   "modules": zod.array(zod.object({
   "id": zod.string(),
@@ -93,7 +103,24 @@ export const GetProgramResponse = zod.object({
   "pathwayId": zod.string(),
   "evidence": zod.string(),
   "progress": zod.int().min(getProgramResponseTwoModulesItemProgressMin).max(getProgramResponseTwoModulesItemProgressMax),
-  "status": zod.string()
+  "status": zod.string(),
+  "baseline": zod.union([zod.object({
+  "code": zod.string().regex(getProgramResponseTwoModulesItemBaselineOneCodeRegExp),
+  "name": zod.string(),
+  "learningOutcome": zod.string(),
+  "evidenceId": zod.string().regex(getProgramResponseTwoModulesItemBaselineOneEvidenceIdRegExp)
+}),zod.null()]).optional(),
+  "pathwayContract": zod.union([zod.object({
+  "pathwayId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+}),zod.null()]).optional()
 }))
 }))
 
@@ -132,6 +159,8 @@ export const getLearnerDashboardResponseReadinessGatesItemThresholdMax = 100;
 export const getLearnerDashboardResponseCurrentLearningProgressMin = 0;
 export const getLearnerDashboardResponseCurrentLearningProgressMax = 100;
 
+export const getLearnerDashboardResponseCurrentLearningBaselineOneCodeRegExp = new RegExp('^M(0[1-9]|10)$');
+export const getLearnerDashboardResponseCurrentLearningBaselineOneEvidenceIdRegExp = new RegExp('^E(0[1-9]|10)$');
 
 
 export const GetLearnerDashboardResponse = zod.object({
@@ -159,6 +188,7 @@ export const GetLearnerDashboardResponse = zod.object({
   "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
   "outcome": zod.string(),
   "moduleCount": zod.int(),
+  "baselineModuleCount": zod.int().optional(),
   "gateCount": zod.int(),
   "gates": zod.array(zod.object({
   "id": zod.string(),
@@ -166,7 +196,14 @@ export const GetLearnerDashboardResponse = zod.object({
   "name": zod.string(),
   "sequence": zod.int(),
   "requirement": zod.string()
-}))
+})),
+  "contract": zod.object({
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+}).optional()
 }),
   "capabilityProgress": zod.int().min(getLearnerDashboardResponseCapabilityProgressMin).max(getLearnerDashboardResponseCapabilityProgressMax),
   "readiness": zod.object({
@@ -177,6 +214,7 @@ export const GetLearnerDashboardResponse = zod.object({
   "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
   "outcome": zod.string(),
   "moduleCount": zod.int(),
+  "baselineModuleCount": zod.int().optional(),
   "gateCount": zod.int(),
   "gates": zod.array(zod.object({
   "id": zod.string(),
@@ -184,7 +222,14 @@ export const GetLearnerDashboardResponse = zod.object({
   "name": zod.string(),
   "sequence": zod.int(),
   "requirement": zod.string()
-}))
+})),
+  "contract": zod.object({
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+}).optional()
 }),
   "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']),
   "score": zod.int().min(getLearnerDashboardResponseReadinessScoreMin).max(getLearnerDashboardResponseReadinessScoreMax),
@@ -214,7 +259,20 @@ export const GetLearnerDashboardResponse = zod.object({
   "threshold": zod.int().min(getLearnerDashboardResponseReadinessCurrentGateThresholdMin).max(getLearnerDashboardResponseReadinessCurrentGateThresholdMax),
   "hardGate": zod.boolean(),
   "competencyUnitId": zod.string().nullable(),
-  "ruleVersion": zod.int().min(1)
+  "ruleVersion": zod.int().min(1),
+  "blockers": zod.array(zod.string()).optional(),
+  "contracts": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+})).optional()
 }),
   "nextGate": zod.union([zod.object({
   "id": zod.string(),
@@ -226,7 +284,20 @@ export const GetLearnerDashboardResponse = zod.object({
   "threshold": zod.int().min(getLearnerDashboardResponseReadinessNextGateOneThresholdMin).max(getLearnerDashboardResponseReadinessNextGateOneThresholdMax),
   "hardGate": zod.boolean(),
   "competencyUnitId": zod.string().nullable(),
-  "ruleVersion": zod.int().min(1)
+  "ruleVersion": zod.int().min(1),
+  "blockers": zod.array(zod.string()).optional(),
+  "contracts": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+})).optional()
 }),zod.null()]),
   "gates": zod.array(zod.object({
   "id": zod.string(),
@@ -238,7 +309,20 @@ export const GetLearnerDashboardResponse = zod.object({
   "threshold": zod.int().min(getLearnerDashboardResponseReadinessGatesItemThresholdMin).max(getLearnerDashboardResponseReadinessGatesItemThresholdMax),
   "hardGate": zod.boolean(),
   "competencyUnitId": zod.string().nullable(),
-  "ruleVersion": zod.int().min(1)
+  "ruleVersion": zod.int().min(1),
+  "blockers": zod.array(zod.string()).optional(),
+  "contracts": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+})).optional()
 })),
   "blockers": zod.array(zod.string()),
   "outstandingGapCount": zod.int(),
@@ -252,7 +336,24 @@ export const GetLearnerDashboardResponse = zod.object({
   "pathwayId": zod.string(),
   "evidence": zod.string(),
   "progress": zod.int().min(getLearnerDashboardResponseCurrentLearningProgressMin).max(getLearnerDashboardResponseCurrentLearningProgressMax),
-  "status": zod.string()
+  "status": zod.string(),
+  "baseline": zod.union([zod.object({
+  "code": zod.string().regex(getLearnerDashboardResponseCurrentLearningBaselineOneCodeRegExp),
+  "name": zod.string(),
+  "learningOutcome": zod.string(),
+  "evidenceId": zod.string().regex(getLearnerDashboardResponseCurrentLearningBaselineOneEvidenceIdRegExp)
+}),zod.null()]).optional(),
+  "pathwayContract": zod.union([zod.object({
+  "pathwayId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+}),zod.null()]).optional()
 }),
   "currentPractice": zod.object({
   "id": zod.string(),
@@ -316,6 +417,7 @@ export const SelectLearnerPathwayResponse = zod.object({
   "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
   "outcome": zod.string(),
   "moduleCount": zod.int(),
+  "baselineModuleCount": zod.int().optional(),
   "gateCount": zod.int(),
   "gates": zod.array(zod.object({
   "id": zod.string(),
@@ -323,7 +425,14 @@ export const SelectLearnerPathwayResponse = zod.object({
   "name": zod.string(),
   "sequence": zod.int(),
   "requirement": zod.string()
-}))
+})),
+  "contract": zod.object({
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+}).optional()
 }),
   "programId": zod.string(),
   "selectedAt": zod.coerce.date()
@@ -352,6 +461,8 @@ export const GetLearnerJourneyResponse = zod.array(GetLearnerJourneyResponseItem
 export const getLearnerLearningPlanResponseModuleProgressMin = 0;
 export const getLearnerLearningPlanResponseModuleProgressMax = 100;
 
+export const getLearnerLearningPlanResponseModuleBaselineOneCodeRegExp = new RegExp('^M(0[1-9]|10)$');
+export const getLearnerLearningPlanResponseModuleBaselineOneEvidenceIdRegExp = new RegExp('^E(0[1-9]|10)$');
 
 
 export const GetLearnerLearningPlanResponseItem = zod.object({
@@ -364,7 +475,24 @@ export const GetLearnerLearningPlanResponseItem = zod.object({
   "pathwayId": zod.string(),
   "evidence": zod.string(),
   "progress": zod.int().min(getLearnerLearningPlanResponseModuleProgressMin).max(getLearnerLearningPlanResponseModuleProgressMax),
-  "status": zod.string()
+  "status": zod.string(),
+  "baseline": zod.union([zod.object({
+  "code": zod.string().regex(getLearnerLearningPlanResponseModuleBaselineOneCodeRegExp),
+  "name": zod.string(),
+  "learningOutcome": zod.string(),
+  "evidenceId": zod.string().regex(getLearnerLearningPlanResponseModuleBaselineOneEvidenceIdRegExp)
+}),zod.null()]).optional(),
+  "pathwayContract": zod.union([zod.object({
+  "pathwayId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+}),zod.null()]).optional()
 }),
   "priority": zod.string(),
   "reason": zod.string(),
@@ -384,6 +512,8 @@ export const GetModuleParams = zod.object({
 export const getModuleResponseModuleProgressMin = 0;
 export const getModuleResponseModuleProgressMax = 100;
 
+export const getModuleResponseModuleBaselineOneCodeRegExp = new RegExp('^M(0[1-9]|10)$');
+export const getModuleResponseModuleBaselineOneEvidenceIdRegExp = new RegExp('^E(0[1-9]|10)$');
 export const getModuleResponseAssessmentScoreMin = 0;
 export const getModuleResponseAssessmentScoreMax = 100;
 
@@ -398,7 +528,24 @@ export const GetModuleResponse = zod.object({
   "pathwayId": zod.string(),
   "evidence": zod.string(),
   "progress": zod.int().min(getModuleResponseModuleProgressMin).max(getModuleResponseModuleProgressMax),
-  "status": zod.string()
+  "status": zod.string(),
+  "baseline": zod.union([zod.object({
+  "code": zod.string().regex(getModuleResponseModuleBaselineOneCodeRegExp),
+  "name": zod.string(),
+  "learningOutcome": zod.string(),
+  "evidenceId": zod.string().regex(getModuleResponseModuleBaselineOneEvidenceIdRegExp)
+}),zod.null()]).optional(),
+  "pathwayContract": zod.union([zod.object({
+  "pathwayId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+}),zod.null()]).optional()
 }),
   "learningOutcomes": zod.array(zod.string()),
   "theory": zod.array(zod.string()),
@@ -777,6 +924,7 @@ export const GetLearnerReadinessResponse = zod.object({
   "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
   "outcome": zod.string(),
   "moduleCount": zod.int(),
+  "baselineModuleCount": zod.int().optional(),
   "gateCount": zod.int(),
   "gates": zod.array(zod.object({
   "id": zod.string(),
@@ -784,7 +932,14 @@ export const GetLearnerReadinessResponse = zod.object({
   "name": zod.string(),
   "sequence": zod.int(),
   "requirement": zod.string()
-}))
+})),
+  "contract": zod.object({
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+}).optional()
 }),
   "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']),
   "score": zod.int().min(getLearnerReadinessResponseScoreMin).max(getLearnerReadinessResponseScoreMax),
@@ -814,7 +969,20 @@ export const GetLearnerReadinessResponse = zod.object({
   "threshold": zod.int().min(getLearnerReadinessResponseCurrentGateThresholdMin).max(getLearnerReadinessResponseCurrentGateThresholdMax),
   "hardGate": zod.boolean(),
   "competencyUnitId": zod.string().nullable(),
-  "ruleVersion": zod.int().min(1)
+  "ruleVersion": zod.int().min(1),
+  "blockers": zod.array(zod.string()).optional(),
+  "contracts": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+})).optional()
 }),
   "nextGate": zod.union([zod.object({
   "id": zod.string(),
@@ -826,7 +994,20 @@ export const GetLearnerReadinessResponse = zod.object({
   "threshold": zod.int().min(getLearnerReadinessResponseNextGateOneThresholdMin).max(getLearnerReadinessResponseNextGateOneThresholdMax),
   "hardGate": zod.boolean(),
   "competencyUnitId": zod.string().nullable(),
-  "ruleVersion": zod.int().min(1)
+  "ruleVersion": zod.int().min(1),
+  "blockers": zod.array(zod.string()).optional(),
+  "contracts": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+})).optional()
 }),zod.null()]),
   "gates": zod.array(zod.object({
   "id": zod.string(),
@@ -838,7 +1019,20 @@ export const GetLearnerReadinessResponse = zod.object({
   "threshold": zod.int().min(getLearnerReadinessResponseGatesItemThresholdMin).max(getLearnerReadinessResponseGatesItemThresholdMax),
   "hardGate": zod.boolean(),
   "competencyUnitId": zod.string().nullable(),
-  "ruleVersion": zod.int().min(1)
+  "ruleVersion": zod.int().min(1),
+  "blockers": zod.array(zod.string()).optional(),
+  "contracts": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+})).optional()
 })),
   "blockers": zod.array(zod.string()),
   "outstandingGapCount": zod.int(),
@@ -1150,6 +1344,7 @@ export const GetReadinessMapResponse = zod.object({
   "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
   "outcome": zod.string(),
   "moduleCount": zod.int(),
+  "baselineModuleCount": zod.int().optional(),
   "gateCount": zod.int(),
   "gates": zod.array(zod.object({
   "id": zod.string(),
@@ -1157,7 +1352,14 @@ export const GetReadinessMapResponse = zod.object({
   "name": zod.string(),
   "sequence": zod.int(),
   "requirement": zod.string()
-}))
+})),
+  "contract": zod.object({
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+}).optional()
 }),
   "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']),
   "score": zod.int().min(getReadinessMapResponseReadinessScoreMin).max(getReadinessMapResponseReadinessScoreMax),
@@ -1187,7 +1389,20 @@ export const GetReadinessMapResponse = zod.object({
   "threshold": zod.int().min(getReadinessMapResponseReadinessCurrentGateThresholdMin).max(getReadinessMapResponseReadinessCurrentGateThresholdMax),
   "hardGate": zod.boolean(),
   "competencyUnitId": zod.string().nullable(),
-  "ruleVersion": zod.int().min(1)
+  "ruleVersion": zod.int().min(1),
+  "blockers": zod.array(zod.string()).optional(),
+  "contracts": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+})).optional()
 }),
   "nextGate": zod.union([zod.object({
   "id": zod.string(),
@@ -1199,7 +1414,20 @@ export const GetReadinessMapResponse = zod.object({
   "threshold": zod.int().min(getReadinessMapResponseReadinessNextGateOneThresholdMin).max(getReadinessMapResponseReadinessNextGateOneThresholdMax),
   "hardGate": zod.boolean(),
   "competencyUnitId": zod.string().nullable(),
-  "ruleVersion": zod.int().min(1)
+  "ruleVersion": zod.int().min(1),
+  "blockers": zod.array(zod.string()).optional(),
+  "contracts": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+})).optional()
 }),zod.null()]),
   "gates": zod.array(zod.object({
   "id": zod.string(),
@@ -1211,7 +1439,20 @@ export const GetReadinessMapResponse = zod.object({
   "threshold": zod.int().min(getReadinessMapResponseReadinessGatesItemThresholdMin).max(getReadinessMapResponseReadinessGatesItemThresholdMax),
   "hardGate": zod.boolean(),
   "competencyUnitId": zod.string().nullable(),
-  "ruleVersion": zod.int().min(1)
+  "ruleVersion": zod.int().min(1),
+  "blockers": zod.array(zod.string()).optional(),
+  "contracts": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+})).optional()
 })),
   "blockers": zod.array(zod.string()),
   "outstandingGapCount": zod.int(),
@@ -1265,6 +1506,7 @@ export const GetCapabilityPassportResponse = zod.object({
   "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
   "outcome": zod.string(),
   "moduleCount": zod.int(),
+  "baselineModuleCount": zod.int().optional(),
   "gateCount": zod.int(),
   "gates": zod.array(zod.object({
   "id": zod.string(),
@@ -1272,7 +1514,14 @@ export const GetCapabilityPassportResponse = zod.object({
   "name": zod.string(),
   "sequence": zod.int(),
   "requirement": zod.string()
-}))
+})),
+  "contract": zod.object({
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+}).optional()
 }),
   "headline": zod.string(),
   "subtitle": zod.string(),
@@ -1285,6 +1534,7 @@ export const GetCapabilityPassportResponse = zod.object({
   "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
   "outcome": zod.string(),
   "moduleCount": zod.int(),
+  "baselineModuleCount": zod.int().optional(),
   "gateCount": zod.int(),
   "gates": zod.array(zod.object({
   "id": zod.string(),
@@ -1292,7 +1542,14 @@ export const GetCapabilityPassportResponse = zod.object({
   "name": zod.string(),
   "sequence": zod.int(),
   "requirement": zod.string()
-}))
+})),
+  "contract": zod.object({
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+}).optional()
 }),
   "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']),
   "score": zod.int().min(getCapabilityPassportResponseReadinessScoreMin).max(getCapabilityPassportResponseReadinessScoreMax),
@@ -1322,7 +1579,20 @@ export const GetCapabilityPassportResponse = zod.object({
   "threshold": zod.int().min(getCapabilityPassportResponseReadinessCurrentGateThresholdMin).max(getCapabilityPassportResponseReadinessCurrentGateThresholdMax),
   "hardGate": zod.boolean(),
   "competencyUnitId": zod.string().nullable(),
-  "ruleVersion": zod.int().min(1)
+  "ruleVersion": zod.int().min(1),
+  "blockers": zod.array(zod.string()).optional(),
+  "contracts": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+})).optional()
 }),
   "nextGate": zod.union([zod.object({
   "id": zod.string(),
@@ -1334,7 +1604,20 @@ export const GetCapabilityPassportResponse = zod.object({
   "threshold": zod.int().min(getCapabilityPassportResponseReadinessNextGateOneThresholdMin).max(getCapabilityPassportResponseReadinessNextGateOneThresholdMax),
   "hardGate": zod.boolean(),
   "competencyUnitId": zod.string().nullable(),
-  "ruleVersion": zod.int().min(1)
+  "ruleVersion": zod.int().min(1),
+  "blockers": zod.array(zod.string()).optional(),
+  "contracts": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+})).optional()
 }),zod.null()]),
   "gates": zod.array(zod.object({
   "id": zod.string(),
@@ -1346,7 +1629,20 @@ export const GetCapabilityPassportResponse = zod.object({
   "threshold": zod.int().min(getCapabilityPassportResponseReadinessGatesItemThresholdMin).max(getCapabilityPassportResponseReadinessGatesItemThresholdMax),
   "hardGate": zod.boolean(),
   "competencyUnitId": zod.string().nullable(),
-  "ruleVersion": zod.int().min(1)
+  "ruleVersion": zod.int().min(1),
+  "blockers": zod.array(zod.string()).optional(),
+  "contracts": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+})).optional()
 })),
   "blockers": zod.array(zod.string()),
   "outstandingGapCount": zod.int(),
