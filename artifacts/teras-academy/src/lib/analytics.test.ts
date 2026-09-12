@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  evaluateReadinessAuditExportAlerts,
+  readReadinessAuditExportAggregates,
   trackLearningAction,
   trackReadinessAuditExport,
   trackReadinessDecisionRecorded,
@@ -12,10 +14,10 @@ type TestUmami = {
   track(name: string, data?: Record<string, string | number | boolean>): void;
 };
 
-function setTestWindow(umami?: TestUmami): void {
+function setTestWindow(umami?: TestUmami, extras: Record<string, unknown> = {}): void {
   Object.defineProperty(globalThis, "window", {
     configurable: true,
-    value: { umami },
+    value: { umami, ...extras },
   });
 }
 
@@ -151,6 +153,44 @@ test("dispatches only export outcome and numeric record count", () => {
     { name: "readiness_audit_export", data: { outcome: "cancelled", record_count: 12 } },
     { name: "readiness_audit_export", data: { outcome: "failed", record_count: 4 } },
   ]);
+});
+
+test("alerts only when a large-export group meets sample and failure thresholds", async () => {
+  const alerts = evaluateReadinessAuditExportAlerts([
+    { periodStart: "2026-09-06", periodEnd: "2026-09-12", recordGroup: "1.000–4.999 record", outcome: "succeeded", count: 3 },
+    { periodStart: "2026-09-06", periodEnd: "2026-09-12", recordGroup: "1.000–4.999 record", outcome: "failed", count: 2 },
+    { periodStart: "2026-09-12", periodEnd: "2026-09-12", recordGroup: "5.000–9.999 record", outcome: "failed", count: 1 },
+  ]);
+
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].recordGroup, "1.000–4.999 record");
+  assert.equal(alerts[0].sampleSize, 5);
+  assert.equal(alerts[0].failureRatio, 0.4);
+  assert.match(alerts[0].explanation, /2 dari 5/);
+});
+
+test("aggregates repeated known-large pre-header failures but excludes small exports", () => {
+  const values = new Map<string, string>();
+  setTestWindow(undefined, {
+    localStorage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    },
+    dispatchEvent: () => true,
+  });
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    trackReadinessAuditExport("failed", 1_500);
+    trackReadinessAuditExport("failed", 20);
+  }
+
+  const aggregates = readReadinessAuditExportAggregates(undefined, new Date());
+  const alerts = evaluateReadinessAuditExportAlerts(aggregates);
+  assert.equal(aggregates.length, 1);
+  assert.equal(aggregates[0].recordGroup, "1.000–4.999 record");
+  assert.equal(aggregates[0].count, 5);
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].failureRatio, 1);
 });
 
 test("remains a safe no-op when the injected tracker is unavailable", () => {

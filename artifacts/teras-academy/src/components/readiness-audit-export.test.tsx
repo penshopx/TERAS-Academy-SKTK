@@ -219,6 +219,20 @@ test("readiness export runner keeps successful and failed outcomes explicit", as
   assert.match(failure.status === "failed" ? String(failure.error) : "", /Jaringan terputus/);
 });
 
+test("readiness export runner preserves known size when failure occurs before response headers", async () => {
+  const result = await runReadinessAuditExport({
+    controller: new AbortController(),
+    initialRecordCount: 1_500,
+    request: async () => { throw new Error("network unavailable"); },
+    download: () => ({ checksum: "" }),
+    onRecordCount: () => undefined,
+    onLoadedBytes: () => undefined,
+  });
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.recordCount, 1_500);
+});
+
 test("custom fetch exposes response headers before reporting each streamed chunk", async () => {
   const originalFetch = globalThis.fetch;
   const encoder = new TextEncoder();
