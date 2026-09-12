@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import pg from "pg";
 import {
@@ -11,6 +14,25 @@ const { Client } = pg;
 const databaseUrl = process.env.DATABASE_URL;
 const schemaPrefix = "schema_runner_test";
 const staleSchemaAgeMs = 60 * 60 * 1000;
+const setupFixture = "./src/fixtures/integration-schema-runner-setup.fixture.ts";
+const afterSetupFixture = "./src/fixtures/integration-schema-runner-after-setup.fixture.ts";
+
+async function withMarkerFile(run: (markerFile: string) => Promise<void>) {
+  const directory = await mkdtemp(join(tmpdir(), "schema-runner-contract-"));
+  const markerFile = join(directory, "execution-order.txt");
+  const previousMarkerFile = process.env.SCHEMA_RUNNER_MARKER_FILE;
+  process.env.SCHEMA_RUNNER_MARKER_FILE = markerFile;
+  try {
+    await run(markerFile);
+  } finally {
+    if (previousMarkerFile === undefined) {
+      delete process.env.SCHEMA_RUNNER_MARKER_FILE;
+    } else {
+      process.env.SCHEMA_RUNNER_MARKER_FILE = previousMarkerFile;
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
+}
 
 function schemaName(label: string) {
   return `${schemaPrefix}_${label}_${crypto.randomUUID().replaceAll("-", "")}`;
@@ -122,4 +144,58 @@ test("a normally failing child command still removes its empty disposable schema
     await client.query(`DROP TABLE IF EXISTS public.${publicTable}`);
     await client.end();
   }
+});
+
+test("setup receives the disposable DATABASE_URL and extra environment before the test file runs", {
+  skip: !databaseUrl,
+}, async () => {
+  await withMarkerFile(async (markerFile) => {
+    await runIsolatedIntegrationTest({
+      schemaPrefix: "schema_runner_setup",
+      testFile: afterSetupFixture,
+      setupCommand: [
+        "pnpm",
+        "--filter",
+        "@workspace/api-server",
+        "exec",
+        "tsx",
+        setupFixture,
+      ],
+      setupEnvironment: {
+        SCHEMA_RUNNER_EXPECTED_ENV: "setup-environment-value",
+        DATABASE_URL: "postgres://must-not-override-disposable-schema.invalid/test",
+        NODE_ENV: "must-not-override-test",
+      },
+    });
+
+    assert.equal(await readFile(markerFile, "utf8"), "setup\ntest\n");
+  });
+});
+
+test("a failing setup command prevents the test file from running", {
+  skip: !databaseUrl,
+}, async () => {
+  await withMarkerFile(async (markerFile) => {
+    await assert.rejects(
+      runIsolatedIntegrationTest({
+        schemaPrefix: "schema_runner_setup",
+        testFile: afterSetupFixture,
+        setupCommand: [
+          "pnpm",
+          "--filter",
+          "@workspace/api-server",
+          "exec",
+          "tsx",
+          setupFixture,
+        ],
+        setupEnvironment: {
+          SCHEMA_RUNNER_EXPECTED_ENV: "setup-environment-value",
+          SCHEMA_RUNNER_SETUP_SHOULD_FAIL: "true",
+        },
+      }),
+      /failed with exit code 1/,
+    );
+
+    assert.equal(await readFile(markerFile, "utf8"), "setup\n");
+  });
 });

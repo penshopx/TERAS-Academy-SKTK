@@ -208,9 +208,9 @@ async function runCommand(
       cwd: process.cwd(),
       env: {
         ...process.env,
+        ...extraEnvironment,
         NODE_ENV: "test",
         DATABASE_URL: databaseUrl,
-        ...extraEnvironment,
       },
       stdio: "inherit",
     },
