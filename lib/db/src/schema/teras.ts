@@ -84,6 +84,7 @@ export const assessmentCriteriaTable = pgTable("teras_assessment_criteria", {
   code: text("code").notNull(), label: text("label").notNull(), layer: text("layer").notNull(),
   critical: boolean("critical").notNull().default(false), ...audit,
 });
+/** Original enrollment assignment; later pathway selections are append-only events. */
 export const enrollmentsTable = pgTable("teras_enrollments", {
   id: text("id").primaryKey(), learnerId: text("learner_id").notNull().references(() => peopleTable.id),
   programId: text("program_id").notNull().references(() => programsTable.id),
@@ -207,6 +208,7 @@ export const readinessGatesTable = pgTable("teras_readiness_gates", {
   active: boolean("active").notNull().default(true), ...audit,
 }, table => [
   check("teras_readiness_gates_threshold_check", sql`${table.threshold} BETWEEN 0 AND 100`),
+  unique("teras_readiness_gates_id_pathway_unique").on(table.id, table.pathwayId),
   uniqueIndex("teras_readiness_gates_rule_version_unique").on(table.pathwayId, table.code, table.ruleVersion),
   uniqueIndex("teras_readiness_gates_one_active_unique")
     .on(table.pathwayId, table.code)
@@ -227,6 +229,11 @@ export const readinessEventsTable = pgTable("teras_readiness_events", {
   ...audit,
 }, table => [
   check("teras_readiness_events_status_check", sql`${table.status} IN ('Not Ready', 'Developing', 'Ready for Official Assessment')`),
+  foreignKey({
+    columns: [table.gateId, table.pathwayId],
+    foreignColumns: [readinessGatesTable.id, readinessGatesTable.pathwayId],
+    name: "teras_readiness_events_gate_pathway_fk",
+  }),
   index("teras_readiness_events_evaluated_at_idx").on(table.evaluatedAt, table.id),
   index("teras_readiness_events_enrollment_evaluated_idx").on(table.enrollmentId, table.evaluatedAt, table.id),
   index("teras_readiness_events_pathway_evaluated_idx").on(table.pathwayId, table.evaluatedAt, table.id),

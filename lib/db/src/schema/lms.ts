@@ -8,6 +8,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -107,6 +108,7 @@ export const learningActivitiesTable = pgTable("teras_learning_activities", {
 }, table => [
   uniqueIndex("teras_learning_activities_lesson_sequence_unique").on(table.lessonId, table.sequence),
   uniqueIndex("teras_learning_activities_id_pathway_unique").on(table.id, table.pathwayId),
+  unique("teras_learning_activities_id_program_pathway_unique").on(table.id, table.programId, table.pathwayId),
 ]);
 
 export const contentResourcesTable = pgTable("teras_content_resources", {
@@ -205,6 +207,7 @@ export const learningOutcomesTable = pgTable("teras_learning_outcomes", {
 }, table => [
   uniqueIndex("teras_learning_outcomes_activity_description_unique").on(table.activityId, table.description),
   uniqueIndex("teras_learning_outcomes_activity_sequence_unique").on(table.activityId, table.sequence),
+  unique("teras_learning_outcomes_id_activity_unique").on(table.id, table.activityId),
 ]);
 
 export const activityCompletionEventsTable = pgTable("teras_activity_completion_events", {
@@ -222,6 +225,11 @@ export const activityCompletionEventsTable = pgTable("teras_activity_completion_
     columns: [table.enrollmentId, table.learnerId],
     foreignColumns: [enrollmentsTable.id, enrollmentsTable.learnerId],
     name: "teras_activity_completion_enrollment_learner_fk",
+  }),
+  foreignKey({
+    columns: [table.activityId, table.pathwayId],
+    foreignColumns: [learningActivitiesTable.id, learningActivitiesTable.pathwayId],
+    name: "teras_activity_completion_activity_pathway_fk",
   }),
   index("teras_activity_completion_lookup_idx").on(table.activityId, table.learnerId, table.pathwayId, table.createdAt),
 ]);
@@ -243,6 +251,16 @@ export const outcomeVerificationEventsTable = pgTable("teras_outcome_verificatio
     columns: [table.enrollmentId, table.learnerId],
     foreignColumns: [enrollmentsTable.id, enrollmentsTable.learnerId],
     name: "teras_outcome_verification_enrollment_learner_fk",
+  }),
+  foreignKey({
+    columns: [table.activityId, table.pathwayId],
+    foreignColumns: [learningActivitiesTable.id, learningActivitiesTable.pathwayId],
+    name: "teras_outcome_verification_activity_pathway_fk",
+  }),
+  foreignKey({
+    columns: [table.outcomeId, table.activityId],
+    foreignColumns: [learningOutcomesTable.id, learningOutcomesTable.activityId],
+    name: "teras_outcome_verification_outcome_activity_fk",
   }),
   index("teras_outcome_verification_lookup_idx").on(table.outcomeId, table.learnerId, table.pathwayId, table.createdAt),
 ]);
@@ -303,6 +321,11 @@ export const readinessTransferEventsTable = pgTable("teras_readiness_transfer_ev
     foreignColumns: [enrollmentsTable.id, enrollmentsTable.learnerId],
     name: "teras_readiness_transfer_enrollment_learner_fk",
   }),
+  foreignKey({
+    columns: [table.enrollmentId, table.programId],
+    foreignColumns: [enrollmentsTable.id, enrollmentsTable.programId],
+    name: "teras_readiness_transfer_enrollment_program_fk",
+  }),
   index("teras_readiness_transfer_lookup_idx").on(table.learnerId, table.pathwayId, table.createdAt),
 ]);
 
@@ -327,6 +350,16 @@ export const learningTransitionEventsTable = pgTable("teras_learning_transition_
     columns: [table.enrollmentId, table.learnerId],
     foreignColumns: [enrollmentsTable.id, enrollmentsTable.learnerId],
     name: "teras_learning_transition_enrollment_learner_fk",
+  }),
+  foreignKey({
+    columns: [table.enrollmentId, table.programId],
+    foreignColumns: [enrollmentsTable.id, enrollmentsTable.programId],
+    name: "teras_learning_transition_enrollment_program_fk",
+  }),
+  foreignKey({
+    columns: [table.activityId, table.programId, table.pathwayId],
+    foreignColumns: [learningActivitiesTable.id, learningActivitiesTable.programId, learningActivitiesTable.pathwayId],
+    name: "teras_learning_transition_activity_context_fk",
   }),
   uniqueIndex("teras_learning_transition_idempotency_unique").on(table.idempotencyKey),
   index("teras_learning_transition_state_lookup_idx").on(table.activityId, table.learnerId, table.pathwayId, table.createdAt),
