@@ -129,6 +129,22 @@ WHERE e.baseline_version_id IS NULL
     JOIN teras_baseline_modules bm ON bm.id = ps.baseline_module_id
     WHERE ps.pathway_id = e.pathway_id AND bm.baseline_id = b.id
   );
+-- This is a one-time metadata backfill for rows that predate version pins.
+-- The history guard rejects every UPDATE by design, so suspend only that
+-- trigger inside this transaction and restore it immediately afterward.
+-- PostgreSQL rolls the trigger state back as well if any statement fails.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgrelid = 'teras_enrollment_pathway_events'::regclass
+      AND tgname = 'teras_enrollment_pathway_history_guard'
+      AND NOT tgisinternal
+  ) THEN
+    ALTER TABLE teras_enrollment_pathway_events
+      DISABLE TRIGGER teras_enrollment_pathway_history_guard;
+  END IF;
+END $$;
 UPDATE teras_enrollment_pathway_events e
 SET baseline_version_id = v.id
 FROM teras_learning_baseline_versions v
@@ -139,6 +155,18 @@ WHERE e.baseline_version_id IS NULL
     v.snapshot -> 'selections' @> jsonb_build_array(jsonb_build_object('pathway_id', e.pathway_id))
     OR v.snapshot -> 'selections' @> jsonb_build_array(jsonb_build_object('pathwayId', e.pathway_id))
   );
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgrelid = 'teras_enrollment_pathway_events'::regclass
+      AND tgname = 'teras_enrollment_pathway_history_guard'
+      AND NOT tgisinternal
+  ) THEN
+    ALTER TABLE teras_enrollment_pathway_events
+      ENABLE TRIGGER teras_enrollment_pathway_history_guard;
+  END IF;
+END $$;
 -- Events that do not belong to the active snapshot's pathway remain unpinned
 -- rather than inheriting the enrollment's original-pathway pin. This preserves
 -- the event's own pathway semantics for a later explicit backfill.

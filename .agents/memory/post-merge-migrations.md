@@ -22,3 +22,9 @@ Never infer missing ownership or pathway history for real learner records during
 **Why:** Absence of history does not prove that a mismatched event represents a legitimate transition; broad inference can silently turn corrupt learner data into apparently valid audit history.
 
 **How to apply:** Keep validation fail-closed for ordinary enrollments. Scope any automatic reconstruction to an explicit fixture identity, preserve source events, and prove both recovery and rejection behavior in isolated tests.
+
+Isolated fixtures that seed baseline catalogue rows after cloning or creating a schema must run baseline-version materialization after the seed. Handcrafted migration fixtures must also include additive columns expected by the current Drizzle schema.
+
+**Why:** Schema-only isolation copies structure but not published baseline rows. Once enrollment and pathway selection require immutable version pins, a successful catalogue seed alone still leaves those flows without an applicable published version.
+
+**How to apply:** Preserve production's fail-closed behavior. Fix each isolated setup by ordering schema creation → catalogue seed → idempotent version materialization, rather than adding an application fallback for unversioned baselines.

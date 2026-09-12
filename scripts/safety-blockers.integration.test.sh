@@ -1,7 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cleanup-diagnostics.sh"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$repo_root/scripts/cleanup-diagnostics.sh"
 
 : "${DATABASE_URL:?DATABASE_URL must be set}"
 
@@ -55,6 +56,9 @@ fi
 
 DATABASE_URL="$test_database_url" NODE_ENV=test TERAS_ENABLE_DEMO_FIXTURES=1 \
   pnpm --filter @workspace/scripts exec tsx ./src/seed.ts --demo
+DATABASE_URL="$test_database_url" \
+  psql "$test_database_url" -v ON_ERROR_STOP=1 \
+    -f "$repo_root/lib/db/migrations/0039_baseline_versioned_publishing.sql"
 
 DATABASE_URL="$test_database_url" NODE_ENV=test \
   pnpm --filter @workspace/api-server exec tsx ./src/safety-blockers.integration.ts

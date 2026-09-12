@@ -68,6 +68,8 @@ SQL
 
 export PGOPTIONS="-c search_path=$schema"
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f lib/db/migrations/0034_solar_pv_shared_learning_baseline.sql >/dev/null
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -c "ALTER TABLE teras_learning_baselines ADD COLUMN IF NOT EXISTS published_version_id text" >/dev/null
 pnpm --filter @workspace/scripts run seed -- --baseline-only >/dev/null
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f lib/db/migrations/0034_solar_pv_shared_learning_baseline.sql >/dev/null
 

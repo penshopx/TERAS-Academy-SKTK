@@ -1,5 +1,5 @@
 import { createIntegrationTestApp } from "./integration-test-app";
-import { adminAccessRequestsTable, adminAuditEventsTable, cohortsTable, db, enrollmentsTable, pathwaysTable, peopleTable, personRolesTable, programsTable, readinessGatesTable } from "@workspace/db";
+import { adminAccessRequestsTable, adminAuditEventsTable, cohortsTable, db, enrollmentsTable, learningBaselinesTable, learningBaselineVersionsTable, pathwaysTable, peopleTable, personRolesTable, programsTable, readinessGatesTable } from "@workspace/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { updateManagedUser } from "@workspace/db/admin-membership";
 import type { TestAuthorizationIdentity } from "./lib/authorization";
@@ -15,6 +15,8 @@ const ids = {
   enrollment: `admin-enrollment-${suffix}`,
 };
 const readinessCode = `CONCURRENT-${suffix}`;
+const baselineId = `admin-baseline-${suffix}`;
+const baselineVersionId = `admin-baseline-version-${suffix}`;
 const readinessAdminSubjects = [`readiness-admin-a-${suffix}`, `readiness-admin-b-${suffix}`] as const;
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 async function run() {
@@ -118,6 +120,32 @@ async function run() {
       response = await request("/admin/pathways", { id, programId, name: "Managed Pathway", type: "Standard", outcome: "Safe completion", status: "active" });
       assert(response.status === 201, `Pathway create failed: ${await response.text()}`);
     }
+    await db.insert(learningBaselinesTable).values({
+      id: baselineId,
+      code: `ADMIN-${suffix}`,
+      name: "Admin enrollment integration baseline",
+      description: "Published fixture required by enrollment version pinning",
+      createdBy: "admin-management-integration",
+    });
+    await db.insert(learningBaselineVersionsTable).values({
+      id: baselineVersionId,
+      baselineId,
+      version: 1,
+      status: "DRAFT",
+      snapshot: {
+        baseline: { id: baselineId },
+        modules: [],
+        selections: [{ pathwayId: ids.pathway, baselineModuleId: "admin-fixture-module" }],
+      },
+      createdBy: "admin-management-integration",
+    });
+    await db.update(learningBaselineVersionsTable).set({
+      status: "PUBLISHED",
+      publishedAt: new Date(),
+      publishedBy: "admin-management-integration",
+    }).where(eq(learningBaselineVersionsTable.id, baselineVersionId));
+    await db.update(learningBaselinesTable).set({ publishedVersionId: baselineVersionId })
+      .where(eq(learningBaselinesTable.id, baselineId));
     const readinessRule = {
       programId: ids.program,
       pathwayId: ids.pathway,
