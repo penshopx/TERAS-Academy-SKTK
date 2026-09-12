@@ -37,3 +37,4 @@
 - [Drizzle empty database tests](drizzle-empty-database-tests.md) — clean-bootstrap tests need a disposable database because Drizzle 0.31 introspects public despite search_path.
 - [Post-lock snapshots](post-lock-snapshots.md) — read mutable audit context in a new statement after a contended row lock so READ COMMITTED sees the winner.
 - [Baseline publish and pin coordination](baseline-publish-pin-coordination.md) — baseline publication and learner version pinning must share one transaction lock.
+- [Historical diagnostic provenance](historical-diagnostic-provenance.md) — reconstruct only complete response chains; report unresolved legacy projections instead of inventing sources.

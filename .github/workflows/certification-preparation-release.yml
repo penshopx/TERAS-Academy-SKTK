@@ -114,6 +114,11 @@ jobs:
       - name: Install Chromium for admin access gate
         run: pnpm run setup:browser-admin-access
 
+      - name: Verify diagnostic provenance upgrade
+        run: |
+          pnpm --filter @workspace/scripts run test:diagnostic-provenance
+          pnpm --filter @workspace/scripts run test:diagnostic-provenance-upgrade
+
       - name: Run certification-preparation release gate
         env:
           TERAS_GATE_CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}

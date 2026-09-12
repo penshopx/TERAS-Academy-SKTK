@@ -74,6 +74,30 @@ BEGIN
     RAISE EXCEPTION 'Critical TERAS runtime constraints are missing';
   END IF;
 
+  IF to_regclass('public.teras_diagnostic_provenance_exceptions') IS NULL
+    OR EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conname IN (
+        'teras_diagnostic_profiles_provenance_check',
+        'teras_diagnostic_profile_items_provenance_check',
+        'teras_diagnostic_gaps_provenance_check'
+      )
+        AND NOT convalidated
+    )
+    OR (
+      SELECT count(*)
+      FROM pg_constraint
+      WHERE conname IN (
+        'teras_diagnostic_profiles_provenance_check',
+        'teras_diagnostic_profile_items_provenance_check',
+        'teras_diagnostic_gaps_provenance_check'
+      )
+        AND convalidated
+    ) <> 3 THEN
+    RAISE EXCEPTION 'Diagnostic provenance reporting or validated constraints are incomplete';
+  END IF;
+
   IF to_regclass('public.teras_courses') IS NULL
     OR to_regclass('public.teras_course_modules') IS NULL
     OR to_regclass('public.teras_lessons') IS NULL

@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { boolean, check, foreignKey, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { boolean, check, foreignKey, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, index, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { peopleTable, pathwaysTable, enrollmentsTable, modulesTable, practiceTasksTable, evidenceRequirementsTable } from "./teras";
@@ -105,6 +105,20 @@ export const diagnosticGapsTable = pgTable("teras_diagnostic_gaps", {
       AND jsonb_array_length(${table.provenance}->'optionIds') > 0
     )
   `),
+]);
+export const diagnosticProvenanceExceptionsTable = pgTable("teras_diagnostic_provenance_exceptions", {
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  profileId: text("profile_id"),
+  sessionId: text("session_id"),
+  competencyUnitId: text("competency_unit_id"),
+  reason: text("reason").notNull(),
+  details: jsonb("details").$type<Record<string, unknown>>().notNull().default({}),
+  detectedAt: timestamp("detected_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [
+  primaryKey({ columns: [table.entityType, table.entityId], name: "teras_diagnostic_provenance_exceptions_pk" }),
+  check("teras_diagnostic_provenance_exceptions_entity_type_check", sql`${table.entityType} IN ('profile', 'profile_item', 'gap')`),
 ]);
 export const diagnosticRecommendationsTable = pgTable("teras_diagnostic_recommendations", {
   id: text("id").primaryKey(), profileId: text("profile_id").notNull().references(() => diagnosticProfilesTable.id, { onDelete: "cascade" }), competencyUnitId: text("competency_unit_id").references(() => competencyUnitsTable.id),
