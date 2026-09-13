@@ -1,6 +1,6 @@
 import { relations, sql } from "drizzle-orm";
 import {
-  boolean, check, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex,
+  boolean, check, date, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -271,10 +271,23 @@ export const readinessEventsTable = pgTable("teras_readiness_events", {
   index("teras_readiness_events_status_evaluated_idx").on(table.status, table.evaluatedAt, table.id),
   index("teras_readiness_events_rule_version_evaluated_idx").on(table.ruleVersion, table.evaluatedAt, table.id),
 ]);
+/** Anonymous operational counts for readiness audit export outcomes. */
+export const readinessAuditExportAggregatesTable = pgTable("teras_readiness_audit_export_aggregates", {
+  day: date("day", { mode: "string" }).notNull(),
+  recordGroup: text("record_group").notNull(),
+  outcome: text("outcome").notNull(),
+  count: integer("count").notNull(),
+}, table => [
+  primaryKey({ columns: [table.day, table.recordGroup, table.outcome] }),
+  check("teras_readiness_audit_export_aggregates_group_check", sql`${table.recordGroup} IN ('1.000–4.999 record', '5.000–9.999 record', '10.000+ record')`),
+  check("teras_readiness_audit_export_aggregates_outcome_check", sql`${table.outcome} IN ('succeeded', 'cancelled', 'failed')`),
+  check("teras_readiness_audit_export_aggregates_count_check", sql`${table.count} > 0`),
+]);
 
 export const programRelations = relations(programsTable, ({ many }) => ({ modules: many(modulesTable), pathways: many(pathwaysTable) }));
 export const moduleRelations = relations(modulesTable, ({ many }) => ({ tasks: many(practiceTasksTable), assessments: many(assessmentsTable) }));
 
+export const insertReadinessAuditExportAggregatesSchema = createInsertSchema(readinessAuditExportAggregatesTable);
 const tables = { peopleTable, personRolesTable, adminAccessRequestsTable, programsTable, pathwaysTable, cohortsTable, modulesTable, practiceTasksTable, evidenceRequirementsTable, assessmentsTable, assessmentCriteriaTable, enrollmentsTable, adminAuditEventsTable, knowledgeArticlesTable, knowledgeNotFoundTopicsTable, enrollmentPathwayEventsTable, practiceAttemptsTable, practiceReviewsTable, evidenceTable, evidenceReviewsTable, assessmentAttemptsTable, criterionObservationsTable, gapsTable, gapEventsTable, remediationPlansTable, remediationActivitiesTable, remediationEventsTable, readinessGatesTable, readinessEventsTable };
 export const insertSchemas = Object.fromEntries(Object.entries(tables).map(([name, table]) => [name, createInsertSchema(table).omit({ createdAt: true })]));
 export type Person = typeof peopleTable.$inferSelect;

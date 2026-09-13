@@ -34,6 +34,7 @@
     "test:admin-management": "pnpm run test:admin-membership-write-guard && NODE_ENV=test tsx ./src/admin-management.integration.ts",
     "test:admin-operational-summary": "NODE_ENV=test tsx ./src/admin-operational-summary.integration.ts",
     "test:admin-readiness-history": "NODE_ENV=test tsx ./src/admin-readiness-history.integration.ts",
+    "test:admin-readiness-export-trends": "NODE_ENV=test tsx ./src/admin-readiness-export-trends.integration.ts",
     "test:admin-read-only-projections": "NODE_ENV=test tsx ./src/admin-read-only-projections.integration.ts",
     "test:resource-uri": "NODE_ENV=test tsx ./src/lib/resource-uri.test.ts",
     "test:learning-resume": "NODE_ENV=test tsx --test ./src/lib/learning-resume.test.ts && NODE_ENV=test tsx ./src/learning-resource-progress-context.integration-runner.ts",

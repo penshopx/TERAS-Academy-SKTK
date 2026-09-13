@@ -42,3 +42,4 @@
 - [Disposable schema name limits](disposable-schema-name-limits.md) — keep generated PostgreSQL schema identifiers within 63 bytes so isolation names are not silently truncated.
 - [Hanging Node fixtures](hanging-node-fixtures.md) — keep an active event-loop handle; an unresolved top-level promise alone may exit instead of simulating a hang.
 - [Orphan schema cleanup isolation](orphan-schema-cleanup-isolation.md) — stale-schema cleanup is best-effort and reported; one orphan must not block the current integration run.
+- [Anonymous operational aggregates](anonymous-operational-aggregates.md) — central trends keep only coarse outcomes and counts; periods and alert thresholds are server-owned.

@@ -7,7 +7,10 @@ import {
   type AdminPathway,
   type AdminUser,
   type ListAdminReadinessHistoryParams,
+  getGetAdminReadinessExportTrendsQueryKey,
+  useGetAdminReadinessExportTrends,
   useListAdminReadinessHistory,
+  useRecordAdminReadinessExportTrend,
 } from "@workspace/api-client-react";
 import { AlertTriangle, Download, Loader2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -15,13 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import {
-  DEFAULT_READINESS_EXPORT_ALERT_THRESHOLDS,
-  evaluateReadinessAuditExportAlerts,
-  readReadinessAuditExportAggregates,
-  READINESS_EXPORT_AGGREGATES_UPDATED,
-  trackReadinessAuditExport,
-} from "@/lib/analytics";
+import { trackReadinessAuditExport } from "@/lib/analytics";
 
 type Props = {
   enabled: boolean;
@@ -195,7 +192,6 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
   const [exportLoadedBytes, setExportLoadedBytes] = useState(0);
   const [exportError, setExportError] = useState<unknown>(null);
   const [lastChecksum, setLastChecksum] = useState("");
-  const [exportAggregates, setExportAggregates] = useState(() => readReadinessAuditExportAggregates());
   const exportAbortController = useRef<AbortController | null>(null);
   const mounted = useRef(false);
   const exporting = exportStatus === "preparing";
@@ -210,6 +206,10 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
   const history = useListAdminReadinessHistory(params, {
     query: { enabled, staleTime: 30_000, refetchOnMount: "always", queryKey: getListAdminReadinessHistoryQueryKey(params) },
   });
+  const exportTrends = useGetAdminReadinessExportTrends({
+    query: { enabled, staleTime: 30_000, refetchOnMount: "always", queryKey: getGetAdminReadinessExportTrendsQueryKey() },
+  });
+  const recordExportTrend = useRecordAdminReadinessExportTrend();
   const learners = users.filter(user => user.roles.includes("learner"));
   const totalPages = Math.max(1, Math.ceil((history.data?.total ?? 0) / 25));
   const exportParams = useMemo(() => ({
@@ -224,16 +224,13 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
     return () => cancelReadinessExportOnUnmount(mounted, exportAbortController);
   }, []);
 
-  useEffect(() => {
-    const refresh = () => setExportAggregates(readReadinessAuditExportAggregates());
-    window.addEventListener(READINESS_EXPORT_AGGREGATES_UPDATED, refresh);
-    return () => window.removeEventListener(READINESS_EXPORT_AGGREGATES_UPDATED, refresh);
-  }, []);
-
-  const exportAlerts = useMemo(
-    () => evaluateReadinessAuditExportAlerts(exportAggregates),
-    [exportAggregates],
-  );
+  const exportAlerts = exportTrends.data?.alerts ?? [];
+  const recordFinalExportOutcome = (outcome: "succeeded" | "cancelled" | "failed", recordCount: number) => {
+    if (!enabled) return;
+    void recordExportTrend.mutateAsync({ data: { outcome, recordCount } })
+      .then(() => exportTrends.refetch())
+      .catch(() => undefined);
+  };
 
   const download = async () => {
     const controller = new AbortController();
@@ -259,14 +256,17 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
       if (!mounted.current) return;
       if (result.status === "success") {
         trackReadinessAuditExport("succeeded", result.recordCount);
+        recordFinalExportOutcome("succeeded", result.recordCount);
         setLastChecksum(result.checksum);
         setExportRecordCount(result.recordCount);
         setExportStatus("success");
       } else if (result.status === "cancelled") {
         trackReadinessAuditExport("cancelled", result.recordCount);
+        recordFinalExportOutcome("cancelled", result.recordCount);
         setExportStatus("cancelled");
       } else {
         trackReadinessAuditExport("failed", result.recordCount);
+        recordFinalExportOutcome("failed", result.recordCount);
         setExportError(result.error);
         setExportStatus("failed");
       }
@@ -284,13 +284,15 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
         <p className="text-sm text-muted-foreground">Evaluasi immutable untuk pemeriksaan lintas waktu. Ekspor memuat snapshot lengkap sesuai filter aktif.</p>
       </CardHeader>
       <CardContent className="space-y-4">
+        {exportTrends.isLoading && <p className="text-sm text-muted-foreground" role="status">Memuat tren ekspor anonim…</p>}
+        {exportTrends.error && <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive" role="alert">Tren ekspor anonim tidak tersedia saat ini.</p>}
         {exportAlerts.length > 0 && <section className="rounded-md border border-amber-500/50 bg-amber-500/10 p-4" role="alert" data-testid="readiness-export-alerts">
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
             <div className="min-w-0">
               <h3 className="font-semibold">Peringatan kegagalan ekspor besar</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Agregat anonim {DEFAULT_READINESS_EXPORT_ALERT_THRESHOLDS.periodDays} hari terakhir; minimum {DEFAULT_READINESS_EXPORT_ALERT_THRESHOLDS.minimumSampleSize} ekspor per kelompok.
+                 Agregat anonim {exportTrends.data?.thresholds.periodDays ?? 7} hari terakhir; minimum {exportTrends.data?.thresholds.minimumSampleSize ?? 5} ekspor per kelompok.
               </p>
               <ul className="mt-3 space-y-2 text-sm">
                 {exportAlerts.map(alert => <li key={`${alert.periodStart}-${alert.recordGroup}`} className="rounded border border-amber-500/30 bg-background/60 p-3">

@@ -42,6 +42,7 @@ import type {
   AdminProgramInput,
   AdminProgramUpdate,
   AdminReadinessExport,
+  AdminReadinessExportTrendSummary,
   AdminReadinessHistoryPage,
   AdminReadinessRule,
   AdminReminderEscalationPage,
@@ -122,6 +123,7 @@ import type {
   ProgramDetail,
   ProgramSummary,
   ReadinessAuditPublicKeySet,
+  ReadinessExportTrendInput,
   ReadinessMap,
   ReadinessRuleInput,
   ReadinessSummary,
@@ -4869,6 +4871,154 @@ export function useExportAdminReadinessHistory<TData = Awaited<ReturnType<typeof
 
 
 
+
+export const getGetAdminReadinessExportTrendsUrl = () => {
+
+
+
+
+  return `/api/admin/readiness-history/export-trends`
+}
+
+/**
+ * @summary Get the rolling anonymous readiness export outcome summary
+ */
+export const getAdminReadinessExportTrends = async ( options?: Parameters<typeof customFetch>[1]): Promise<AdminReadinessExportTrendSummary> => {
+
+  return customFetch<AdminReadinessExportTrendSummary>(getGetAdminReadinessExportTrendsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminReadinessExportTrendsQueryKey = () => {
+    return [
+    `/api/admin/readiness-history/export-trends`
+    ] as const;
+    }
+
+
+export const getGetAdminReadinessExportTrendsQueryOptions = <TData = Awaited<ReturnType<typeof getAdminReadinessExportTrends>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminReadinessExportTrends>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminReadinessExportTrendsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminReadinessExportTrends>>> = ({ signal }) => getAdminReadinessExportTrends({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminReadinessExportTrends>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminReadinessExportTrendsQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminReadinessExportTrends>>>
+export type GetAdminReadinessExportTrendsQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse>
+
+
+/**
+ * @summary Get the rolling anonymous readiness export outcome summary
+ */
+
+export function useGetAdminReadinessExportTrends<TData = Awaited<ReturnType<typeof getAdminReadinessExportTrends>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminReadinessExportTrends>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminReadinessExportTrendsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRecordAdminReadinessExportTrendUrl = () => {
+
+
+
+
+  return `/api/admin/readiness-history/export-trends`
+}
+
+/**
+ * @summary Record one anonymous readiness export outcome
+ */
+export const recordAdminReadinessExportTrend = async (readinessExportTrendInput: ReadinessExportTrendInput, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getRecordAdminReadinessExportTrendUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(readinessExportTrendInput)
+  }
+);}
+
+
+
+
+
+export const getRecordAdminReadinessExportTrendMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordAdminReadinessExportTrend>>, TError,{data: BodyType<ReadinessExportTrendInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof recordAdminReadinessExportTrend>>, TError,{data: BodyType<ReadinessExportTrendInput>}, TContext> => {
+
+const mutationKey = ['recordAdminReadinessExportTrend'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof recordAdminReadinessExportTrend>>, {data: BodyType<ReadinessExportTrendInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  recordAdminReadinessExportTrend(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RecordAdminReadinessExportTrendMutationResult = NonNullable<Awaited<ReturnType<typeof recordAdminReadinessExportTrend>>>
+    export type RecordAdminReadinessExportTrendMutationBody = BodyType<ReadinessExportTrendInput>
+    export type RecordAdminReadinessExportTrendMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>
+
+    /**
+ * @summary Record one anonymous readiness export outcome
+ */
+export const useRecordAdminReadinessExportTrend = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordAdminReadinessExportTrend>>, TError,{data: BodyType<ReadinessExportTrendInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof recordAdminReadinessExportTrend>>,
+        TError,
+        {data: BodyType<ReadinessExportTrendInput>},
+        TContext
+      > => {
+      return useMutation(getRecordAdminReadinessExportTrendMutationOptions(options));
+    }
 
 export const getListReadinessAuditPublicKeysUrl = () => {
 

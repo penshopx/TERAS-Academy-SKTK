@@ -2645,6 +2645,102 @@ export interface AdminReadinessExport {
   integrity: AdminReadinessExportIntegrity;
 }
 
+export type ReadinessExportTrendInputOutcome = typeof ReadinessExportTrendInputOutcome[keyof typeof ReadinessExportTrendInputOutcome];
+
+
+export const ReadinessExportTrendInputOutcome = {
+  started: 'started',
+  succeeded: 'succeeded',
+  cancelled: 'cancelled',
+  failed: 'failed',
+} as const;
+
+export interface ReadinessExportTrendInput {
+  outcome: ReadinessExportTrendInputOutcome;
+  /** @minimum 0 */
+  recordCount: number;
+}
+
+export type AdminReadinessExportTrendAggregateRecordGroup = typeof AdminReadinessExportTrendAggregateRecordGroup[keyof typeof AdminReadinessExportTrendAggregateRecordGroup];
+
+
+export const AdminReadinessExportTrendAggregateRecordGroup = {
+  '1000–4999_record': '1.000–4.999 record',
+  '5000–9999_record': '5.000–9.999 record',
+  '10000+_record': '10.000+ record',
+} as const;
+
+export type AdminReadinessExportTrendAggregateOutcome = typeof AdminReadinessExportTrendAggregateOutcome[keyof typeof AdminReadinessExportTrendAggregateOutcome];
+
+
+export const AdminReadinessExportTrendAggregateOutcome = {
+  succeeded: 'succeeded',
+  cancelled: 'cancelled',
+  failed: 'failed',
+} as const;
+
+export interface AdminReadinessExportTrendAggregate {
+  /** @pattern ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ */
+  periodStart: string;
+  /** @pattern ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ */
+  periodEnd: string;
+  recordGroup: AdminReadinessExportTrendAggregateRecordGroup;
+  outcome: AdminReadinessExportTrendAggregateOutcome;
+  /** @minimum 1 */
+  count: number;
+}
+
+export type AdminReadinessExportTrendAlertRecordGroup = typeof AdminReadinessExportTrendAlertRecordGroup[keyof typeof AdminReadinessExportTrendAlertRecordGroup];
+
+
+export const AdminReadinessExportTrendAlertRecordGroup = {
+  '1000–4999_record': '1.000–4.999 record',
+  '5000–9999_record': '5.000–9.999 record',
+  '10000+_record': '10.000+ record',
+} as const;
+
+export interface AdminReadinessExportTrendAlert {
+  /** @pattern ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ */
+  periodStart: string;
+  /** @pattern ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ */
+  periodEnd: string;
+  recordGroup: AdminReadinessExportTrendAlertRecordGroup;
+  /** @minimum 0 */
+  sampleSize: number;
+  /** @minimum 0 */
+  failedCount: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  failureRatio: number;
+  explanation: string;
+}
+
+export interface AdminReadinessExportTrendThresholds {
+  /** @minimum 1 */
+  minimumRecordCount: number;
+  /** @minimum 1 */
+  minimumSampleSize: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  failureRatio: number;
+  /** @minimum 1 */
+  periodDays: number;
+}
+
+export interface AdminReadinessExportTrendSummary {
+  thresholds: AdminReadinessExportTrendThresholds;
+  /** @pattern ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ */
+  periodStart: string;
+  /** @pattern ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ */
+  periodEnd: string;
+  aggregates: AdminReadinessExportTrendAggregate[];
+  alerts: AdminReadinessExportTrendAlert[];
+}
+
 export type ReadinessAuditPublicKeySetIssuer = typeof ReadinessAuditPublicKeySetIssuer[keyof typeof ReadinessAuditPublicKeySetIssuer];
 
 

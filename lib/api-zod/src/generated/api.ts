@@ -3538,6 +3538,74 @@ export const ExportAdminReadinessHistoryResponse = zod.object({
 
 
 /**
+ * @summary Get the rolling anonymous readiness export outcome summary
+ */
+
+
+export const getAdminReadinessExportTrendsResponseThresholdsFailureRatioMin = 0;
+export const getAdminReadinessExportTrendsResponseThresholdsFailureRatioMax = 1;
+
+
+export const getAdminReadinessExportTrendsResponsePeriodStartRegExp = new RegExp('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+export const getAdminReadinessExportTrendsResponsePeriodEndRegExp = new RegExp('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+export const getAdminReadinessExportTrendsResponseAggregatesItemPeriodStartRegExp = new RegExp('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+export const getAdminReadinessExportTrendsResponseAggregatesItemPeriodEndRegExp = new RegExp('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+
+export const getAdminReadinessExportTrendsResponseAlertsItemPeriodStartRegExp = new RegExp('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+export const getAdminReadinessExportTrendsResponseAlertsItemPeriodEndRegExp = new RegExp('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+export const getAdminReadinessExportTrendsResponseAlertsItemSampleSizeMin = 0;
+
+export const getAdminReadinessExportTrendsResponseAlertsItemFailedCountMin = 0;
+
+export const getAdminReadinessExportTrendsResponseAlertsItemFailureRatioMin = 0;
+export const getAdminReadinessExportTrendsResponseAlertsItemFailureRatioMax = 1;
+
+
+
+export const GetAdminReadinessExportTrendsResponse = zod.object({
+  "thresholds": zod.object({
+  "minimumRecordCount": zod.int().min(1),
+  "minimumSampleSize": zod.int().min(1),
+  "failureRatio": zod.number().min(getAdminReadinessExportTrendsResponseThresholdsFailureRatioMin).max(getAdminReadinessExportTrendsResponseThresholdsFailureRatioMax),
+  "periodDays": zod.int().min(1)
+}),
+  "periodStart": zod.string().regex(getAdminReadinessExportTrendsResponsePeriodStartRegExp),
+  "periodEnd": zod.string().regex(getAdminReadinessExportTrendsResponsePeriodEndRegExp),
+  "aggregates": zod.array(zod.object({
+  "periodStart": zod.string().regex(getAdminReadinessExportTrendsResponseAggregatesItemPeriodStartRegExp),
+  "periodEnd": zod.string().regex(getAdminReadinessExportTrendsResponseAggregatesItemPeriodEndRegExp),
+  "recordGroup": zod.enum(['1.000–4.999 record', '5.000–9.999 record', '10.000+ record']),
+  "outcome": zod.enum(['succeeded', 'cancelled', 'failed']),
+  "count": zod.int().min(1)
+})),
+  "alerts": zod.array(zod.object({
+  "periodStart": zod.string().regex(getAdminReadinessExportTrendsResponseAlertsItemPeriodStartRegExp),
+  "periodEnd": zod.string().regex(getAdminReadinessExportTrendsResponseAlertsItemPeriodEndRegExp),
+  "recordGroup": zod.enum(['1.000–4.999 record', '5.000–9.999 record', '10.000+ record']),
+  "sampleSize": zod.int().min(getAdminReadinessExportTrendsResponseAlertsItemSampleSizeMin),
+  "failedCount": zod.int().min(getAdminReadinessExportTrendsResponseAlertsItemFailedCountMin),
+  "failureRatio": zod.number().min(getAdminReadinessExportTrendsResponseAlertsItemFailureRatioMin).max(getAdminReadinessExportTrendsResponseAlertsItemFailureRatioMax),
+  "explanation": zod.string()
+}))
+})
+
+
+/**
+ * @summary Record one anonymous readiness export outcome
+ */
+export const recordAdminReadinessExportTrendBodyRecordCountMin = 0;
+
+
+
+export const RecordAdminReadinessExportTrendBody = zod.object({
+  "outcome": zod.enum(['started', 'succeeded', 'cancelled', 'failed']),
+  "recordCount": zod.int().min(recordAdminReadinessExportTrendBodyRecordCountMin)
+})
+
+export const RecordAdminReadinessExportTrendResponse = zod.void()
+
+
+/**
  * @summary List TERAS public keys for offline readiness audit verification
  */
 

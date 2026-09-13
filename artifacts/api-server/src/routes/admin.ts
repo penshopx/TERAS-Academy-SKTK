@@ -3,7 +3,7 @@
 // @ts-nocheck
 import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
-import { and, count, desc, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import {
   CreateAdminCohortBody, CreateAdminCohortResponse, CreateAdminEnrollmentBody, CreateAdminEnrollmentResponse,
   CreateAdminPathwayBody, CreateAdminPathwayResponse, CreateAdminProgramBody, CreateAdminProgramResponse,
@@ -22,6 +22,7 @@ import {
   ListAdminReadinessRulesResponse,
   ListAdminReminderEscalationsQueryParams, ListAdminReminderEscalationsResponse,
   ResolveAdminReminderEscalationBody, ResolveAdminReminderEscalationParams, ResolveAdminReminderEscalationResponse,
+  GetAdminReadinessExportTrendsResponse, RecordAdminReadinessExportTrendBody,
 } from "@workspace/api-zod";
 import {
   adminAccessRequestsTable, adminAuditEventsTable, assessmentAttemptsTable, cohortsTable, db, enrollmentsTable, evidenceReviewsTable,
@@ -32,6 +33,7 @@ import {
   readinessEventsTable, readinessGatesTable,
   diagnosticFollowUpFailureNotificationsTable, diagnosticFollowUpReminderDeliveriesTable, diagnosticFollowUpReminderResolutionsTable, diagnosticRecommendationFollowUpsTable,
   diagnosticRecommendationsTable,
+  readinessAuditExportAggregatesTable,
 } from "@workspace/db";
 import { authorizeAdmin, authorizeLocalUser, authorizeSuperAdmin, type AdminActor } from "../lib/authorization";
 import { pinPublishedBaseline } from "../lib/baseline-authoring";
@@ -507,6 +509,102 @@ router.get("/admin/readiness-history/export", async (req, res): Promise<void> =>
       res.end(`,"integrity":${JSON.stringify(integrity)}}`);
     }
   }, { isolationLevel: "repeatable read", accessMode: "read only" });
+});
+
+const READINESS_EXPORT_TREND_THRESHOLDS = {
+  minimumRecordCount: 1_000,
+  minimumSampleSize: 5,
+  failureRatio: 0.4,
+  periodDays: 7,
+} as const;
+const READINESS_EXPORT_RECORD_GROUPS = [
+  "1.000–4.999 record",
+  "5.000–9.999 record",
+  "10.000+ record",
+] as const;
+function readinessExportTrendPeriod(now = new Date()) {
+  const periodEnd = now.toISOString().slice(0, 10);
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  start.setUTCDate(start.getUTCDate() - READINESS_EXPORT_TREND_THRESHOLDS.periodDays + 1);
+  return { periodStart: start.toISOString().slice(0, 10), periodEnd };
+}
+
+function readinessExportRecordGroup(recordCount: number) {
+  if (recordCount >= 10_000) return "10.000+ record";
+  if (recordCount >= 5_000) return "5.000–9.999 record";
+  return "1.000–4.999 record";
+}
+
+router.post("/admin/readiness-history/export-trends", async (req, res): Promise<void> => {
+  if (!await authorizeAdmin(req, res)) return;
+  if (!req.body || typeof req.body !== "object"
+    || Object.keys(req.body).some(key => key !== "outcome" && key !== "recordCount")) {
+    res.status(400).json({ error: "Only outcome and recordCount are accepted" });
+    return;
+  }
+  const input = parsed(RecordAdminReadinessExportTrendBody, req.body, res);
+  if (!input) return;
+  if (input.outcome === "started" || input.recordCount < READINESS_EXPORT_TREND_THRESHOLDS.minimumRecordCount) {
+    res.sendStatus(204);
+    return;
+  }
+  const day = new Date().toISOString().slice(0, 10);
+  const recordGroup = readinessExportRecordGroup(input.recordCount);
+  await db.insert(readinessAuditExportAggregatesTable)
+    .values({ day, recordGroup, outcome: input.outcome, count: 1 })
+    .onConflictDoUpdate({
+      target: [
+        readinessAuditExportAggregatesTable.day,
+        readinessAuditExportAggregatesTable.recordGroup,
+        readinessAuditExportAggregatesTable.outcome,
+      ],
+      set: { count: sql`${readinessAuditExportAggregatesTable.count} + 1` },
+    });
+  res.sendStatus(204);
+});
+
+router.get("/admin/readiness-history/export-trends", async (req, res): Promise<void> => {
+  if (!await authorizeAdmin(req, res)) return;
+  const { periodStart, periodEnd } = readinessExportTrendPeriod();
+  const rows = await db.select()
+    .from(readinessAuditExportAggregatesTable)
+    .where(and(
+      gte(readinessAuditExportAggregatesTable.day, periodStart),
+      lte(readinessAuditExportAggregatesTable.day, periodEnd),
+    ));
+  const aggregates = rows.map(row => ({
+    periodStart: row.day,
+    periodEnd: row.day,
+    recordGroup: row.recordGroup,
+    outcome: row.outcome,
+    count: row.count,
+  }));
+  const alerts = READINESS_EXPORT_RECORD_GROUPS.flatMap(recordGroup => {
+    const entries = aggregates.filter(entry => entry.recordGroup === recordGroup);
+    const sampleSize = entries.reduce((sum, entry) => sum + entry.count, 0);
+    const failedCount = entries
+      .filter(entry => entry.outcome === "failed" || entry.outcome === "cancelled")
+      .reduce((sum, entry) => sum + entry.count, 0);
+    const ratio = sampleSize === 0 ? 0 : failedCount / sampleSize;
+    if (sampleSize < READINESS_EXPORT_TREND_THRESHOLDS.minimumSampleSize
+      || ratio < READINESS_EXPORT_TREND_THRESHOLDS.failureRatio) return [];
+    return [{
+      periodStart,
+      periodEnd,
+      recordGroup,
+      sampleSize,
+      failedCount,
+      failureRatio: ratio,
+      explanation: `${failedCount} dari ${sampleSize} ekspor gagal atau dibatalkan (${Math.round(ratio * 100)}%), melewati ambang ${Math.round(READINESS_EXPORT_TREND_THRESHOLDS.failureRatio * 100)}%.`,
+    }];
+  });
+  res.json(GetAdminReadinessExportTrendsResponse.parse({
+    thresholds: READINESS_EXPORT_TREND_THRESHOLDS,
+    periodStart,
+    periodEnd,
+    aggregates,
+    alerts,
+  }));
 });
 
 router.post("/admin/claim-supabase-identity", async (req, res): Promise<void> => {
