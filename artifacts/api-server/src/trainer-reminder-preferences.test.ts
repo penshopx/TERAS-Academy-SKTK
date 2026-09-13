@@ -40,6 +40,38 @@ test("delivery availability exposes the next local opening for cross-midnight qu
   });
 });
 
+test("delivery availability keeps the configured local opening across spring DST", () => {
+  const preferences = {
+    emailEnabled: true,
+    timeZone: "America/New_York",
+    quietHoursStart: "20:00",
+    quietHoursEnd: "07:00",
+  };
+
+  assert.deepEqual(reminderDeliveryAvailability(new Date("2026-03-08T06:30:00Z"), preferences), {
+    deliveryStatus: "paused_quiet_hours",
+    nextDeliveryAt: new Date("2026-03-08T11:00:00Z"),
+  });
+  assert.equal(isWithinQuietHours(new Date("2026-03-08T10:59:00Z"), preferences), true);
+  assert.equal(isWithinQuietHours(new Date("2026-03-08T11:00:00Z"), preferences), false);
+});
+
+test("delivery availability keeps the configured local opening across fall DST", () => {
+  const preferences = {
+    emailEnabled: true,
+    timeZone: "America/New_York",
+    quietHoursStart: "20:00",
+    quietHoursEnd: "07:00",
+  };
+
+  assert.deepEqual(reminderDeliveryAvailability(new Date("2026-11-01T05:30:00Z"), preferences), {
+    deliveryStatus: "paused_quiet_hours",
+    nextDeliveryAt: new Date("2026-11-01T12:00:00Z"),
+  });
+  assert.equal(isWithinQuietHours(new Date("2026-11-01T11:59:00Z"), preferences), true);
+  assert.equal(isWithinQuietHours(new Date("2026-11-01T12:00:00Z"), preferences), false);
+});
+
 test("delivery availability distinguishes active and disabled delivery", () => {
   const preferences = { timeZone: "Asia/Jakarta", quietHoursStart: "20:00", quietHoursEnd: "07:00" };
   assert.deepEqual(reminderDeliveryAvailability(new Date("2026-09-12T05:00:00Z"), { ...preferences, emailEnabled: true }), {
