@@ -7,6 +7,10 @@ const workflowPath = fileURLToPath(
   new URL("../../../.github/workflows/browser-idempotency.yml", import.meta.url),
 );
 const workflow = readFileSync(workflowPath, "utf8");
+const integrationSource = readFileSync(
+  fileURLToPath(new URL("./browser-idempotency.integration.ts", import.meta.url)),
+  "utf8",
+);
 const guardSources = [
   {
     name: "browser-idempotency-guard.ts",
@@ -147,8 +151,43 @@ function guardJobStaysInfrastructureFree(source: string): void {
   );
 }
 
+function browserJobUsesDisposablePostgres(source: string): void {
+  const browserJob = jobBody(source, "browser-idempotency");
+
+  assert.match(
+    browserJob,
+    /^    services:\s*$[\s\S]*?^      postgres:\s*$[\s\S]*?^        image:\s*postgres:[^\s]+\s*$/m,
+    'The "browser-idempotency" job must provide its own PostgreSQL service.',
+  );
+  assert.match(
+    browserJob,
+    /^\s+INTEGRATION_TEST_POSTGRES_URL:\s*postgres(?:ql)?:\/\/[^\s]+\s*$/m,
+    'The "browser-idempotency" job must configure INTEGRATION_TEST_POSTGRES_URL.',
+  );
+  assert.match(
+    browserJob,
+    /^\s+DATABASE_URL:\s*""\s*$/m,
+    'The "browser-idempotency" job must clear DATABASE_URL instead of using an application database.',
+  );
+  assert.match(
+    browserJob,
+    /^\s+run:\s*pnpm run test:browser-idempotency\s*$/m,
+    'The "browser-idempotency" job must execute the browser idempotency integration.',
+  );
+}
+
+function integrationAlwaysDropsDisposableDatabase(source: string): void {
+  assert.match(
+    source,
+    /\}\s*finally\s*\{[\s\S]*DROP DATABASE IF EXISTS[^]*WITH \(FORCE\)[\s\S]*await admin\.end\(\);[\s\S]*\}/m,
+    "The browser idempotency integration must force-drop its disposable database in finally.",
+  );
+}
+
 browserJobNeedsDatabaseGuard(workflow);
 guardJobStaysInfrastructureFree(workflow);
+browserJobUsesDisposablePostgres(workflow);
+integrationAlwaysDropsDisposableDatabase(integrationSource);
 for (const guardSource of guardSources) {
   guardSourceUsesOnlyLightweightDependencies(
     guardSource.source,

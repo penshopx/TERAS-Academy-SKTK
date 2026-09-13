@@ -61,10 +61,12 @@ async function main() {
   let database: pg.Client | undefined;
   let applicationPool: pg.Pool | undefined;
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  let databaseCreated = false;
 
   try {
     await admin.connect();
     await admin.query(`CREATE DATABASE "${databaseName}"`);
+    databaseCreated = true;
     await run("pnpm", ["--filter", "@workspace/db", "exec", "drizzle-kit", "push", "--force", "--config", "./drizzle.config.ts"], databaseUrl.toString());
     await run("pnpm", ["--filter", "@workspace/scripts", "run", "seed:demo"], databaseUrl.toString(), {
       TERAS_ENABLE_DEMO_FIXTURES: "1",
@@ -361,10 +363,10 @@ async function main() {
     await new Promise<void>((resolve) => server?.close(() => resolve()) ?? resolve());
     await database?.end();
     await applicationPool?.end();
-    if (admin) {
-      await admin.query(`DROP DATABASE IF EXISTS "${databaseName}"`);
-      await admin.end();
+    if (databaseCreated) {
+      await admin.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`);
     }
+    await admin.end();
   }
 }
 
