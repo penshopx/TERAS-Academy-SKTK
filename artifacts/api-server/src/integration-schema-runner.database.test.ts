@@ -267,27 +267,55 @@ test("setup receives the disposable DATABASE_URL and extra environment before th
 test("a failing setup command prevents the test file from running", {
   skip: !databaseUrl,
 }, async () => {
-  await withMarkerFile(async (markerFile) => {
-    await assert.rejects(
-      runIsolatedIntegrationTest({
-        schemaPrefix: "schema_runner_setup",
-        testFile: afterSetupFixture,
-        setupCommand: [
-          "pnpm",
-          "--filter",
-          "@workspace/api-server",
-          "exec",
-          "tsx",
-          setupFixture,
-        ],
-        setupEnvironment: {
-          SCHEMA_RUNNER_EXPECTED_ENV: "setup-environment-value",
-          SCHEMA_RUNNER_SETUP_SHOULD_FAIL: "true",
-        },
-      }),
-      /failed with exit code 1/,
-    );
+  const client = new Client({ connectionString: databaseUrl });
+  const contractPrefix =
+    `schema_runner_setup_f_${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`;
+  await client.connect();
+  try {
+    await withMarkerFile(async (markerFile) => {
+      await assert.rejects(
+        runIsolatedIntegrationTest({
+          schemaPrefix: contractPrefix,
+          testFile: afterSetupFixture,
+          setupCommand: [
+            "pnpm",
+            "--filter",
+            "@workspace/api-server",
+            "exec",
+            "tsx",
+            setupFixture,
+          ],
+          setupEnvironment: {
+            SCHEMA_RUNNER_EXPECTED_ENV: "setup-environment-value",
+            SCHEMA_RUNNER_SETUP_SHOULD_FAIL: "true",
+          },
+        }),
+        /failed with exit code 1/,
+      );
 
-    assert.equal(await readFile(markerFile, "utf8"), "setup\n");
-  });
+      assert.equal(await readFile(markerFile, "utf8"), "setup\n");
+      const remainingSchemas = await client.query<{ schema_name: string }>(
+        `
+          SELECT schema_name
+          FROM information_schema.schemata
+          WHERE schema_name LIKE $1 ESCAPE '\\'
+        `,
+        [`${contractPrefix.replaceAll("_", "\\_")}_%`],
+      );
+      assert.deepEqual(remainingSchemas.rows, []);
+    });
+  } finally {
+    const remainingSchemas = await client.query<{ schema_name: string }>(
+      `
+        SELECT schema_name
+        FROM information_schema.schemata
+        WHERE schema_name LIKE $1 ESCAPE '\\'
+      `,
+      [`${contractPrefix.replaceAll("_", "\\_")}_%`],
+    );
+    for (const { schema_name: remainingSchema } of remainingSchemas.rows) {
+      await client.query(`DROP SCHEMA IF EXISTS "${remainingSchema}" CASCADE`);
+    }
+    await client.end();
+  }
 });
