@@ -98,12 +98,16 @@ async function run() {
     const promotionRequest = JSON.parse(promotionResponseText) as { id: string };
     promotionRequestId = promotionRequest.id;
     response = await request("/admin/access-requests", undefined, "GET");
-    const learnerRequests = await response.json() as Array<{ id: string; targetPersonId: string }>;
-    assert(response.status === 200 && learnerRequests.length === 1 && learnerRequests[0].targetPersonId === ids.learner, "Learner must only see their own administrator requests");
+    const learnerRequestsText = await response.text();
+    assert(response.status === 200, `Learner access-request listing failed: ${learnerRequestsText}`);
+    const learnerRequests = JSON.parse(learnerRequestsText) as Array<{ id: string; targetPersonId: string }>;
+    assert(learnerRequests.length === 1 && learnerRequests[0].targetPersonId === ids.learner, "Learner must only see their own administrator requests");
     activeIdentity = { userId: activeFixtureAdmins[0].id, role: "admin" };
     response = await request("/admin/access-requests", undefined, "GET");
-    const administratorRequests = await response.json() as Array<{ id: string }>;
-    assert(response.status === 200 && administratorRequests.some(item => item.id === promotionRequestId), "Administrator must see pending promotion requests");
+    const administratorRequestsText = await response.text();
+    assert(response.status === 200, `Administrator access-request listing failed: ${administratorRequestsText}`);
+    const administratorRequests = JSON.parse(administratorRequestsText) as Array<{ id: string }>;
+    assert(administratorRequests.some(item => item.id === promotionRequestId), "Administrator must see pending promotion requests");
     response = await request(`/admin/access-requests/${promotionRequestId}/approve`, {});
     assert(response.status === 200, `Administrator approval failed: ${await response.text()}`);
     const promotedRoles = await db.select({ role: personRolesTable.role }).from(personRolesTable).where(eq(personRolesTable.personId, ids.learner));
@@ -228,14 +232,18 @@ async function run() {
     response = await request(`/admin/enrollments/${ids.enrollment}`, { pathwayId: ids.otherPathway }, "PATCH");
     assert(response.status === 409, "Enrollment update to cross-program pathway must return 409");
     response = await request("/admin/summary", undefined, "GET");
-    const summary = await response.json() as any;
-    assert(response.status === 200, "Admin operational summary must return 200");
+    const summaryText = await response.text();
+    assert(response.status === 200, `Admin operational summary failed: ${summaryText}`);
+    const summary = JSON.parse(summaryText) as any;
     assert(summary.metrics.some((metric: any) => metric.id === "enrollments" && metric.value >= 1), "Summary must count active enrollments");
     assert(summary.incompleteAssignments.assessor >= 1, "Summary must expose incomplete assessor assignments");
     assert(summary.queues.map((queue: any) => queue.id).join(",") === "evidence,assessment,remediation,reassessment", "Summary must expose every operational queue");
     assert(summary.bottleneck && Array.isArray(summary.actions), "Summary must expose bottleneck and quick actions");
-    response = await request("/admin/audit", undefined, "GET"); const audit = await response.json() as any[];
-    assert(response.status === 200 && audit.some((event: any) => event.entityId === ids.enrollment && event.action === "create"), "Admin audit event was not recorded");
+    response = await request("/admin/audit", undefined, "GET");
+    const auditText = await response.text();
+    assert(response.status === 200, `Admin audit listing failed: ${auditText}`);
+    const audit = JSON.parse(auditText) as any[];
+    assert(audit.some((event: any) => event.entityId === ids.enrollment && event.action === "create"), "Admin audit event was not recorded");
   } finally {
     if (promotionRequestId) {
       await db.delete(adminAuditEventsTable).where(eq(adminAuditEventsTable.entityId, promotionRequestId));
