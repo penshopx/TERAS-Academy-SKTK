@@ -37,6 +37,17 @@ try {
   const keyDocument = keyText.trimStart().startsWith("-----BEGIN PUBLIC KEY-----")
     ? { keys: [{ keyId: signature.keyId, version: signature.keyVersion, algorithm: "Ed25519", publicKeyPem: keyText }] }
     : JSON.parse(keyText);
+  const keyIdByVersion = new Map();
+  for (const candidate of keyDocument.keys ?? []) {
+    if (typeof candidate.keyId !== "string" || !Number.isInteger(candidate.version)) continue;
+    const existingKeyId = keyIdByVersion.get(candidate.version);
+    if (existingKeyId !== undefined && existingKeyId !== candidate.keyId) {
+      throw new Error(
+        `ambiguous public key history: version ${candidate.version} is assigned to both ${existingKeyId} and ${candidate.keyId}`,
+      );
+    }
+    keyIdByVersion.set(candidate.version, candidate.keyId);
+  }
   const key = keyDocument.keys?.find(candidate => candidate.keyId === signature.keyId
     && candidate.version === signature.keyVersion && candidate.algorithm === "Ed25519");
   if (!key) throw new Error(`public key not found for ${signature.keyId} version ${signature.keyVersion}`);

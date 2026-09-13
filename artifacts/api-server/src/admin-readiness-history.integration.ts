@@ -257,31 +257,53 @@ async function run() {
       await writeFile(exportPath, JSON.stringify(document));
       try {
         await execFileAsync(process.execPath, [verifierPath.pathname, exportPath, keysPath]);
-        return true;
-      } catch {
-        return false;
+        return { accepted: true, stderr: "" };
+      } catch (error: any) {
+        return { accepted: false, stderr: String(error?.stderr ?? "") };
       }
     };
-    assert(await runVerifier(retiredExport), "Official verifier must accept an export signed before key rotation");
-    assert(await runVerifier(exported), "Official verifier must accept an export signed after key rotation");
+    assert((await runVerifier(retiredExport)).accepted, "Official verifier must accept an export signed before key rotation");
+    assert((await runVerifier(exported)).accepted, "Official verifier must accept an export signed after key rotation");
+    const ambiguousPublicKeys = {
+      ...publicKeys,
+      keys: [
+        ...publicKeys.keys,
+        {
+          keyId: "teras-audit-duplicate-version",
+          version: 2,
+          algorithm: "Ed25519",
+          publicKeyPem: retiredPublicPem,
+        },
+      ],
+    };
+    await writeFile(keysPath, JSON.stringify(ambiguousPublicKeys));
+    const ambiguousResult = await runVerifier(exported);
+    assert(!ambiguousResult.accepted, "Official verifier must reject public key histories with duplicate publication versions");
+    assert(ambiguousResult.stderr.includes("version 2")
+      && ambiguousResult.stderr.includes("teras-audit-2026-09")
+      && ambiguousResult.stderr.includes("teras-audit-duplicate-version"),
+    "Ambiguous public key rejection must identify the version and both conflicting key IDs");
+    assert(!ambiguousResult.stderr.includes(publicPem)
+      && !ambiguousResult.stderr.includes(retiredPublicPem),
+    "Ambiguous public key rejection must not expose public key material");
     const currentKeysOnly = {
       ...publicKeys,
       keys: publicKeys.keys.filter((key: any) => key.keyId !== "teras-audit-2026-01"),
     };
     await writeFile(keysPath, JSON.stringify(currentKeysOnly));
-    assert(!await runVerifier(retiredExport), "Official verifier must reject an old export when its historical public key is removed");
+    assert(!(await runVerifier(retiredExport)).accepted, "Official verifier must reject an old export when its historical public key is removed");
     await writeFile(keysPath, JSON.stringify(publicKeys));
     const payloadTampered = structuredClone(exported);
     payloadTampered.records[0].decisionReason = `${payloadTampered.records[0].decisionReason} changed`;
-    assert(!await runVerifier(payloadTampered), "Official verifier must reject a modified payload");
+    assert(!(await runVerifier(payloadTampered)).accepted, "Official verifier must reject a modified payload");
     const checksumTampered = structuredClone(exported);
     checksumTampered.integrity.checksum = `${checksumTampered.integrity.checksum.slice(0, -1)}${checksumTampered.integrity.checksum.endsWith("0") ? "1" : "0"}`;
-    assert(!await runVerifier(checksumTampered), "Official verifier must reject a modified checksum");
+    assert(!(await runVerifier(checksumTampered)).accepted, "Official verifier must reject a modified checksum");
     const signatureTampered = structuredClone(exported);
     const signatureBytes = Buffer.from(signatureTampered.integrity.signature.value, "base64");
     signatureBytes[0] ^= 1;
     signatureTampered.integrity.signature.value = signatureBytes.toString("base64");
-    assert(!await runVerifier(signatureTampered), "Official verifier must reject a modified signature");
+    assert(!(await runVerifier(signatureTampered)).accepted, "Official verifier must reject a modified signature");
     await rm(verifierDirectory, { recursive: true, force: true });
 
     const sharedTimestamps = [
