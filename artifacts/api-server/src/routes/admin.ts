@@ -3,7 +3,7 @@
 // @ts-nocheck
 import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
-import { and, count, desc, eq, lt, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import {
   CreateAdminCohortBody, CreateAdminCohortResponse, CreateAdminEnrollmentBody, CreateAdminEnrollmentResponse,
   CreateAdminPathwayBody, CreateAdminPathwayResponse, CreateAdminProgramBody, CreateAdminProgramResponse,
@@ -20,6 +20,7 @@ import {
   CreateAdminReadinessRuleVersionBody, CreateAdminReadinessRuleVersionResponse, ExportAdminReadinessHistoryQueryParams,
   ListAdminReadinessHistoryQueryParams, ListAdminReadinessHistoryResponse,
   ListAdminReadinessRulesResponse,
+  ListAdminReminderEscalationsQueryParams, ListAdminReminderEscalationsResponse,
   ResolveAdminReminderEscalationBody, ResolveAdminReminderEscalationParams, ResolveAdminReminderEscalationResponse,
 } from "@workspace/api-zod";
 import {
@@ -95,6 +96,105 @@ const latestAssessmentAttempts = <T extends { assessmentId: string; learnerId: s
   return result;
 };
 
+const REMINDER_ESCALATION_SUMMARY_LIMIT = 25;
+
+async function reminderEscalationCounts(executor: any = db) {
+  const [counts] = await executor.select({
+    open: sql<number>`count(*) filter (where ${diagnosticFollowUpReminderResolutionsTable.id} is null)`,
+    resolved: sql<number>`count(*) filter (where ${diagnosticFollowUpReminderResolutionsTable.id} is not null)`,
+    total: count(),
+  })
+    .from(diagnosticFollowUpReminderDeliveriesTable)
+    .leftJoin(diagnosticFollowUpReminderResolutionsTable, eq(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, diagnosticFollowUpReminderDeliveriesTable.id))
+    .where(eq(diagnosticFollowUpReminderDeliveriesTable.status, "permanently_failed"));
+  return {
+    open: Number(counts?.open ?? 0),
+    resolved: Number(counts?.resolved ?? 0),
+    total: Number(counts?.total ?? 0),
+  };
+}
+
+async function reminderEscalationRows(options: { status?: "open" | "resolved"; limit: number; offset?: number }, executor: any = db) {
+  const resolutionCondition = options.status === "open"
+    ? isNull(diagnosticFollowUpReminderResolutionsTable.id)
+    : options.status === "resolved"
+      ? isNotNull(diagnosticFollowUpReminderResolutionsTable.id)
+      : undefined;
+  const ordering = options.status === "resolved"
+    ? [
+      desc(diagnosticFollowUpReminderResolutionsTable.resolvedAt),
+      desc(diagnosticFollowUpReminderDeliveriesTable.id),
+    ]
+    : [
+      sql`case when ${diagnosticFollowUpReminderResolutionsTable.id} is null then 0 else 1 end`,
+      desc(diagnosticFollowUpReminderDeliveriesTable.lastAttemptAt),
+      desc(diagnosticFollowUpReminderDeliveriesTable.id),
+    ];
+  return executor.select({
+    id: diagnosticFollowUpReminderDeliveriesTable.id,
+    trainerId: diagnosticFollowUpReminderDeliveriesTable.trainerId,
+    trainerName: peopleTable.name,
+    target: diagnosticRecommendationsTable.title,
+    targetAt: diagnosticRecommendationFollowUpsTable.targetAt,
+    lastAttemptAt: diagnosticFollowUpReminderDeliveriesTable.lastAttemptAt,
+    failureReason: diagnosticFollowUpReminderDeliveriesTable.failureReason,
+    resolutionId: diagnosticFollowUpReminderResolutionsTable.id,
+    resolutionNote: diagnosticFollowUpReminderResolutionsTable.note,
+    resolvedByPersonId: diagnosticFollowUpReminderResolutionsTable.resolvedByPersonId,
+    resolvedAt: diagnosticFollowUpReminderResolutionsTable.resolvedAt,
+    failureNotificationStatus: diagnosticFollowUpFailureNotificationsTable.status,
+    failureNotificationDestination: diagnosticFollowUpFailureNotificationsTable.destination,
+    failureNotificationAttemptedAt: diagnosticFollowUpFailureNotificationsTable.attemptedAt,
+    failureNotificationReason: diagnosticFollowUpFailureNotificationsTable.failureReason,
+  })
+    .from(diagnosticFollowUpReminderDeliveriesTable)
+    .innerJoin(diagnosticRecommendationFollowUpsTable, eq(diagnosticRecommendationFollowUpsTable.id, diagnosticFollowUpReminderDeliveriesTable.followUpId))
+    .innerJoin(diagnosticRecommendationsTable, eq(diagnosticRecommendationsTable.id, diagnosticRecommendationFollowUpsTable.recommendationId))
+    .innerJoin(peopleTable, eq(peopleTable.id, diagnosticFollowUpReminderDeliveriesTable.trainerId))
+    .leftJoin(diagnosticFollowUpReminderResolutionsTable, eq(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, diagnosticFollowUpReminderDeliveriesTable.id))
+    .leftJoin(diagnosticFollowUpFailureNotificationsTable, and(
+      eq(diagnosticFollowUpFailureNotificationsTable.reminderDeliveryId, diagnosticFollowUpReminderDeliveriesTable.id),
+      eq(diagnosticFollowUpFailureNotificationsTable.channel, "email"),
+    ))
+    .where(and(
+      eq(diagnosticFollowUpReminderDeliveriesTable.status, "permanently_failed"),
+      resolutionCondition,
+    ))
+    .orderBy(...ordering)
+    .limit(options.limit)
+    .offset(options.offset ?? 0);
+}
+
+function serializeReminderEscalations(rows: any[]) {
+  return rows.flatMap(row => {
+    if (!row.targetAt || !row.lastAttemptAt) return [];
+    return [{
+      id: row.id,
+      trainerId: row.trainerId,
+      trainerName: row.trainerName,
+      target: row.target,
+      targetAt: row.targetAt,
+      lastAttemptAt: row.lastAttemptAt,
+      reason: safeReminderFailureReason(row.failureReason),
+      failureNotification: row.failureNotificationStatus === "failed" && row.failureNotificationDestination && row.failureNotificationAttemptedAt
+        ? {
+          destination: row.failureNotificationDestination,
+          attemptedAt: row.failureNotificationAttemptedAt,
+          reason: safeReminderFailureReason(row.failureNotificationReason),
+        }
+        : null,
+      status: row.resolutionId ? "resolved" : "open",
+      resolution: row.resolutionId ? {
+        id: row.resolutionId,
+        reminderDeliveryId: row.id,
+        note: row.resolutionNote,
+        resolvedByPersonId: row.resolvedByPersonId,
+        resolvedAt: row.resolvedAt,
+      } : null,
+    }];
+  });
+}
+
 /** Aggregate-only view for administrators who do not hold the requested
  * operational role. It intentionally contains no actor identity, assignment,
  * or mutation capability. */
@@ -120,6 +220,7 @@ async function readOnlyDashboardProjection() {
     ],
     incompleteAssignments: { trainer: trainerMissing, assessor: assessorMissing, total: activeEnrollments.filter(enrollment => !enrollment.trainerId || !enrollment.assessorId).length },
     failedTrainerReminders: [],
+    reminderEscalationCounts: { open: 0, resolved: 0, total: 0 },
     queues: [],
     bottleneck: { stage: "clear", label: "Gunakan Admin Control Room", count: 0, description: "Mode ini hanya menampilkan ringkasan organisasi dan tidak menjalankan pekerjaan atas nama role operasional.", targetTab: "enrollments" },
     actions: [],
@@ -180,6 +281,31 @@ router.post("/admin/reminder-escalations/:reminderDeliveryId/resolution", async 
     }
     throw error;
   }
+});
+
+router.get("/admin/reminder-escalations", async (req, res): Promise<void> => {
+  if (!await authorizeAdmin(req, res)) return;
+  const query = parsed(ListAdminReminderEscalationsQueryParams, req.query, res);
+  if (!query) return;
+  const limit = query.limit ?? 25;
+  const offset = query.offset ?? 0;
+  const [rows, counts] = await Promise.all([
+    reminderEscalationRows({ status: query.status, limit, offset }),
+    reminderEscalationCounts(),
+  ]);
+  const items = serializeReminderEscalations(rows);
+  const total = query.status ? counts[query.status] : counts.total;
+  res.json(ListAdminReminderEscalationsResponse.parse({
+    items,
+    counts,
+    pagination: {
+      limit,
+      offset,
+      returned: items.length,
+      total,
+      hasMore: offset + items.length < total,
+    },
+  }));
 });
 
 router.get("/admin/readiness-rules", async (req, res): Promise<void> => {
@@ -434,7 +560,7 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
   const [
     roles, people, programs, pathways, cohorts, enrollments, evidence, evidenceReviews, attempts,
     gaps, remediationPlans, remediationActivities, remediationEvents, reassessmentLinks,
-    failedReminderRows,
+    failedReminderRows, reminderCounts,
   ] = await Promise.all([
     db.select().from(personRolesTable), db.select().from(peopleTable), db.select().from(programsTable),
     db.select().from(pathwaysTable), db.select().from(cohortsTable), db.select().from(enrollmentsTable), db.select().from(evidenceTable),
@@ -442,34 +568,8 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
     db.select().from(gapsTable),
     db.select().from(remediationPlansTable), db.select().from(remediationActivitiesTable),
     db.select().from(remediationEventsTable), db.select().from(reassessmentLinksTable),
-    db.select({
-      id: diagnosticFollowUpReminderDeliveriesTable.id,
-      trainerId: diagnosticFollowUpReminderDeliveriesTable.trainerId,
-      trainerName: peopleTable.name,
-      target: diagnosticRecommendationsTable.title,
-      targetAt: diagnosticRecommendationFollowUpsTable.targetAt,
-      lastAttemptAt: diagnosticFollowUpReminderDeliveriesTable.lastAttemptAt,
-      failureReason: diagnosticFollowUpReminderDeliveriesTable.failureReason,
-      resolutionId: diagnosticFollowUpReminderResolutionsTable.id,
-      resolutionNote: diagnosticFollowUpReminderResolutionsTable.note,
-      resolvedByPersonId: diagnosticFollowUpReminderResolutionsTable.resolvedByPersonId,
-      resolvedAt: diagnosticFollowUpReminderResolutionsTable.resolvedAt,
-      failureNotificationStatus: diagnosticFollowUpFailureNotificationsTable.status,
-      failureNotificationDestination: diagnosticFollowUpFailureNotificationsTable.destination,
-      failureNotificationAttemptedAt: diagnosticFollowUpFailureNotificationsTable.attemptedAt,
-      failureNotificationReason: diagnosticFollowUpFailureNotificationsTable.failureReason,
-    })
-      .from(diagnosticFollowUpReminderDeliveriesTable)
-      .innerJoin(diagnosticRecommendationFollowUpsTable, eq(diagnosticRecommendationFollowUpsTable.id, diagnosticFollowUpReminderDeliveriesTable.followUpId))
-      .innerJoin(diagnosticRecommendationsTable, eq(diagnosticRecommendationsTable.id, diagnosticRecommendationFollowUpsTable.recommendationId))
-      .innerJoin(peopleTable, eq(peopleTable.id, diagnosticFollowUpReminderDeliveriesTable.trainerId))
-      .leftJoin(diagnosticFollowUpReminderResolutionsTable, eq(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, diagnosticFollowUpReminderDeliveriesTable.id))
-      .leftJoin(diagnosticFollowUpFailureNotificationsTable, and(
-        eq(diagnosticFollowUpFailureNotificationsTable.reminderDeliveryId, diagnosticFollowUpReminderDeliveriesTable.id),
-        eq(diagnosticFollowUpFailureNotificationsTable.channel, "email"),
-      ))
-      .where(eq(diagnosticFollowUpReminderDeliveriesTable.status, "permanently_failed"))
-      .orderBy(desc(diagnosticFollowUpReminderDeliveriesTable.lastAttemptAt)),
+    reminderEscalationRows({ limit: REMINDER_ESCALATION_SUMMARY_LIMIT }),
+    reminderEscalationCounts(),
   ]);
   const activePeople = new Set(people.filter(person => person.status === "active").map(person => person.id));
   const activeEnrollments = enrollments.filter(enrollment => enrollment.status === "active" && activePeople.has(enrollment.learnerId));
@@ -535,34 +635,7 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
     });
   const trainerMissing = activeEnrollments.filter(enrollment => !enrollment.trainerId).length;
   const assessorMissing = activeEnrollments.filter(enrollment => !enrollment.assessorId).length;
-  const failedTrainerReminders = failedReminderRows.flatMap(row => {
-    if (!row.targetAt || !row.lastAttemptAt) return [];
-    return [{
-      id: row.id,
-      trainerId: row.trainerId,
-      trainerName: row.trainerName,
-      target: row.target,
-      targetAt: row.targetAt,
-      lastAttemptAt: row.lastAttemptAt,
-       reason: safeReminderFailureReason(row.failureReason),
-       failureNotification: row.failureNotificationStatus === "failed" && row.failureNotificationDestination && row.failureNotificationAttemptedAt
-         ? {
-           destination: row.failureNotificationDestination,
-           attemptedAt: row.failureNotificationAttemptedAt,
-           reason: safeReminderFailureReason(row.failureNotificationReason),
-         }
-         : null,
-       status: row.resolutionId ? "resolved" : "open",
-       resolution: row.resolutionId ? {
-         id: row.resolutionId,
-         reminderDeliveryId: row.id,
-         note: row.resolutionNote,
-         resolvedByPersonId: row.resolvedByPersonId,
-         resolvedAt: row.resolvedAt,
-       } : null,
-    }];
-  });
-  const openFailedTrainerReminders = failedTrainerReminders.filter(reminder => reminder.status === "open");
+  const failedTrainerReminders = serializeReminderEscalations(failedReminderRows);
   const queues = [
     { id: "evidence", label: "Evidence menunggu review", count: evidenceItems.length, description: "Evidence dengan review terbaru masih Under review.", targetTab: "enrollments", items: evidenceItems },
     { id: "assessment", label: "Assessment menunggu keputusan", count: assessmentItems.length, description: "Attempt terbaru belum memiliki keputusan assessor.", targetTab: "enrollments", items: assessmentItems },
@@ -574,7 +647,7 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
     ? { stage: largestQueue.id, label: largestQueue.label, count: largestQueue.count, description: `Tahap ${largestQueue.label.toLowerCase()} adalah antrean lifecycle terbesar saat ini.`, targetTab: "enrollments" as const }
     : { stage: "clear" as const, label: "Tidak ada antrean lifecycle", count: 0, description: "Tidak ada pekerjaan lifecycle yang tertahan saat ringkasan dibuat.", targetTab: "enrollments" as const };
   const actions = [
-    ...(openFailedTrainerReminders.length ? [{ id: "review-failed-trainer-reminders", label: "Periksa pengingat trainer yang gagal", description: `${openFailedTrainerReminders.length} pengingat telah berhenti setelah tiga percobaan dan perlu ditangani pengelola.`, count: openFailedTrainerReminders.length, targetTab: "enrollments" as const, urgency: "critical" as const }] : []),
+    ...(reminderCounts.open ? [{ id: "review-failed-trainer-reminders", label: "Periksa pengingat trainer yang gagal", description: `${reminderCounts.open} pengingat telah berhenti setelah tiga percobaan dan perlu ditangani pengelola.`, count: reminderCounts.open, targetTab: "enrollments" as const, urgency: "critical" as const }] : []),
     ...(trainerMissing ? [{ id: "assign-trainers", label: "Lengkapi assignment trainer", description: `${trainerMissing} enrollment aktif belum memiliki trainer.`, count: trainerMissing, targetTab: "enrollments" as const, urgency: "critical" as const }] : []),
     ...(assessorMissing ? [{ id: "assign-assessors", label: "Lengkapi assignment assessor", description: `${assessorMissing} enrollment aktif belum memiliki assessor.`, count: assessorMissing, targetTab: "enrollments" as const, urgency: "critical" as const }] : []),
     ...queues.filter(queue => queue.count > 0).map(queue => ({ id: `resolve-${queue.id}`, label: `Tindak lanjuti ${queue.label.toLowerCase()}`, description: queue.description, count: queue.count, targetTab: "enrollments" as const, urgency: queue.count === largestQueue.count ? "attention" as const : "normal" as const })),
@@ -590,6 +663,7 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
     ],
     incompleteAssignments: { trainer: trainerMissing, assessor: assessorMissing, total: activeEnrollments.filter(enrollment => !enrollment.trainerId || !enrollment.assessorId).length },
     failedTrainerReminders,
+    reminderEscalationCounts: reminderCounts,
     queues, bottleneck, actions, generatedAt: new Date(),
   }));
 });

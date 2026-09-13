@@ -186,6 +186,7 @@ export const diagnosticFollowUpReminderResolutionsTable = pgTable("teras_diagnos
   ...audit,
 }, table => [
   uniqueIndex("teras_diagnostic_follow_up_reminder_resolution_delivery_unique").on(table.reminderDeliveryId),
+  index("teras_diagnostic_follow_up_reminder_resolution_resolved_at_idx").on(table.resolvedAt, table.reminderDeliveryId),
   check("teras_diagnostic_follow_up_reminder_resolution_note_check", sql`length(trim(${table.note})) > 0`),
 ]);
 export const trainerReminderPreferencesTable = pgTable("teras_trainer_reminder_preferences", {

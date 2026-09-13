@@ -9,13 +9,19 @@ import type { AdminOperationalAction } from './adminOperationalAction';
 import type { AdminOperationalBottleneck } from './adminOperationalBottleneck';
 import type { AdminOperationalMetric } from './adminOperationalMetric';
 import type { AdminOperationalQueue } from './adminOperationalQueue';
-import type { AdminOperationalSummaryFailedTrainerRemindersItem } from './adminOperationalSummaryFailedTrainerRemindersItem';
 import type { AdminOperationalSummaryIncompleteAssignments } from './adminOperationalSummaryIncompleteAssignments';
+import type { AdminReminderEscalation } from './adminReminderEscalation';
+import type { AdminReminderEscalationCounts } from './adminReminderEscalationCounts';
 
 export interface AdminOperationalSummary {
   metrics: AdminOperationalMetric[];
   incompleteAssignments: AdminOperationalSummaryIncompleteAssignments;
-  failedTrainerReminders: AdminOperationalSummaryFailedTrainerRemindersItem[];
+  /**
+     * Bounded operational detail, ordered with open escalations first and newest failures first.
+     * @maxItems 25
+     */
+  failedTrainerReminders: AdminReminderEscalation[];
+  reminderEscalationCounts: AdminReminderEscalationCounts;
   queues: AdminOperationalQueue[];
   bottleneck: AdminOperationalBottleneck;
   actions: AdminOperationalAction[];

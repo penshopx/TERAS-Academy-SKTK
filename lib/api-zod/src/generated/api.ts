@@ -4191,6 +4191,14 @@ export const getAdminOperationalSummaryResponseIncompleteAssignmentsAssessorMin 
 
 export const getAdminOperationalSummaryResponseIncompleteAssignmentsTotalMin = 0;
 
+export const getAdminOperationalSummaryResponseFailedTrainerRemindersMax = 25;
+
+export const getAdminOperationalSummaryResponseReminderEscalationCountsOpenMin = 0;
+
+export const getAdminOperationalSummaryResponseReminderEscalationCountsResolvedMin = 0;
+
+export const getAdminOperationalSummaryResponseReminderEscalationCountsTotalMin = 0;
+
 export const getAdminOperationalSummaryResponseQueuesItemCountMin = 0;
 
 export const getAdminOperationalSummaryResponseBottleneckCountMin = 0;
@@ -4232,7 +4240,12 @@ export const GetAdminOperationalSummaryResponse = zod.object({
   "resolvedByPersonId": zod.string(),
   "resolvedAt": zod.coerce.date()
 }),zod.null()])
-})),
+})).max(getAdminOperationalSummaryResponseFailedTrainerRemindersMax).describe('Bounded operational detail, ordered with open escalations first and newest failures first.'),
+  "reminderEscalationCounts": zod.object({
+  "open": zod.int().min(getAdminOperationalSummaryResponseReminderEscalationCountsOpenMin),
+  "resolved": zod.int().min(getAdminOperationalSummaryResponseReminderEscalationCountsResolvedMin),
+  "total": zod.int().min(getAdminOperationalSummaryResponseReminderEscalationCountsTotalMin)
+}),
   "queues": zod.array(zod.object({
   "id": zod.enum(['evidence', 'assessment', 'remediation', 'reassessment']),
   "label": zod.string(),
@@ -4270,6 +4283,77 @@ export const GetAdminOperationalSummaryResponse = zod.object({
   "urgency": zod.enum(['normal', 'attention', 'critical'])
 })),
   "generatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Audit permanently failed trainer reminder escalations
+ */
+export const listAdminReminderEscalationsQueryLimitDefault = 25;
+export const listAdminReminderEscalationsQueryLimitMax = 100;
+
+export const listAdminReminderEscalationsQueryOffsetDefault = 0;
+export const listAdminReminderEscalationsQueryOffsetMin = 0;
+
+
+
+export const ListAdminReminderEscalationsQueryParams = zod.object({
+  "status": zod.enum(['open', 'resolved']).optional(),
+  "limit": zod.coerce.number().int().min(1).max(listAdminReminderEscalationsQueryLimitMax).default(listAdminReminderEscalationsQueryLimitDefault),
+  "offset": zod.coerce.number().int().min(listAdminReminderEscalationsQueryOffsetMin).default(listAdminReminderEscalationsQueryOffsetDefault)
+})
+
+export const listAdminReminderEscalationsResponseCountsOpenMin = 0;
+
+export const listAdminReminderEscalationsResponseCountsResolvedMin = 0;
+
+export const listAdminReminderEscalationsResponseCountsTotalMin = 0;
+
+export const listAdminReminderEscalationsResponsePaginationLimitMax = 100;
+
+export const listAdminReminderEscalationsResponsePaginationOffsetMin = 0;
+
+export const listAdminReminderEscalationsResponsePaginationReturnedMin = 0;
+
+export const listAdminReminderEscalationsResponsePaginationTotalMin = 0;
+
+
+
+export const ListAdminReminderEscalationsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "trainerId": zod.string(),
+  "trainerName": zod.string(),
+  "target": zod.string(),
+  "targetAt": zod.coerce.date(),
+  "lastAttemptAt": zod.coerce.date(),
+  "reason": zod.string(),
+  "failureNotification": zod.union([zod.object({
+  "destination": zod.string(),
+  "attemptedAt": zod.coerce.date(),
+  "reason": zod.string()
+}),zod.null()]),
+  "status": zod.enum(['open', 'resolved']),
+  "resolution": zod.union([zod.object({
+  "id": zod.string(),
+  "reminderDeliveryId": zod.string(),
+  "note": zod.string(),
+  "resolvedByPersonId": zod.string(),
+  "resolvedAt": zod.coerce.date()
+}),zod.null()])
+})),
+  "counts": zod.object({
+  "open": zod.int().min(listAdminReminderEscalationsResponseCountsOpenMin),
+  "resolved": zod.int().min(listAdminReminderEscalationsResponseCountsResolvedMin),
+  "total": zod.int().min(listAdminReminderEscalationsResponseCountsTotalMin)
+}),
+  "pagination": zod.object({
+  "limit": zod.int().min(1).max(listAdminReminderEscalationsResponsePaginationLimitMax),
+  "offset": zod.int().min(listAdminReminderEscalationsResponsePaginationOffsetMin),
+  "returned": zod.int().min(listAdminReminderEscalationsResponsePaginationReturnedMin),
+  "total": zod.int().min(listAdminReminderEscalationsResponsePaginationTotalMin),
+  "hasMore": zod.boolean()
+})
 })
 
 
@@ -4314,6 +4398,14 @@ export const getAdminLearnerDashboardProjectionResponseIncompleteAssignmentsAsse
 
 export const getAdminLearnerDashboardProjectionResponseIncompleteAssignmentsTotalMin = 0;
 
+export const getAdminLearnerDashboardProjectionResponseFailedTrainerRemindersMax = 25;
+
+export const getAdminLearnerDashboardProjectionResponseReminderEscalationCountsOpenMin = 0;
+
+export const getAdminLearnerDashboardProjectionResponseReminderEscalationCountsResolvedMin = 0;
+
+export const getAdminLearnerDashboardProjectionResponseReminderEscalationCountsTotalMin = 0;
+
 export const getAdminLearnerDashboardProjectionResponseQueuesItemCountMin = 0;
 
 export const getAdminLearnerDashboardProjectionResponseBottleneckCountMin = 0;
@@ -4355,7 +4447,12 @@ export const GetAdminLearnerDashboardProjectionResponse = zod.object({
   "resolvedByPersonId": zod.string(),
   "resolvedAt": zod.coerce.date()
 }),zod.null()])
-})),
+})).max(getAdminLearnerDashboardProjectionResponseFailedTrainerRemindersMax).describe('Bounded operational detail, ordered with open escalations first and newest failures first.'),
+  "reminderEscalationCounts": zod.object({
+  "open": zod.int().min(getAdminLearnerDashboardProjectionResponseReminderEscalationCountsOpenMin),
+  "resolved": zod.int().min(getAdminLearnerDashboardProjectionResponseReminderEscalationCountsResolvedMin),
+  "total": zod.int().min(getAdminLearnerDashboardProjectionResponseReminderEscalationCountsTotalMin)
+}),
   "queues": zod.array(zod.object({
   "id": zod.enum(['evidence', 'assessment', 'remediation', 'reassessment']),
   "label": zod.string(),
@@ -4408,6 +4505,14 @@ export const getAdminTrainerDashboardProjectionResponseIncompleteAssignmentsAsse
 
 export const getAdminTrainerDashboardProjectionResponseIncompleteAssignmentsTotalMin = 0;
 
+export const getAdminTrainerDashboardProjectionResponseFailedTrainerRemindersMax = 25;
+
+export const getAdminTrainerDashboardProjectionResponseReminderEscalationCountsOpenMin = 0;
+
+export const getAdminTrainerDashboardProjectionResponseReminderEscalationCountsResolvedMin = 0;
+
+export const getAdminTrainerDashboardProjectionResponseReminderEscalationCountsTotalMin = 0;
+
 export const getAdminTrainerDashboardProjectionResponseQueuesItemCountMin = 0;
 
 export const getAdminTrainerDashboardProjectionResponseBottleneckCountMin = 0;
@@ -4449,7 +4554,12 @@ export const GetAdminTrainerDashboardProjectionResponse = zod.object({
   "resolvedByPersonId": zod.string(),
   "resolvedAt": zod.coerce.date()
 }),zod.null()])
-})),
+})).max(getAdminTrainerDashboardProjectionResponseFailedTrainerRemindersMax).describe('Bounded operational detail, ordered with open escalations first and newest failures first.'),
+  "reminderEscalationCounts": zod.object({
+  "open": zod.int().min(getAdminTrainerDashboardProjectionResponseReminderEscalationCountsOpenMin),
+  "resolved": zod.int().min(getAdminTrainerDashboardProjectionResponseReminderEscalationCountsResolvedMin),
+  "total": zod.int().min(getAdminTrainerDashboardProjectionResponseReminderEscalationCountsTotalMin)
+}),
   "queues": zod.array(zod.object({
   "id": zod.enum(['evidence', 'assessment', 'remediation', 'reassessment']),
   "label": zod.string(),
@@ -4502,6 +4612,14 @@ export const getAdminAssessorDashboardProjectionResponseIncompleteAssignmentsAss
 
 export const getAdminAssessorDashboardProjectionResponseIncompleteAssignmentsTotalMin = 0;
 
+export const getAdminAssessorDashboardProjectionResponseFailedTrainerRemindersMax = 25;
+
+export const getAdminAssessorDashboardProjectionResponseReminderEscalationCountsOpenMin = 0;
+
+export const getAdminAssessorDashboardProjectionResponseReminderEscalationCountsResolvedMin = 0;
+
+export const getAdminAssessorDashboardProjectionResponseReminderEscalationCountsTotalMin = 0;
+
 export const getAdminAssessorDashboardProjectionResponseQueuesItemCountMin = 0;
 
 export const getAdminAssessorDashboardProjectionResponseBottleneckCountMin = 0;
@@ -4543,7 +4661,12 @@ export const GetAdminAssessorDashboardProjectionResponse = zod.object({
   "resolvedByPersonId": zod.string(),
   "resolvedAt": zod.coerce.date()
 }),zod.null()])
-})),
+})).max(getAdminAssessorDashboardProjectionResponseFailedTrainerRemindersMax).describe('Bounded operational detail, ordered with open escalations first and newest failures first.'),
+  "reminderEscalationCounts": zod.object({
+  "open": zod.int().min(getAdminAssessorDashboardProjectionResponseReminderEscalationCountsOpenMin),
+  "resolved": zod.int().min(getAdminAssessorDashboardProjectionResponseReminderEscalationCountsResolvedMin),
+  "total": zod.int().min(getAdminAssessorDashboardProjectionResponseReminderEscalationCountsTotalMin)
+}),
   "queues": zod.array(zod.object({
   "id": zod.enum(['evidence', 'assessment', 'remediation', 'reassessment']),
   "label": zod.string(),

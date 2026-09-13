@@ -1486,16 +1486,10 @@ export type AdminOperationalSummaryIncompleteAssignments = {
   total: number;
 };
 
-export type AdminOperationalSummaryFailedTrainerRemindersItemFailureNotification = {
-  destination: string;
-  attemptedAt: string;
-  reason: string;
-} | null;
-
-export type AdminOperationalSummaryFailedTrainerRemindersItemStatus = typeof AdminOperationalSummaryFailedTrainerRemindersItemStatus[keyof typeof AdminOperationalSummaryFailedTrainerRemindersItemStatus];
+export type AdminReminderEscalationStatus = typeof AdminReminderEscalationStatus[keyof typeof AdminReminderEscalationStatus];
 
 
-export const AdminOperationalSummaryFailedTrainerRemindersItemStatus = {
+export const AdminReminderEscalationStatus = {
   open: 'open',
   resolved: 'resolved',
 } as const;
@@ -1508,7 +1502,13 @@ export interface AdminReminderEscalationResolution {
   resolvedAt: string;
 }
 
-export type AdminOperationalSummaryFailedTrainerRemindersItem = {
+export type AdminReminderEscalationFailureNotification = {
+  destination: string;
+  attemptedAt: string;
+  reason: string;
+} | null;
+
+export interface AdminReminderEscalation {
   id: string;
   trainerId: string;
   trainerName: string;
@@ -1516,19 +1516,54 @@ export type AdminOperationalSummaryFailedTrainerRemindersItem = {
   targetAt: string;
   lastAttemptAt: string;
   reason: string;
-  failureNotification: AdminOperationalSummaryFailedTrainerRemindersItemFailureNotification;
-  status: AdminOperationalSummaryFailedTrainerRemindersItemStatus;
+  failureNotification: AdminReminderEscalationFailureNotification;
+  status: AdminReminderEscalationStatus;
   resolution: AdminReminderEscalationResolution | null;
-};
+}
+
+export interface AdminReminderEscalationCounts {
+  /** @minimum 0 */
+  open: number;
+  /** @minimum 0 */
+  resolved: number;
+  /** @minimum 0 */
+  total: number;
+}
 
 export interface AdminOperationalSummary {
   metrics: AdminOperationalMetric[];
   incompleteAssignments: AdminOperationalSummaryIncompleteAssignments;
-  failedTrainerReminders: AdminOperationalSummaryFailedTrainerRemindersItem[];
+  /**
+     * Bounded operational detail, ordered with open escalations first and newest failures first.
+     * @maxItems 25
+     */
+  failedTrainerReminders: AdminReminderEscalation[];
+  reminderEscalationCounts: AdminReminderEscalationCounts;
   queues: AdminOperationalQueue[];
   bottleneck: AdminOperationalBottleneck;
   actions: AdminOperationalAction[];
   generatedAt: string;
+}
+
+export type AdminReminderEscalationPagePagination = {
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  limit: number;
+  /** @minimum 0 */
+  offset: number;
+  /** @minimum 0 */
+  returned: number;
+  /** @minimum 0 */
+  total: number;
+  hasMore: boolean;
+};
+
+export interface AdminReminderEscalationPage {
+  items: AdminReminderEscalation[];
+  counts: AdminReminderEscalationCounts;
+  pagination: AdminReminderEscalationPagePagination;
 }
 
 export interface AdminReminderEscalationResolutionInput {
@@ -2960,4 +2995,25 @@ export const ExportAdminReadinessHistoryStatus = {
   Not_Ready: 'Not Ready',
   Developing: 'Developing',
   Ready_for_Official_Assessment: 'Ready for Official Assessment',
+} as const;
+
+export type ListAdminReminderEscalationsParams = {
+status?: ListAdminReminderEscalationsStatus;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * @minimum 0
+ */
+offset?: number;
+};
+
+export type ListAdminReminderEscalationsStatus = typeof ListAdminReminderEscalationsStatus[keyof typeof ListAdminReminderEscalationsStatus];
+
+
+export const ListAdminReminderEscalationsStatus = {
+  open: 'open',
+  resolved: 'resolved',
 } as const;

@@ -49,6 +49,7 @@ async function run() {
     const baseline = await baselineResponse.json() as any;
     assert(baselineResponse.status === 200, "Baseline summary request failed");
     const baselineCounts = Object.fromEntries(baseline.queues.map((queue: any) => [queue.id, queue.count]));
+    const baselineEscalationCounts = baseline.reminderEscalationCounts;
     await db.insert(peopleTable).values([
       { id: ids.activeLearner, name: "Active Summary Learner", initials: "AS", email: null, role: "learner", organization: null, status: "active" },
       { id: ids.inactiveLearner, name: "Inactive Summary Learner", initials: "IS", email: null, role: "learner", organization: null, status: "active" },
@@ -145,6 +146,10 @@ async function run() {
     assert(reminderFailure?.failureNotification?.reason === "Layanan email tidak dapat menyelesaikan pengiriman.", "Failed operations notification must expose only a safe reason");
     assert(!JSON.stringify(reminderFailure).includes("mx.internal.example"), "Admin summary leaked raw operations notification transport details");
     assert(reminderFailure?.status === "open" && reminderFailure?.resolution === null, "New permanent failure must be an open escalation");
+    assert(summary.failedTrainerReminders.length <= 25, "Operational summary escalation detail must remain bounded");
+    assert(summary.failedTrainerReminders[0]?.status === "open", "Operational summary must prioritize open escalations");
+    assert(summary.reminderEscalationCounts.open === baselineEscalationCounts.open + 1, "Bounded summary must retain the complete open escalation count");
+    assert(summary.reminderEscalationCounts.resolved === baselineEscalationCounts.resolved, "Bounded summary must retain the complete resolved escalation count");
     const [profileAfterSummary] = await db.select().from(diagnosticProfilesTable).where(inArray(diagnosticProfilesTable.id, [ids.profile]));
     const [deliveryAfterSummary] = await db.select().from(diagnosticFollowUpReminderDeliveriesTable).where(inArray(diagnosticFollowUpReminderDeliveriesTable.id, [ids.failedDelivery]));
     assert(profileAfterSummary.currentState === "practice", "Operational summary must not change diagnostic status");
@@ -177,11 +182,21 @@ async function run() {
     const [originalDelivery] = await db.select().from(diagnosticFollowUpReminderDeliveriesTable).where(inArray(diagnosticFollowUpReminderDeliveriesTable.id, [ids.failedDelivery]));
     assert(originalDelivery.status === "permanently_failed" && originalDelivery.failureReason === "secret transport detail: smtp.example.test", "Resolution must not mutate the original delivery audit");
     const resolvedSummary = await (await fetch(`http://127.0.0.1:${address.port}/api/admin/summary`)).json() as any;
-    const resolvedFailure = resolvedSummary.failedTrainerReminders.find((item: any) => item.id === ids.failedDelivery);
-    assert(resolvedFailure?.status === "resolved" && [ids.admin, ids.secondAdmin].includes(resolvedFailure.resolution?.resolvedByPersonId), "Summary must distinguish resolved escalation with its history");
+    assert(resolvedSummary.reminderEscalationCounts.open === baselineEscalationCounts.open, "Resolved escalation must leave the complete open count");
+    assert(resolvedSummary.reminderEscalationCounts.resolved === baselineEscalationCounts.resolved + 1, "Resolved escalation must increase the complete resolved count");
     const baselineOpenFailureCount = baseline.actions?.find((item: any) => item.id === "review-failed-trainer-reminders")?.count ?? 0;
     const resolvedOpenFailureCount = resolvedSummary.actions?.find((item: any) => item.id === "review-failed-trainer-reminders")?.count ?? 0;
     assert(resolvedOpenFailureCount === baselineOpenFailureCount, "Resolved escalation must leave the open action count");
+    const resolvedAuditResponse = await fetch(`http://127.0.0.1:${address.port}/api/admin/reminder-escalations?status=resolved&limit=1&offset=0`);
+    const resolvedAudit = await resolvedAuditResponse.json() as any;
+    assert(resolvedAuditResponse.status === 200, "Resolved escalation audit request failed");
+    assert(resolvedAudit.items.length === 1 && resolvedAudit.items[0].status === "resolved", "Resolved escalation audit must honor status and page size");
+    assert(resolvedAudit.counts.resolved === baselineEscalationCounts.resolved + 1, "Paginated audit must expose the unpaginated resolved count");
+    assert(resolvedAudit.pagination.limit === 1 && resolvedAudit.pagination.offset === 0 && resolvedAudit.pagination.total === resolvedAudit.counts.resolved, "Escalation audit must expose a clear pagination contract");
+    const resolvedFailureAuditResponse = await fetch(`http://127.0.0.1:${address.port}/api/admin/reminder-escalations?status=resolved&limit=100&offset=0`);
+    const resolvedFailureAudit = await resolvedFailureAuditResponse.json() as any;
+    const resolvedFailure = resolvedFailureAudit.items.find((item: any) => item.id === ids.failedDelivery);
+    assert(resolvedFailure?.status === "resolved" && [ids.admin, ids.secondAdmin].includes(resolvedFailure.resolution?.resolvedByPersonId), "Paginated audit must preserve resolved escalation history");
 
     await db.insert(remediationEventsTable).values({ id: id("active-rem-completed"), activityId: ids.activeActivity, status: "Completed" });
     await db.insert(assessmentAttemptsTable).values({

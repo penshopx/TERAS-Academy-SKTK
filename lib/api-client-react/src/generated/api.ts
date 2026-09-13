@@ -44,6 +44,7 @@ import type {
   AdminReadinessExport,
   AdminReadinessHistoryPage,
   AdminReadinessRule,
+  AdminReminderEscalationPage,
   AdminReminderEscalationResolution,
   AdminReminderEscalationResolutionInput,
   AdminUser,
@@ -108,6 +109,7 @@ import type {
   LearningTransitionRejection,
   LearningTransitionResult,
   ListAdminReadinessHistoryParams,
+  ListAdminReminderEscalationsParams,
   ManagedResourceUploadRequest,
   ManagedResourceUploadResponse,
   ModuleDetail,
@@ -5753,6 +5755,90 @@ export function useGetAdminOperationalSummary<TData = Awaited<ReturnType<typeof 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetAdminOperationalSummaryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListAdminReminderEscalationsUrl = (params?: ListAdminReminderEscalationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/reminder-escalations?${stringifiedParams}` : `/api/admin/reminder-escalations`
+}
+
+/**
+ * @summary Audit permanently failed trainer reminder escalations
+ */
+export const listAdminReminderEscalations = async (params?: ListAdminReminderEscalationsParams, options?: Parameters<typeof customFetch>[1]): Promise<AdminReminderEscalationPage> => {
+
+  return customFetch<AdminReminderEscalationPage>(getListAdminReminderEscalationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAdminReminderEscalationsQueryKey = (params?: ListAdminReminderEscalationsParams,) => {
+    return [
+    `/api/admin/reminder-escalations`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAdminReminderEscalationsQueryOptions = <TData = Awaited<ReturnType<typeof listAdminReminderEscalations>>, TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>>(params?: ListAdminReminderEscalationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminReminderEscalations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAdminReminderEscalationsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminReminderEscalations>>> = ({ signal }) => listAdminReminderEscalations(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAdminReminderEscalations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAdminReminderEscalationsQueryResult = NonNullable<Awaited<ReturnType<typeof listAdminReminderEscalations>>>
+export type ListAdminReminderEscalationsQueryError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>
+
+
+/**
+ * @summary Audit permanently failed trainer reminder escalations
+ */
+
+export function useListAdminReminderEscalations<TData = Awaited<ReturnType<typeof listAdminReminderEscalations>>, TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>>(
+ params?: ListAdminReminderEscalationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminReminderEscalations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAdminReminderEscalationsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type AdminOperationalSummaryFailedTrainerRemindersItemFailureNotification = {
+export type AdminReminderEscalationFailureNotification = {
   destination: string;
   attemptedAt: Date;
   reason: string;
