@@ -3,7 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { LearnerConditionState, LearnerConditionView } from "./learner-condition";
+import { ReadinessSummaryStatus, type ReadinessSummaryStatus as ReadinessStatus } from "@workspace/api-client-react";
+import { getSafetyState, LearnerConditionState, LearnerConditionView } from "./learner-condition";
 
 const dashboard = {
   learner: { name: "Ayu Pratama" },
@@ -23,7 +24,7 @@ const currentGate = {
 };
 
 const readiness = {
-  status: "Ready",
+  status: ReadinessSummaryStatus.Ready_for_Official_Assessment,
   score: 100,
   blockers: [],
   currentGate,
@@ -50,7 +51,7 @@ test("renders a clear learner condition with explicit safety and no blockers", (
       owner="Learner"
       dashboard={dashboard}
       readiness={{
-        status: "Ready",
+        status: ReadinessSummaryStatus.Ready_for_Official_Assessment,
         score: 100,
         blockers: [],
         currentGate,
@@ -76,7 +77,7 @@ test("renders a blocked learner condition as not cleared with every blocker visi
       owner="Assessor"
       dashboard={dashboard}
       readiness={{
-        status: "Blocked",
+        status: ReadinessSummaryStatus.Developing,
         score: 62,
         blockers,
         currentGate,
@@ -94,6 +95,37 @@ test("renders a blocked learner condition as not cleared with every blocker visi
   }
 });
 
+test("maps every canonical readiness status to an explicit safety state", () => {
+  const expected: Record<ReadinessStatus, ReturnType<typeof getSafetyState>> = {
+    [ReadinessSummaryStatus.Not_Ready]: "BLOCKED",
+    [ReadinessSummaryStatus.Developing]: "NOT CLEARED",
+    [ReadinessSummaryStatus.Ready_for_Official_Assessment]: "CLEAR",
+  };
+
+  assert.deepEqual(
+    Object.fromEntries(Object.values(ReadinessSummaryStatus).map(status => [status, getSafetyState(status)])),
+    expected,
+  );
+});
+
+test("treats an unknown runtime readiness status as not cleared", () => {
+  assert.equal(getSafetyState("New API Status"), "NOT CLEARED");
+
+  const markup = renderToStaticMarkup(
+    <LearnerConditionView
+      owner="Learner"
+      dashboard={dashboard}
+      readiness={{
+        ...readiness,
+        status: "New API Status" as ReadinessStatus,
+      }}
+    />,
+  );
+
+  assert.match(markup, /SAFETY NOT CLEARED/);
+  assert.doesNotMatch(markup, /SAFETY CLEAR|SAFETY BLOCKED/);
+});
+
 test("renders a not ready learner condition as safety blocked with critical failure details", () => {
   const blockers = [
     "Critical assessment failed: electrical isolation",
@@ -105,7 +137,7 @@ test("renders a not ready learner condition as safety blocked with critical fail
       owner="Assessor"
       dashboard={dashboard}
       readiness={{
-        status: "Not Ready",
+        status: ReadinessSummaryStatus.Not_Ready,
         score: 38,
         blockers,
         currentGate,

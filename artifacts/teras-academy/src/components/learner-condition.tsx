@@ -1,4 +1,9 @@
-import { useGetLearnerDashboard, useGetLearnerReadiness } from "@workspace/api-client-react";
+import {
+  ReadinessSummaryStatus,
+  useGetLearnerDashboard,
+  useGetLearnerReadiness,
+  type ReadinessSummaryStatus as ReadinessStatus,
+} from "@workspace/api-client-react";
 import { AlertTriangle, CheckCircle2, ClipboardCheck, FileCheck2, ShieldAlert, ShieldCheck, UserRound } from "lucide-react";
 import React from "react";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +26,7 @@ type LearnerConditionViewProps = LearnerConditionProps & {
     };
   };
   readiness: {
-    status: string;
+    status: ReadinessStatus;
     score: number;
     blockers: string[];
     currentGate: {
@@ -31,6 +36,20 @@ type LearnerConditionViewProps = LearnerConditionProps & {
     };
   };
 };
+
+type SafetyState = "CLEAR" | "BLOCKED" | "NOT CLEARED";
+
+const safetyStateByReadinessStatus = {
+  [ReadinessSummaryStatus.Not_Ready]: "BLOCKED",
+  [ReadinessSummaryStatus.Developing]: "NOT CLEARED",
+  [ReadinessSummaryStatus.Ready_for_Official_Assessment]: "CLEAR",
+} satisfies Record<ReadinessStatus, SafetyState>;
+
+export function getSafetyState(status: unknown): SafetyState {
+  return typeof status === "string" && Object.hasOwn(safetyStateByReadinessStatus, status)
+    ? safetyStateByReadinessStatus[status as ReadinessStatus]
+    : "NOT CLEARED";
+}
 
 type LearnerConditionStateProps = LearnerConditionProps & {
   dashboard: LearnerConditionViewProps["dashboard"] | undefined;
@@ -83,11 +102,7 @@ export function LearnerConditionState({
 }
 
 export function LearnerConditionView({ owner, dashboard, readiness }: LearnerConditionViewProps) {
-  const safetyState = readiness.status === "Not Ready"
-    ? "BLOCKED"
-    : readiness.score === 100 && readiness.blockers.length === 0
-      ? "CLEAR"
-      : "NOT CLEARED";
+  const safetyState = getSafetyState(readiness.status);
   const safetyBlocked = safetyState === "BLOCKED";
   const safetyClear = safetyState === "CLEAR";
   const safetyMessage = safetyState === "BLOCKED"
