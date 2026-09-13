@@ -8,7 +8,7 @@ import {
   practiceTasksTable, programsTable, reassessmentLinksTable, remediationActivitiesTable,
   remediationEventsTable, remediationPlansTable,
 } from "@workspace/db";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 const suffix = crypto.randomUUID();
 const id = (name: string) => `admin-summary-${name}-${suffix}`;
@@ -25,17 +25,26 @@ const ids = {
   inactiveReassessment: id("inactive-reassessment"), pendingAfterRemediation: id("pending-after-remediation"),
   trainer: id("trainer"), framework: id("framework"), template: id("template"), session: id("session"),
   profile: id("profile"), recommendation: id("recommendation"), followUp: id("follow-up"), failedDelivery: id("failed-delivery"),
-  failedNotification: id("failed-notification"), admin: id("admin"),
+  failedNotification: id("failed-notification"), admin: id("admin"), secondAdmin: id("second-admin"),
 };
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 
 async function run() {
-  const app = createIntegrationTestApp(() => ({ userId: ids.admin, role: null }));
+  const app = createIntegrationTestApp(request => ({
+    userId: request.query.actor === "second" ? ids.secondAdmin : ids.admin,
+    role: null,
+  }));
   const server = await new Promise<ReturnType<typeof app.listen>>(resolve => { const listener = app.listen(0, () => resolve(listener)); });
   const address = server.address(); assert(address && typeof address !== "string", "Test server did not bind");
   try {
-    await db.insert(peopleTable).values({ id: ids.admin, name: "Summary Admin", initials: "SA", email: null, role: "admin", organization: null, status: "active", authProvider: "supabase", authSubject: ids.admin });
-    await db.insert(personRolesTable).values({ personId: ids.admin, role: "admin" });
+    await db.insert(peopleTable).values([
+      { id: ids.admin, name: "Summary Admin", initials: "SA", email: null, role: "admin", organization: null, status: "active", authProvider: "supabase", authSubject: ids.admin },
+      { id: ids.secondAdmin, name: "Second Summary Admin", initials: "SS", email: null, role: "admin", organization: null, status: "active", authProvider: "supabase", authSubject: ids.secondAdmin },
+    ]);
+    await db.insert(personRolesTable).values([
+      { personId: ids.admin, role: "admin" },
+      { personId: ids.secondAdmin, role: "admin" },
+    ]);
     const baselineResponse = await fetch(`http://127.0.0.1:${address.port}/api/admin/summary`);
     const baseline = await baselineResponse.json() as any;
     assert(baselineResponse.status === 200, "Baseline summary request failed");
@@ -141,21 +150,35 @@ async function run() {
     assert(profileAfterSummary.currentState === "practice", "Operational summary must not change diagnostic status");
     assert(deliveryAfterSummary.status === "permanently_failed", "Operational summary must not change reminder or readiness-related status");
 
-    const resolutionResponse = await fetch(`http://127.0.0.1:${address.port}/api/admin/reminder-escalations/${ids.failedDelivery}/resolution`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: "Handled through a verified manual call." }),
-    });
-    const resolution = await resolutionResponse.json() as any;
-    assert(resolutionResponse.status === 201, "Admin could not resolve reminder escalation");
-    assert(resolution.note === "Handled through a verified manual call." && resolution.resolvedByPersonId === ids.admin && resolution.resolvedAt, "Resolution must preserve note, actor, and time");
-    const duplicateResolution = await fetch(`http://127.0.0.1:${address.port}/api/admin/reminder-escalations/${ids.failedDelivery}/resolution`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: "Overwrite attempt" }),
-    });
-    assert(duplicateResolution.status === 409, "Append-only resolution must reject replacement");
+    const resolutionUrl = `http://127.0.0.1:${address.port}/api/admin/reminder-escalations/${ids.failedDelivery}/resolution`;
+    const [firstResolutionResponse, secondResolutionResponse] = await Promise.all([
+      fetch(`${resolutionUrl}?actor=second`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: "Handled through a verified manual call." }),
+      }),
+      fetch(resolutionUrl, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: "Concurrent overwrite attempt." }),
+      }),
+    ]);
+    const resolutionResponses = [firstResolutionResponse, secondResolutionResponse];
+    const statuses = resolutionResponses.map(response => response.status).sort((a, b) => a - b);
+    assert(statuses[0] === 201 && statuses[1] === 409, "Concurrent resolution attempts must produce exactly one 201 and one 409");
+    const createdResponse = resolutionResponses.find(response => response.status === 201);
+    assert(createdResponse, "Concurrent resolution attempts did not produce a created resolution");
+    const resolution = await createdResponse.json() as any;
+    assert(
+      ["Handled through a verified manual call.", "Concurrent overwrite attempt."].includes(resolution.note)
+        && [ids.admin, ids.secondAdmin].includes(resolution.resolvedByPersonId)
+        && resolution.resolvedAt,
+      "Resolution must preserve the winning note, actor, and time",
+    );
+    const storedResolutions = await db.select().from(diagnosticFollowUpReminderResolutionsTable)
+      .where(eq(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, ids.failedDelivery));
+    assert(storedResolutions.length === 1 && storedResolutions[0].id === resolution.id, "Concurrent resolution attempts must store exactly one resolution");
     const [originalDelivery] = await db.select().from(diagnosticFollowUpReminderDeliveriesTable).where(inArray(diagnosticFollowUpReminderDeliveriesTable.id, [ids.failedDelivery]));
     assert(originalDelivery.status === "permanently_failed" && originalDelivery.failureReason === "secret transport detail: smtp.example.test", "Resolution must not mutate the original delivery audit");
     const resolvedSummary = await (await fetch(`http://127.0.0.1:${address.port}/api/admin/summary`)).json() as any;
     const resolvedFailure = resolvedSummary.failedTrainerReminders.find((item: any) => item.id === ids.failedDelivery);
-    assert(resolvedFailure?.status === "resolved" && resolvedFailure.resolution?.resolvedByPersonId === ids.admin, "Summary must distinguish resolved escalation with its history");
+    assert(resolvedFailure?.status === "resolved" && [ids.admin, ids.secondAdmin].includes(resolvedFailure.resolution?.resolvedByPersonId), "Summary must distinguish resolved escalation with its history");
     const baselineOpenFailureCount = baseline.actions?.find((item: any) => item.id === "review-failed-trainer-reminders")?.count ?? 0;
     const resolvedOpenFailureCount = resolvedSummary.actions?.find((item: any) => item.id === "review-failed-trainer-reminders")?.count ?? 0;
     assert(resolvedOpenFailureCount === baselineOpenFailureCount, "Resolved escalation must leave the open action count");
@@ -202,9 +225,9 @@ async function run() {
     await db.delete(pathwaysTable).where(inArray(pathwaysTable.id, [ids.activePath, ids.inactivePath]));
     await db.delete(competencyFrameworksTable).where(inArray(competencyFrameworksTable.id, [ids.framework]));
     await db.delete(programsTable).where(inArray(programsTable.id, [ids.program]));
-    await db.delete(adminAuditEventsTable).where(inArray(adminAuditEventsTable.actorPersonId, [ids.admin]));
-    await db.delete(personRolesTable).where(inArray(personRolesTable.personId, [ids.activeLearner, ids.inactiveLearner, ids.admin]));
-    await db.delete(peopleTable).where(inArray(peopleTable.id, [ids.activeLearner, ids.inactiveLearner, ids.trainer, ids.admin]));
+    await db.delete(adminAuditEventsTable).where(inArray(adminAuditEventsTable.actorPersonId, [ids.admin, ids.secondAdmin]));
+    await db.delete(personRolesTable).where(inArray(personRolesTable.personId, [ids.activeLearner, ids.inactiveLearner, ids.admin, ids.secondAdmin]));
+    await db.delete(peopleTable).where(inArray(peopleTable.id, [ids.activeLearner, ids.inactiveLearner, ids.trainer, ids.admin, ids.secondAdmin]));
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
 }
