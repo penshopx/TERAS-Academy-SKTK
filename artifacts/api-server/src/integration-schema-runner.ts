@@ -24,6 +24,9 @@ const DEFAULT_TEST_TIMEOUT_MS = 10 * 60 * 1000;
 const SCHEMA_METADATA_KIND = "teras-integration-test";
 const SCHEMA_METADATA_VERSION = 1;
 const ADVISORY_LOCK_SEED = 847_201;
+const EMPTY_DATABASE_PRIVILEGE_ERROR =
+  "Clean-bootstrap integration tests require the PostgreSQL test role to have the CREATEDB attribute (or be a superuser). " +
+  "Grant CREATEDB only to the dedicated CI/test role. The runner creates and removes a separate disposable test database; it does not modify the application database.";
 
 type IntegrationSchemaMetadata = {
   kind: typeof SCHEMA_METADATA_KIND;
@@ -227,6 +230,29 @@ function disposableDatabaseUrl(databaseUrl: string, databaseName: string) {
   return url.toString();
 }
 
+export async function assertCanCreateDisposableDatabase(
+  admin: Pick<InstanceType<typeof Client>, "query">,
+) {
+  const privilege = await admin.query<{
+    role_name: string;
+    can_create_database: boolean;
+  }>(`
+    SELECT
+      current_user AS role_name,
+      (rolcreatedb OR rolsuper) AS can_create_database
+    FROM pg_roles
+    WHERE rolname = current_user
+  `);
+  if (privilege.rows[0]?.can_create_database !== true) {
+    const roleName = privilege.rows[0]?.role_name;
+    throw new Error(
+      roleName
+        ? `${EMPTY_DATABASE_PRIVILEGE_ERROR} Current role: ${roleName}.`
+        : EMPTY_DATABASE_PRIVILEGE_ERROR,
+    );
+  }
+}
+
 async function runCommand(
   command: readonly string[],
   databaseUrl: string,
@@ -327,6 +353,7 @@ export async function runIsolatedIntegrationTest({
     await admin.connect();
     connected = true;
     if (useEmptyDatabase) {
+      await assertCanCreateDisposableDatabase(admin);
       await admin.query(`CREATE DATABASE ${quoteIdentifier(schemaName)} TEMPLATE template0`);
       const databaseUrl = disposableDatabaseUrl(process.env.DATABASE_URL!, schemaName);
       if (setupCommand) {

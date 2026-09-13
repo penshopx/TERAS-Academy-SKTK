@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  assertCanCreateDisposableDatabase,
   canDropStaleIntegrationSchema,
   isStaleOwnedIntegrationSchema,
 } from "./integration-schema-runner";
@@ -55,4 +56,35 @@ test("keeps unknown schema names and ownership metadata", () => {
     now,
     staleSchemaAgeMs,
   }), false);
+});
+
+test("accepts a test role that can create a disposable database", async () => {
+  let queryCount = 0;
+  await assertCanCreateDisposableDatabase({
+    query: async () => {
+      queryCount += 1;
+      return {
+        rows: [{ role_name: "ci_test", can_create_database: true }],
+      };
+    },
+  } as never);
+  assert.equal(queryCount, 1);
+});
+
+test("explains the minimum privilege and database isolation when CREATEDB is missing", async () => {
+  await assert.rejects(
+    assertCanCreateDisposableDatabase({
+      query: async () => ({
+        rows: [{ role_name: "ci_test", can_create_database: false }],
+      }),
+    } as never),
+    (error: Error) => {
+      assert.match(error.message, /CREATEDB/);
+      assert.match(error.message, /dedicated CI\/test role/);
+      assert.match(error.message, /separate disposable test database/);
+      assert.match(error.message, /does not modify the application database/);
+      assert.match(error.message, /Current role: ci_test/);
+      return true;
+    },
+  );
 });
