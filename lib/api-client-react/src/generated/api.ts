@@ -97,6 +97,7 @@ import type {
   KnowledgeSearchInput,
   KnowledgeSearchResult,
   LearnerDashboard,
+  LearnerPortfolioExport,
   LearningCourse,
   LearningPlanItem,
   LearningResource,
@@ -2176,6 +2177,83 @@ export function useGetCapabilityPassport<TData = Awaited<ReturnType<typeof getCa
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetCapabilityPassportQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getExportLearnerPortfolioUrl = () => {
+
+
+
+
+  return `/api/passport/export`
+}
+
+/**
+ * @summary Download the active pathway longitudinal portfolio with verification identity
+ */
+export const exportLearnerPortfolio = async ( options?: Parameters<typeof customFetch>[1]): Promise<LearnerPortfolioExport> => {
+
+  return customFetch<LearnerPortfolioExport>(getExportLearnerPortfolioUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportLearnerPortfolioQueryKey = () => {
+    return [
+    `/api/passport/export`
+    ] as const;
+    }
+
+
+export const getExportLearnerPortfolioQueryOptions = <TData = Awaited<ReturnType<typeof exportLearnerPortfolio>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportLearnerPortfolio>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportLearnerPortfolioQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportLearnerPortfolio>>> = ({ signal }) => exportLearnerPortfolio({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportLearnerPortfolio>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportLearnerPortfolioQueryResult = NonNullable<Awaited<ReturnType<typeof exportLearnerPortfolio>>>
+export type ExportLearnerPortfolioQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Download the active pathway longitudinal portfolio with verification identity
+ */
+
+export function useExportLearnerPortfolio<TData = Awaited<ReturnType<typeof exportLearnerPortfolio>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportLearnerPortfolio>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportLearnerPortfolioQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

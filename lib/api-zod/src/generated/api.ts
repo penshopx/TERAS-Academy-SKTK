@@ -1886,6 +1886,250 @@ export const GetCapabilityPassportResponse = zod.object({
 
 
 /**
+ * @summary Download the active pathway longitudinal portfolio with verification identity
+ */
+export const exportLearnerPortfolioResponsePortfolioReadinessScoreMin = 0;
+export const exportLearnerPortfolioResponsePortfolioReadinessScoreMax = 100;
+
+
+export const exportLearnerPortfolioResponsePortfolioReadinessCurrentGateScoreMin = 0;
+export const exportLearnerPortfolioResponsePortfolioReadinessCurrentGateScoreMax = 100;
+
+export const exportLearnerPortfolioResponsePortfolioReadinessCurrentGateThresholdMin = 0;
+export const exportLearnerPortfolioResponsePortfolioReadinessCurrentGateThresholdMax = 100;
+
+
+export const exportLearnerPortfolioResponsePortfolioReadinessNextGateOneScoreMin = 0;
+export const exportLearnerPortfolioResponsePortfolioReadinessNextGateOneScoreMax = 100;
+
+export const exportLearnerPortfolioResponsePortfolioReadinessNextGateOneThresholdMin = 0;
+export const exportLearnerPortfolioResponsePortfolioReadinessNextGateOneThresholdMax = 100;
+
+
+export const exportLearnerPortfolioResponsePortfolioReadinessGatesItemScoreMin = 0;
+export const exportLearnerPortfolioResponsePortfolioReadinessGatesItemScoreMax = 100;
+
+export const exportLearnerPortfolioResponsePortfolioReadinessGatesItemThresholdMin = 0;
+export const exportLearnerPortfolioResponsePortfolioReadinessGatesItemThresholdMax = 100;
+
+
+export const exportLearnerPortfolioResponseIntegrityChecksumRegExp = new RegExp('^[a-f0-9]{64}$');
+
+
+export const ExportLearnerPortfolioResponse = zod.object({
+  "schemaVersion": zod.enum(['1.0']),
+  "documentId": zod.string(),
+  "exportedAt": zod.coerce.date(),
+  "portfolio": zod.object({
+  "learner": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "initials": zod.string(),
+  "role": zod.string(),
+  "organization": zod.string().nullable()
+}),
+  "pathway": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
+  "outcome": zod.string(),
+  "moduleCount": zod.int(),
+  "baselineModuleCount": zod.int().optional(),
+  "gateCount": zod.int(),
+  "gates": zod.array(zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "sequence": zod.int(),
+  "requirement": zod.string()
+})),
+  "contract": zod.object({
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+}).optional(),
+  "terminalPortfolio": zod.enum(['Capability Portfolio', 'Certification Readiness Portfolio'])
+}),
+  "headline": zod.string(),
+  "subtitle": zod.string(),
+  "terminalPortfolio": zod.enum(['Capability Portfolio', 'Certification Readiness Portfolio']),
+  "readinessDisclaimer": zod.string().describe('Internal readiness-preparation information only; it is not an official competency or certification decision.'),
+  "readiness": zod.object({
+  "pathway": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "purpose": zod.enum(['capability-development', 'pre-certification', 'unspecified']),
+  "outcome": zod.string(),
+  "moduleCount": zod.int(),
+  "baselineModuleCount": zod.int().optional(),
+  "gateCount": zod.int(),
+  "gates": zod.array(zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "sequence": zod.int(),
+  "requirement": zod.string()
+})),
+  "contract": zod.object({
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+}).optional(),
+  "terminalPortfolio": zod.enum(['Capability Portfolio', 'Certification Readiness Portfolio'])
+}),
+  "status": zod.enum(['Not Ready', 'Developing', 'Ready for Official Assessment']),
+  "score": zod.int().min(exportLearnerPortfolioResponsePortfolioReadinessScoreMin).max(exportLearnerPortfolioResponsePortfolioReadinessScoreMax),
+  "ruleVersion": zod.int().min(1),
+  "evaluatedAt": zod.coerce.date(),
+  "decisionReason": zod.string(),
+  "inputEvidence": zod.object({
+  "assessments": zod.array(zod.object({
+  "id": zod.string(),
+  "score": zod.int(),
+  "completed": zod.boolean(),
+  "criticalFailure": zod.boolean(),
+  "assessmentAttemptId": zod.string().nullish(),
+  "criterionIds": zod.array(zod.string()).optional()
+})),
+  "evidence": zod.array(zod.object({
+  "requirementId": zod.string(),
+  "satisfied": zod.boolean(),
+  "evidenceIds": zod.array(zod.string()).optional(),
+  "evidenceReviewIds": zod.array(zod.string()).optional()
+})),
+  "openCriticalGaps": zod.array(zod.string()),
+  "gates": zod.array(zod.object({
+  "gateId": zod.string(),
+  "gapIds": zod.array(zod.string()),
+  "criterionIds": zod.array(zod.string()),
+  "assessmentAttemptIds": zod.array(zod.string()),
+  "evidenceIds": zod.array(zod.string()),
+  "evidenceReviewIds": zod.array(zod.string()),
+  "remediationPlanIds": zod.array(zod.string()),
+  "reassessmentAttemptIds": zod.array(zod.string()),
+  "learningRecordLinkIds": zod.array(zod.string()).optional(),
+  "diagnosticProfileIds": zod.array(zod.string()).optional(),
+  "diagnosticGapIds": zod.array(zod.string()).optional(),
+  "diagnosticRecommendationIds": zod.array(zod.string()).optional()
+})).optional()
+}),
+  "currentGate": zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "status": zod.string(),
+  "requirement": zod.string(),
+  "score": zod.int().min(exportLearnerPortfolioResponsePortfolioReadinessCurrentGateScoreMin).max(exportLearnerPortfolioResponsePortfolioReadinessCurrentGateScoreMax),
+  "threshold": zod.int().min(exportLearnerPortfolioResponsePortfolioReadinessCurrentGateThresholdMin).max(exportLearnerPortfolioResponsePortfolioReadinessCurrentGateThresholdMax),
+  "hardGate": zod.boolean(),
+  "competencyUnitId": zod.string().nullable(),
+  "ruleVersion": zod.int().min(1),
+  "blockers": zod.array(zod.string()).optional(),
+  "contracts": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+})).optional()
+}),
+  "nextGate": zod.union([zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "status": zod.string(),
+  "requirement": zod.string(),
+  "score": zod.int().min(exportLearnerPortfolioResponsePortfolioReadinessNextGateOneScoreMin).max(exportLearnerPortfolioResponsePortfolioReadinessNextGateOneScoreMax),
+  "threshold": zod.int().min(exportLearnerPortfolioResponsePortfolioReadinessNextGateOneThresholdMin).max(exportLearnerPortfolioResponsePortfolioReadinessNextGateOneThresholdMax),
+  "hardGate": zod.boolean(),
+  "competencyUnitId": zod.string().nullable(),
+  "ruleVersion": zod.int().min(1),
+  "blockers": zod.array(zod.string()).optional(),
+  "contracts": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+})).optional()
+}),zod.null()]),
+  "gates": zod.array(zod.object({
+  "id": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "status": zod.string(),
+  "requirement": zod.string(),
+  "score": zod.int().min(exportLearnerPortfolioResponsePortfolioReadinessGatesItemScoreMin).max(exportLearnerPortfolioResponsePortfolioReadinessGatesItemScoreMax),
+  "threshold": zod.int().min(exportLearnerPortfolioResponsePortfolioReadinessGatesItemThresholdMin).max(exportLearnerPortfolioResponsePortfolioReadinessGatesItemThresholdMax),
+  "hardGate": zod.boolean(),
+  "competencyUnitId": zod.string().nullable(),
+  "ruleVersion": zod.int().min(1),
+  "blockers": zod.array(zod.string()).optional(),
+  "contracts": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "assessmentId": zod.string(),
+  "evidenceRequirementId": zod.string(),
+  "gateCode": zod.string(),
+  "assessment": zod.string(),
+  "evidence": zod.string(),
+  "output": zod.string(),
+  "kpi": zod.string(),
+  "portfolio": zod.string()
+})).optional()
+})),
+  "blockers": zod.array(zod.string()),
+  "outstandingGapCount": zod.int(),
+  "missingEvidenceCount": zod.int()
+}),
+  "achievements": zod.array(zod.object({
+  "id": zod.string(),
+  "capability": zod.string(),
+  "level": zod.string(),
+  "program": zod.string(),
+  "pathway": zod.string(),
+  "achievedAt": zod.coerce.date().nullable(),
+  "evidenceCount": zod.int(),
+  "status": zod.string()
+})),
+  "timeline": zod.array(zod.object({
+  "id": zod.string(),
+  "pathwayId": zod.string().nullable(),
+  "pathwayName": zod.string().nullable(),
+  "label": zod.string(),
+  "description": zod.string(),
+  "status": zod.string(),
+  "date": zod.coerce.date().nullable(),
+  "href": zod.string().nullable(),
+  "causalReferences": zod.record(zod.string(), zod.array(zod.string())).optional()
+}))
+}),
+  "integrity": zod.object({
+  "algorithm": zod.enum(['SHA-256']),
+  "checksum": zod.string().regex(exportLearnerPortfolioResponseIntegrityChecksumRegExp),
+  "canonicalization": zod.enum(['teras-learner-portfolio-v1-json-stringify']),
+  "verificationNote": zod.string()
+})
+})
+
+
+/**
  * @summary Get trainer workspace summary
  */
 export const getTrainerDashboardResponseDiagnosticFollowUpsItemBaselineScoreMin = 0;

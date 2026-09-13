@@ -2706,6 +2706,43 @@ export interface CapabilityPassport {
   timeline: JourneyStep[];
 }
 
+export type LearnerPortfolioExportSchemaVersion = typeof LearnerPortfolioExportSchemaVersion[keyof typeof LearnerPortfolioExportSchemaVersion];
+
+
+export const LearnerPortfolioExportSchemaVersion = {
+  '10': '1.0',
+} as const;
+
+export type LearnerPortfolioExportIntegrityAlgorithm = typeof LearnerPortfolioExportIntegrityAlgorithm[keyof typeof LearnerPortfolioExportIntegrityAlgorithm];
+
+
+export const LearnerPortfolioExportIntegrityAlgorithm = {
+  'SHA-256': 'SHA-256',
+} as const;
+
+export type LearnerPortfolioExportIntegrityCanonicalization = typeof LearnerPortfolioExportIntegrityCanonicalization[keyof typeof LearnerPortfolioExportIntegrityCanonicalization];
+
+
+export const LearnerPortfolioExportIntegrityCanonicalization = {
+  'teras-learner-portfolio-v1-json-stringify': 'teras-learner-portfolio-v1-json-stringify',
+} as const;
+
+export type LearnerPortfolioExportIntegrity = {
+  algorithm: LearnerPortfolioExportIntegrityAlgorithm;
+  /** @pattern ^[a-f0-9]{64}$ */
+  checksum: string;
+  canonicalization: LearnerPortfolioExportIntegrityCanonicalization;
+  verificationNote: string;
+};
+
+export interface LearnerPortfolioExport {
+  schemaVersion: LearnerPortfolioExportSchemaVersion;
+  documentId: string;
+  exportedAt: string;
+  portfolio: CapabilityPassport;
+  integrity: LearnerPortfolioExportIntegrity;
+}
+
 export interface RemediationActivityCompletionInput {
   /**
      * @minLength 1

@@ -464,6 +464,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CapabilityPassport"
+  /passport/export:
+    get:
+      operationId: exportLearnerPortfolio
+      tags: [learner]
+      summary: Download the active pathway longitudinal portfolio with verification identity
+      responses:
+        "200":
+          description: Portable learner portfolio generated from the capability passport records
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LearnerPortfolioExport"
   /trainer/dashboard:
     get:
       operationId: getTrainerDashboard
@@ -4368,6 +4383,23 @@ components:
           items:
             $ref: "#/components/schemas/JourneyStep"
       required: [learner, pathway, headline, subtitle, terminalPortfolio, readinessDisclaimer, readiness, achievements, timeline]
+    LearnerPortfolioExport:
+      type: object
+      required: [schemaVersion, documentId, exportedAt, portfolio, integrity]
+      properties:
+        schemaVersion: { type: string, enum: ["1.0"] }
+        documentId: { type: string }
+        exportedAt: { type: string, format: date-time }
+        portfolio:
+          $ref: "#/components/schemas/CapabilityPassport"
+        integrity:
+          type: object
+          required: [algorithm, checksum, canonicalization, verificationNote]
+          properties:
+            algorithm: { type: string, enum: [SHA-256] }
+            checksum: { type: string, pattern: "^[a-f0-9]{64}$" }
+            canonicalization: { type: string, enum: [teras-learner-portfolio-v1-json-stringify] }
+            verificationNote: { type: string }
     RemediationActivityCompletionInput:
       type: object
       required: [idempotencyKey, completionNote]

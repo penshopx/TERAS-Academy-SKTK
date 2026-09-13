@@ -1,11 +1,55 @@
 import { useGetCapabilityPassport } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Activity, Award, ShieldCheck, FileText } from "lucide-react";
+import { Activity, Award, ShieldCheck, FileText, Download } from "lucide-react";
 import { LearnerCondition } from "@/components/learner-condition";
 import { PassportRecord } from "@/components/passport-record";
+import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { toast } from "sonner";
+
+type DownloadDependencies = {
+  createObjectURL: (blob: Blob) => string;
+  revokeObjectURL: (url: string) => void;
+  createAnchor: () => { href: string; download: string; click: () => void };
+};
+
+export function downloadPortfolioExport(
+  payload: Awaited<ReturnType<typeof import("@workspace/api-client-react").exportLearnerPortfolio>>,
+  dependencies: DownloadDependencies = {
+    createObjectURL: blob => URL.createObjectURL(blob),
+    revokeObjectURL: url => URL.revokeObjectURL(url),
+    createAnchor: () => document.createElement("a"),
+  },
+) {
+  const date = payload.exportedAt.slice(0, 10);
+  const slug = payload.portfolio.terminalPortfolio === "Capability Portfolio" ? "capability-portfolio" : "certification-readiness-portfolio";
+  const url = dependencies.createObjectURL(new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json" }));
+  const anchor = dependencies.createAnchor();
+  anchor.href = url;
+  anchor.download = `${slug}-${date}.json`;
+  anchor.click();
+  dependencies.revokeObjectURL(url);
+}
 
 export default function Passport() {
   const { data: passport, isLoading, error } = useGetCapabilityPassport();
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportPortfolio = async () => {
+    setIsExporting(true);
+    try {
+      const { exportLearnerPortfolio } = await import("@workspace/api-client-react");
+      const exported = await exportLearnerPortfolio();
+      downloadPortfolioExport(exported);
+      toast.success(`${exported.portfolio.terminalPortfolio} berhasil diunduh`, {
+        description: `ID verifikasi: ${exported.documentId}`,
+      });
+    } catch {
+      toast.error("Portfolio tidak dapat diunduh. Coba lagi.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   if (isLoading) {
     return <div className="h-full flex items-center justify-center min-h-[50vh]"><Activity className="w-8 h-8 text-primary animate-pulse" /></div>;
@@ -51,6 +95,15 @@ export default function Passport() {
                 </div>
                 <div className="inline-flex items-center rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-bold uppercase tracking-wider text-primary" data-testid="terminal-portfolio">
                   Terminal portfolio: {passport.terminalPortfolio}
+                </div>
+                <div>
+                  <Button type="button" onClick={exportPortfolio} disabled={isExporting} className="gap-2" data-testid="download-portfolio">
+                    <Download className="h-4 w-4" />
+                    {isExporting ? "Menyiapkan portfolio…" : `Unduh ${passport.terminalPortfolio}`}
+                  </Button>
+                  <p className="mt-2 max-w-xl text-xs text-muted-foreground">
+                    File JSON memuat timeline, referensi evidence, snapshot readiness, tanggal ekspor, dan checksum SHA-256 untuk verifikasi integritas.
+                  </p>
                 </div>
               </div>
               
