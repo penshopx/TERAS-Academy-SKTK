@@ -112,7 +112,7 @@ BEGIN
       FROM teras_enrollment_pathway_events selection
       WHERE selection.enrollment_id = event.enrollment_id
         AND selection.created_at <= event.created_at
-      ORDER BY selection.sequence DESC, selection.created_at DESC, selection.id DESC
+      ORDER BY selection.sequence DESC, selection.created_at DESC, selection.id COLLATE "C" DESC
       LIMIT 1
     ) active ON true
     WHERE event.pathway_id <> COALESCE(active.pathway_id, enrollment.pathway_id)
@@ -128,7 +128,7 @@ BEGIN
       FROM teras_enrollment_pathway_events selection
       WHERE selection.enrollment_id = event.enrollment_id
         AND selection.created_at <= event.created_at
-      ORDER BY selection.sequence DESC, selection.created_at DESC, selection.id DESC
+      ORDER BY selection.sequence DESC, selection.created_at DESC, selection.id COLLATE "C" DESC
       LIMIT 1
     ) active ON true
     WHERE event.pathway_id <> COALESCE(active.pathway_id, enrollment.pathway_id)
@@ -143,7 +143,7 @@ BEGIN
       FROM teras_enrollment_pathway_events selection
       WHERE selection.enrollment_id = event.enrollment_id
         AND selection.created_at <= event.created_at
-      ORDER BY selection.sequence DESC, selection.created_at DESC, selection.id DESC
+      ORDER BY selection.sequence DESC, selection.created_at DESC, selection.id COLLATE "C" DESC
       LIMIT 1
     ) active ON true
     WHERE event.program_id <> enrollment.program_id
@@ -158,7 +158,7 @@ BEGIN
       FROM teras_enrollment_pathway_events selection
       WHERE selection.enrollment_id = event.enrollment_id
         AND selection.created_at <= event.created_at
-      ORDER BY selection.sequence DESC, selection.created_at DESC, selection.id DESC
+      ORDER BY selection.sequence DESC, selection.created_at DESC, selection.id COLLATE "C" DESC
       LIMIT 1
     ) active ON true
     WHERE event.program_id <> enrollment.program_id
@@ -175,7 +175,7 @@ BEGIN
       FROM teras_enrollment_pathway_events selection
       WHERE selection.enrollment_id = event.enrollment_id
         AND selection.created_at <= event.created_at
-      ORDER BY selection.sequence DESC, selection.created_at DESC, selection.id DESC
+      ORDER BY selection.sequence DESC, selection.created_at DESC, selection.id COLLATE "C" DESC
       LIMIT 1
     ) active ON true
     WHERE event.pathway_id <> COALESCE(active.pathway_id, enrollment.pathway_id)
@@ -257,7 +257,7 @@ BEGIN
            FROM teras_enrollment_pathway_events selection
            WHERE selection.enrollment_id = NEW.enrollment_id
              AND selection.created_at <= NEW.created_at
-           ORDER BY selection.sequence DESC, selection.created_at DESC, selection.id DESC
+           ORDER BY selection.sequence DESC, selection.created_at DESC, selection.id COLLATE "C" DESC
            LIMIT 1
          ), enrollment.pathway_id)
   INTO enrollment_program_id, effective_pathway_id

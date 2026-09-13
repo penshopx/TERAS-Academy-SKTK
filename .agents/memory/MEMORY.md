@@ -38,3 +38,4 @@
 - [Post-lock snapshots](post-lock-snapshots.md) — read mutable audit context in a new statement after a contended row lock so READ COMMITTED sees the winner.
 - [Baseline publish and pin coordination](baseline-publish-pin-coordination.md) — baseline publication and learner version pinning must share one transaction lock.
 - [Historical diagnostic provenance](historical-diagnostic-provenance.md) — reconstruct only complete response chains; report unresolved legacy projections instead of inventing sources.
+- [Deterministic text migration winners](deterministic-text-migration-winners.md) — text IDs used as migration tie-breakers require explicit bytewise collation.

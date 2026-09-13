@@ -119,7 +119,7 @@ BEGIN
     SELECT selection.pathway_id
     FROM teras_enrollment_pathway_events selection
     WHERE selection.enrollment_id = NEW.enrollment_id
-    ORDER BY selection.sequence DESC, selection.created_at DESC, selection.id DESC
+    ORDER BY selection.sequence DESC, selection.created_at DESC, selection.id COLLATE "C" DESC
     LIMIT 1
   ), enrollment.pathway_id)
   INTO effective_pathway_id

@@ -7,11 +7,11 @@ WITH ranked_active_sessions AS (
     session.id,
     first_value(session.id) OVER (
       PARTITION BY session.learner_id, session.pathway_id
-      ORDER BY session.progress DESC, session.created_at ASC, session.id ASC
+      ORDER BY session.progress DESC, session.created_at ASC, session.id COLLATE "C" ASC
     ) AS canonical_session_id,
     row_number() OVER (
       PARTITION BY session.learner_id, session.pathway_id
-      ORDER BY session.progress DESC, session.created_at ASC, session.id ASC
+      ORDER BY session.progress DESC, session.created_at ASC, session.id COLLATE "C" ASC
     ) AS active_rank
   FROM teras_diagnostic_sessions AS session
   WHERE session.status = 'in_progress'

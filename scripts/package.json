@@ -22,6 +22,8 @@
     "test:readiness-single-active-upgrade": "bash ./readiness-single-active-upgrade.integration.test.sh",
     "test:learner-diagnostic-upgrade": "bash ./learner-diagnostic-upgrade.integration.test.sh",
     "test:diagnostic-provenance": "tsx ./src/diagnostic-provenance-migration.test.ts",
+    "test:migration-collation": "tsx ./src/migration-collation.test.ts",
+    "test:migration-collation-upgrade": "bash ./migration-collation.integration.test.sh",
     "test:diagnostic-provenance-upgrade": "bash ./diagnostic-provenance-upgrade.integration.test.sh",
     "test:admin-management": "bash ./admin-management.integration.test.sh",
     "test:super-admin-provisioning-policy": "tsx ./src/super-admin-provisioning-policy.test.ts",
