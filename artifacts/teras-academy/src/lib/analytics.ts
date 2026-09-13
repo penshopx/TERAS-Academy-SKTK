@@ -155,6 +155,12 @@ export const DEFAULT_READINESS_EXPORT_ALERT_THRESHOLDS: ReadinessAuditExportAler
 const READINESS_EXPORT_AGGREGATES_KEY = "teras:readiness-audit-export-aggregates:v1";
 export const READINESS_EXPORT_AGGREGATES_UPDATED = "readiness-audit-export-aggregates-updated";
 
+function isIsoUtcDay(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 export function getReadinessExportRecordGroup(recordCount: number): string {
   if (recordCount >= 10_000) return "10.000+ record";
   if (recordCount >= 5_000) return "5.000–9.999 record";
@@ -204,14 +210,17 @@ export function readReadinessAuditExportAggregates(
     const cutoff = new Date(now);
     cutoff.setUTCDate(cutoff.getUTCDate() - thresholds.periodDays + 1);
     const cutoffDay = cutoff.toISOString().slice(0, 10);
+    const currentDay = now.toISOString().slice(0, 10);
     return stored.filter((item): item is ReadinessAuditExportAggregate =>
-      typeof item?.periodStart === "string"
-      && typeof item?.periodEnd === "string"
+      isIsoUtcDay(item?.periodStart)
+      && isIsoUtcDay(item?.periodEnd)
+      && item.periodStart <= item.periodEnd
       && typeof item?.recordGroup === "string"
       && ["succeeded", "cancelled", "failed"].includes(item?.outcome)
       && Number.isInteger(item?.count)
       && item.count > 0
-      && item.periodEnd >= cutoffDay);
+      && item.periodEnd >= cutoffDay
+      && item.periodStart <= currentDay);
   } catch {
     return [];
   }

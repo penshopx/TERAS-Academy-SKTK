@@ -193,6 +193,79 @@ test("aggregates repeated known-large pre-header failures but excludes small exp
   assert.equal(alerts[0].failureRatio, 1);
 });
 
+test("keeps both UTC boundary days in the rolling seven-day export window", () => {
+  const values = new Map<string, string>([[
+    "teras:readiness-audit-export-aggregates:v1",
+    JSON.stringify([
+      { periodStart: "2026-09-07", periodEnd: "2026-09-07", recordGroup: "1.000–4.999 record", outcome: "failed", count: 2 },
+      { periodStart: "2026-09-13", periodEnd: "2026-09-13", recordGroup: "1.000–4.999 record", outcome: "succeeded", count: 3 },
+    ]),
+  ]]);
+  setTestWindow(undefined, {
+    localStorage: {
+      getItem: (key: string) => values.get(key) ?? null,
+    },
+  });
+
+  const aggregates = readReadinessAuditExportAggregates(undefined, new Date("2026-09-13T23:59:59.999Z"));
+  const alerts = evaluateReadinessAuditExportAlerts(aggregates);
+
+  assert.equal(aggregates.length, 2);
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].sampleSize, 5);
+  assert.equal(alerts[0].failedCount, 2);
+  assert.equal(alerts[0].failureRatio, 0.4);
+});
+
+test("excludes expired and future aggregates from export alert volume and ratio", () => {
+  const values = new Map<string, string>([[
+    "teras:readiness-audit-export-aggregates:v1",
+    JSON.stringify([
+      { periodStart: "2026-09-06", periodEnd: "2026-09-06", recordGroup: "1.000–4.999 record", outcome: "failed", count: 20 },
+      { periodStart: "2026-09-07", periodEnd: "2026-09-07", recordGroup: "1.000–4.999 record", outcome: "succeeded", count: 3 },
+      { periodStart: "2026-09-13", periodEnd: "2026-09-13", recordGroup: "1.000–4.999 record", outcome: "failed", count: 2 },
+      { periodStart: "2026-09-14", periodEnd: "2026-09-14", recordGroup: "1.000–4.999 record", outcome: "failed", count: 20 },
+    ]),
+  ]]);
+  setTestWindow(undefined, {
+    localStorage: {
+      getItem: (key: string) => values.get(key) ?? null,
+    },
+  });
+
+  const aggregates = readReadinessAuditExportAggregates(undefined, new Date("2026-09-13T12:00:00.000Z"));
+  const alerts = evaluateReadinessAuditExportAlerts(aggregates);
+
+  assert.equal(aggregates.length, 2);
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].sampleSize, 5);
+  assert.equal(alerts[0].failedCount, 2);
+  assert.equal(alerts[0].failureRatio, 0.4);
+});
+
+test("returns a safe empty state for malformed export aggregate storage", () => {
+  const malformedValues = [
+    "{not-json",
+    JSON.stringify({ periodStart: "2026-09-13" }),
+    JSON.stringify([
+      { periodStart: "2026-02-30", periodEnd: "2026-02-30", recordGroup: "1.000–4.999 record", outcome: "failed", count: 5 },
+      { periodStart: "2026-09-13", periodEnd: "2026-09-12", recordGroup: "1.000–4.999 record", outcome: "failed", count: 5 },
+      { periodStart: "2026-09-13", periodEnd: "2026-09-13", recordGroup: "1.000–4.999 record", outcome: "failed", count: "5" },
+    ]),
+  ];
+
+  for (const storedValue of malformedValues) {
+    setTestWindow(undefined, {
+      localStorage: {
+        getItem: () => storedValue,
+      },
+    });
+    const aggregates = readReadinessAuditExportAggregates(undefined, new Date("2026-09-13T12:00:00.000Z"));
+    assert.deepStrictEqual(aggregates, []);
+    assert.deepStrictEqual(evaluateReadinessAuditExportAlerts(aggregates), []);
+  }
+});
+
 test("remains a safe no-op when the injected tracker is unavailable", () => {
   setTestWindow();
 
