@@ -21,6 +21,19 @@ export function latestBy<T extends EventRow, K extends string>(rows: T[], key: (
   return result;
 }
 
+export function latestPracticeReviews(rows: BottleneckData["practiceReviews"]) {
+  return latestBy(rows, (review) => review.attemptId);
+}
+
+export function practiceQueueState(
+  attempt: Pick<typeof practiceAttemptsTable.$inferSelect, "id" | "status" | "createdAt">,
+  reviews: ReturnType<typeof latestPracticeReviews>,
+) {
+  const latest = reviews.get(attempt.id);
+  const status = latest?.status ?? attempt.status;
+  return status === "Reviewed" ? null : { status, updatedAt: latest?.createdAt ?? attempt.createdAt };
+}
+
 export type BottleneckData = {
   attempts: (typeof practiceAttemptsTable.$inferSelect)[];
   practiceReviews: (typeof practiceReviewsTable.$inferSelect)[];
@@ -68,7 +81,7 @@ export function classifyBottleneck(context: AssignmentContext, data: BottleneckD
   const learningStates = latestBy(data.learningTransitions.filter((event) =>
     event.learnerId === context.learner.id && event.pathwayId === context.pathway.id,
   ), (event) => event.activityId);
-  const reviews = latestBy(data.practiceReviews, (review) => review.attemptId);
+  const reviews = latestPracticeReviews(data.practiceReviews);
   const attempts = inContext(data.attempts);
   if (attempts.some((attempt) => (reviews.get(attempt.id)?.status ?? attempt.status) === "Submitted")) return "Feedback";
 

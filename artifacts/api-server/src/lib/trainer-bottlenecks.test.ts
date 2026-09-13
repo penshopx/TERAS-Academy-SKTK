@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyBottleneck, type BottleneckData } from "./trainer-bottlenecks";
+import { classifyBottleneck, latestPracticeReviews, practiceQueueState, type BottleneckData } from "./trainer-bottlenecks";
 
 const at = new Date("2025-01-01T00:00:00.000Z");
 const context = { enrollment: { id: "enrollment-a" }, learner: { id: "learner-a" }, pathway: { id: "pathway-a" } };
@@ -32,4 +32,30 @@ test("bottleneck precedence keeps an active remediation handoff ahead of pending
   data.attempts.push({ id: "attempt-a", learnerId: "learner-a", pathwayId: "pathway-a", status: "Submitted" } as never);
 
   assert.equal(classifyBottleneck(context, data), "Remediation");
+});
+
+test("practice queue state follows the latest append-only review round", () => {
+  const attemptStatus = "Submitted";
+  const attempt = { id: "attempt-a", status: attemptStatus, createdAt: at } as const;
+  const data = base();
+  data.attempts.push({ ...attempt, learnerId: "learner-a", pathwayId: "pathway-a" } as never);
+
+  let latest = latestPracticeReviews(data.practiceReviews).get("attempt-a");
+  assert.deepEqual(practiceQueueState(attempt as never, latestPracticeReviews(data.practiceReviews)), { status: "Submitted", updatedAt: at });
+
+  data.practiceReviews.push(
+    { id: "review-a", attemptId: "attempt-a", status: "Needs revision", createdAt: new Date("2025-01-02T00:00:00.000Z") } as never,
+  );
+  latest = latestPracticeReviews(data.practiceReviews).get("attempt-a");
+  assert.equal(latest?.status, "Needs revision", "needs revision remains actionable with its latest status");
+  assert.deepEqual(practiceQueueState(attempt as never, latestPracticeReviews(data.practiceReviews)), { status: "Needs revision", updatedAt: latest?.createdAt });
+  assert.equal(classifyBottleneck(context, data), "Practice");
+
+  data.practiceReviews.push(
+    { id: "review-z", attemptId: "attempt-a", status: "Reviewed", createdAt: new Date("2025-01-02T00:00:00.000Z") } as never,
+  );
+  latest = latestPracticeReviews([...data.practiceReviews].reverse()).get("attempt-a");
+  assert.equal(latest?.status, "Reviewed", "same-time review rounds resolve by id, not row order");
+  assert.equal(practiceQueueState(attempt as never, latestPracticeReviews([...data.practiceReviews].reverse())), null, "reviewed removes the attempt from the queue");
+  assert.equal(classifyBottleneck(context, data), "Learning", "reviewed closes the practice item");
 });

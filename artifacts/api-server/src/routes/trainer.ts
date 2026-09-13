@@ -6,7 +6,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { evidenceRecords, gapRecords, pathwayHasModule, remediationRecords, selectedBaselineModuleIds, workspaceAssignmentContexts } from "../lib/teras";
 import { authorizeWorkspaceRole } from "../lib/authorization";
 import { learningNextAction } from "../lib/learning-transition";
-import { trainerBottlenecks } from "../lib/trainer-bottlenecks";
+import { latestPracticeReviews, practiceQueueState, trainerBottlenecks } from "../lib/trainer-bottlenecks";
 import { reminderDeliveryAvailability } from "../lib/trainer-follow-up-notifications";
 
 const router: IRouter = Router();
@@ -74,8 +74,7 @@ async function appendModuleRevisionState(tx: Parameters<Parameters<typeof db.tra
 
 async function queue(trainerId: string) {
   const [contexts, attempts, reviews, tasks, modules] = await Promise.all([workspaceAssignmentContexts(trainerId, "trainer"), db.select().from(practiceAttemptsTable), db.select().from(practiceReviewsTable), db.select().from(practiceTasksTable), db.select().from(modulesTable)]);
-  const latestReviews = new Map<string, typeof reviews[number]>();
-  for (const review of reviews) if (!latestReviews.has(review.attemptId) || latestReviews.get(review.attemptId)!.createdAt < review.createdAt) latestReviews.set(review.attemptId, review);
+  const latestReviews = latestPracticeReviews(reviews);
   const items = await Promise.all(contexts.map(async (context) => {
     const selected = await selectedBaselineModuleIds(context.pathway.id, context.baselineVersionId);
     const pathwayModules = modules.filter((module) => (module.pathwayId === context.pathway.id || selected.has(module.id)) && module.programId === context.program.id);
@@ -83,7 +82,10 @@ async function queue(trainerId: string) {
     const evidence = await evidenceRecords(context.learner.id, context.pathway.id, context.baselineVersionId);
     return [
       ...evidence.filter((item) => item.status !== "Valid").map((item) => ({ id: item.id, kind: "Evidence", learnerId: context.learner.id, learnerName: context.learner.name, moduleName: item.moduleName, pathwayId: context.pathway.id, pathwayName: context.pathway.name, title: item.title, status: item.status, priority: item.moduleId === "m03" ? "Critical" : "High", updatedAt: item.submittedAt })),
-      ...attempts.filter((attempt) => attempt.learnerId === context.learner.id && attempt.pathwayId === context.pathway.id && moduleIds.has(tasks.find((task) => task.id === attempt.taskId)?.moduleId ?? "") && (latestReviews.get(attempt.id)?.status ?? attempt.status) !== "Reviewed").map((attempt) => ({ id: attempt.id, kind: "Practice", learnerId: context.learner.id, learnerName: context.learner.name, moduleName: pathwayModules.find((module) => module.id === tasks.find((task) => task.id === attempt.taskId)?.moduleId)?.name ?? "Module", pathwayId: context.pathway.id, pathwayName: context.pathway.name, title: "Practice attempt", status: latestReviews.get(attempt.id)?.status ?? attempt.status, priority: "Normal", updatedAt: attempt.createdAt })),
+      ...attempts.filter((attempt) => attempt.learnerId === context.learner.id && attempt.pathwayId === context.pathway.id && moduleIds.has(tasks.find((task) => task.id === attempt.taskId)?.moduleId ?? "") && practiceQueueState(attempt, latestReviews)).map((attempt) => {
+        const state = practiceQueueState(attempt, latestReviews)!;
+        return { id: attempt.id, kind: "Practice", learnerId: context.learner.id, learnerName: context.learner.name, moduleName: pathwayModules.find((module) => module.id === tasks.find((task) => task.id === attempt.taskId)?.moduleId)?.name ?? "Module", pathwayId: context.pathway.id, pathwayName: context.pathway.name, title: "Practice attempt", status: state.status, priority: "Normal", updatedAt: state.updatedAt };
+      }),
     ];
   }));
   return { contexts, items: items.flat() };
