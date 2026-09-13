@@ -15,6 +15,7 @@ type IsolatedIntegrationOptions = {
   useEmptyDatabase?: boolean;
   excludeTables?: readonly string[];
   staleSchemaAgeMs?: number;
+  cleanupStaleSchemas?: typeof cleanupStaleIntegrationSchemas;
 };
 
 const DEFAULT_STALE_SCHEMA_AGE_MS = 24 * 60 * 60 * 1000;
@@ -119,6 +120,7 @@ export async function cleanupStaleIntegrationSchemas(
     [`${schemaPrefix.replaceAll("_", "\\_")}_%`],
   );
   const now = new Date();
+  const cleanupErrors: Error[] = [];
   for (const { schema_name: schemaName, comment } of schemas.rows) {
     if (!isStaleOwnedIntegrationSchema({
       schemaName,
@@ -145,12 +147,30 @@ export async function cleanupStaleIntegrationSchemas(
     }
     try {
       await admin.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
-    } finally {
+    } catch (error) {
+      cleanupErrors.push(
+        new Error(`Failed to drop stale integration schema ${schemaName}`, { cause: error }),
+      );
+    }
+    try {
       await admin.query(
         "SELECT pg_advisory_unlock(hashtextextended($1, $2))",
         [schemaName, ADVISORY_LOCK_SEED],
       );
+    } catch (error) {
+      cleanupErrors.push(
+        new Error(
+          `Failed to release cleanup advisory lock for integration schema ${schemaName}`,
+          { cause: error },
+        ),
+      );
     }
+  }
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(
+      cleanupErrors,
+      `Failed to clean up ${cleanupErrors.length} stale integration schema operation(s)`,
+    );
   }
 }
 
@@ -295,6 +315,7 @@ export async function runIsolatedIntegrationTest({
   useEmptyDatabase = false,
   excludeTables = [],
   staleSchemaAgeMs = DEFAULT_STALE_SCHEMA_AGE_MS,
+  cleanupStaleSchemas = cleanupStaleIntegrationSchemas,
 }: IsolatedIntegrationOptions) {
   assertTestEnvironment();
   const prefix = safeSchemaPrefix(schemaPrefix);
@@ -315,7 +336,14 @@ export async function runIsolatedIntegrationTest({
       return;
     }
 
-    await cleanupStaleIntegrationSchemas(admin, prefix, staleSchemaAgeMs);
+    try {
+      await cleanupStaleSchemas(admin, prefix, staleSchemaAgeMs);
+    } catch (error) {
+      console.error(
+        `Stale integration schema cleanup failed for prefix ${prefix}; continuing with the current integration test`,
+        error,
+      );
+    }
     await initializeIntegrationSchema(admin, schemaName, prefix);
     const sourceTables = await admin.query<{ tablename: string }>(
       `

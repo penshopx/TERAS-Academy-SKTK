@@ -125,6 +125,104 @@ test("cleanup keeps an active old schema, drops it once inactive, and ignores un
   }
 });
 
+test("cleanup reports one failed schema after checking the others and releases every acquired lock", {
+  skip: !databaseUrl,
+}, async () => {
+  const cleaner = new Client({ connectionString: databaseUrl });
+  const inspector = new Client({ connectionString: databaseUrl });
+  const contractPrefix =
+    `schema_cleanup_${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`;
+  const failedName = `${contractPrefix}_failure`;
+  const reapedName = `${contractPrefix}_success`;
+  await cleaner.connect();
+  await inspector.connect();
+  try {
+    for (const name of [failedName, reapedName]) {
+      await cleaner.query(`CREATE SCHEMA "${name}"`);
+      await cleaner.query(
+        `COMMENT ON SCHEMA "${name}" IS '${JSON.stringify({
+          kind: "teras-integration-test",
+          version: 1,
+          schemaPrefix: contractPrefix,
+          createdAt: "2000-01-01T00:00:00.000Z",
+        })}'`,
+      );
+    }
+
+    const originalQuery = cleaner.query.bind(cleaner);
+    let simulatedFailurePending = true;
+    let actualFailedName = "";
+    const failingCleaner = Object.create(cleaner) as InstanceType<typeof Client>;
+    failingCleaner.query = (async (query: unknown, values?: unknown[]) => {
+      if (
+        simulatedFailurePending &&
+        typeof query === "string" &&
+        query.startsWith("DROP SCHEMA")
+      ) {
+        simulatedFailurePending = false;
+        actualFailedName = query.match(/"([^"]+)"/)?.[1] ?? "";
+        throw new Error("simulated stale schema drop failure");
+      }
+      return originalQuery(query as never, values as never);
+    }) as InstanceType<typeof Client>["query"];
+
+    let reportedError: unknown;
+    const originalConsoleError = console.error;
+    await withMarkerFile(async (markerFile) => {
+      console.error = (message: unknown, error: unknown) => {
+        assert.match(String(message), new RegExp(contractPrefix));
+        reportedError = error;
+      };
+      try {
+        await runIsolatedIntegrationTest({
+          schemaPrefix: contractPrefix,
+          testFile: successFixture,
+          cleanupStaleSchemas: async () => {
+            await cleanupStaleIntegrationSchemas(
+              failingCleaner,
+              contractPrefix,
+              staleSchemaAgeMs,
+            );
+          },
+        });
+      } finally {
+        console.error = originalConsoleError;
+      }
+      assert.equal(await readFile(markerFile, "utf8"), "test\n");
+    });
+
+    assert.ok(actualFailedName);
+    assert.ok(reportedError instanceof AggregateError);
+    assert.match(
+      reportedError.message,
+      /Failed to clean up 1 stale integration schema operation/,
+    );
+    assert.equal(reportedError.errors.length, 1);
+    assert.match(reportedError.errors[0].message, new RegExp(actualFailedName));
+    assert.match(
+      String(reportedError.errors[0].cause),
+      /simulated stale schema drop failure/,
+    );
+    const actualReapedName = actualFailedName === failedName ? reapedName : failedName;
+    assert.equal(await schemaExists(inspector, actualFailedName), true);
+    assert.equal(await schemaExists(inspector, actualReapedName), false);
+    const lock = await inspector.query<{ acquired: boolean }>(
+      "SELECT pg_try_advisory_lock(hashtextextended($1, $2)) AS acquired",
+      [actualFailedName, 847_201],
+    );
+    assert.equal(lock.rows[0]?.acquired, true);
+    await inspector.query(
+      "SELECT pg_advisory_unlock(hashtextextended($1, $2))",
+      [actualFailedName, 847_201],
+    );
+  } finally {
+    await cleaner.query(`DROP SCHEMA IF EXISTS "${failedName}" CASCADE`);
+    await cleaner.query(`DROP SCHEMA IF EXISTS "${reapedName}" CASCADE`);
+    await cleaner.end();
+    await inspector.end();
+  }
+});
+
 test("the next harness run reaps a schema orphaned by forced termination without touching active or unknown schemas", {
   skip: !databaseUrl,
 }, async () => {
