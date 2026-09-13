@@ -27,21 +27,24 @@ const eventClient = new Client({
   application_name: "lms-event-ownership-event-race",
 });
 
-async function waitForEnrollmentLockWait() {
+async function waitForEnrollmentLockWait(
+  applicationName: string,
+  failureMessage: string,
+) {
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
     const waiting = await client.query<{ waiting: boolean }>(`
       SELECT EXISTS (
         SELECT 1
         FROM pg_stat_activity
-        WHERE application_name = 'lms-event-ownership-event-race'
+        WHERE application_name = $1
           AND wait_event_type = 'Lock'
       ) AS waiting
-    `);
+    `, [applicationName]);
     if (waiting.rows[0]?.waiting) return;
     await new Promise(resolve => setTimeout(resolve, 25));
   }
-  assert.fail("event transaction did not wait for the enrollment row lock");
+  assert.fail(failureMessage);
 }
 
 async function assertOwnershipRejected(sql: string, values: unknown[], constraint: string) {
@@ -87,7 +90,8 @@ try {
       (id, learner_id, program_id, pathway_id, status)
     VALUES
       ('ownership-enrollment-a', 'ownership-learner-a', 'ownership-program-a', 'ownership-pathway-a', 'active'),
-      ('ownership-enrollment-b', 'ownership-learner-b', 'ownership-program-b', 'ownership-pathway-b', 'active')
+      ('ownership-enrollment-b', 'ownership-learner-b', 'ownership-program-b', 'ownership-pathway-b', 'active'),
+      ('ownership-enrollment-c', 'ownership-learner-c', 'ownership-program-c', 'ownership-pathway-c', 'active')
   `);
   await client.query(`
     INSERT INTO teras_learning_activities
@@ -100,7 +104,11 @@ try {
       ('ownership-activity-a-switch', 'ownership-lesson-a-switch', 'ownership-program-a', 'ownership-pathway-a-switch',
        'lesson', 'Activity A switch', 'Second pathway in program A', 1),
       ('ownership-activity-b-switch', 'ownership-lesson-b-switch', 'ownership-program-b', 'ownership-pathway-b-switch',
-       'lesson', 'Activity B switch', 'Second pathway in program B', 1)
+       'lesson', 'Activity B switch', 'Second pathway in program B', 1),
+      ('ownership-activity-c', 'ownership-lesson-c', 'ownership-program-c', 'ownership-pathway-c',
+       'lesson', 'Activity C', 'Context C', 1),
+      ('ownership-activity-c-switch', 'ownership-lesson-c-switch', 'ownership-program-c', 'ownership-pathway-c-switch',
+       'lesson', 'Activity C switch', 'Second pathway in program C', 1)
   `);
   await client.query(`
     INSERT INTO teras_learning_outcomes
@@ -408,7 +416,10 @@ try {
        'ownership-learner-b', 'ownership-enrollment-b', 'ownership-pathway-b-switch',
        'completed', 'ownership-actor')
   `);
-  await waitForEnrollmentLockWait();
+  await waitForEnrollmentLockWait(
+    "lms-event-ownership-event-race",
+    "event transaction did not wait for the enrollment row lock",
+  );
   await pathwayClient.query("COMMIT");
   await concurrentEvent;
   await eventClient.query("COMMIT");
@@ -434,6 +445,62 @@ try {
     concurrentAudit.rows[0]!.selection_created_at <= concurrentAudit.rows[0]!.event_created_at,
     "the committed pathway selection must precede the concurrent event in audit time",
   );
+
+  await eventClient.query("BEGIN");
+  await eventClient.query(`
+    INSERT INTO teras_activity_completion_events
+      (id, activity_id, learner_id, enrollment_id, pathway_id, status, actor_id)
+    VALUES
+      ('context-event-first-race', 'ownership-activity-c', 'ownership-learner-c',
+       'ownership-enrollment-c', 'ownership-pathway-c', 'completed', 'ownership-actor')
+  `);
+
+  await pathwayClient.query("BEGIN");
+  const concurrentBackdatedSelection = pathwayClient.query(`
+    INSERT INTO teras_enrollment_pathway_events
+      (id, enrollment_id, pathway_id, program_id, sequence, created_at)
+    VALUES
+      ('ownership-pathway-event-first-race', 'ownership-enrollment-c',
+       'ownership-pathway-c-switch', 'ownership-program-c', 1,
+       '2000-01-01T00:00:00Z'::timestamptz)
+  `);
+  await waitForEnrollmentLockWait(
+    "lms-event-ownership-pathway-race",
+    "pathway selection did not wait for the event transaction's enrollment row lock",
+  );
+  await eventClient.query("COMMIT");
+  await assert.rejects(
+    concurrentBackdatedSelection,
+    (error: unknown) => {
+      if (!(error instanceof Error)) return false;
+      const databaseError = error as Error & { code?: string; constraint?: string };
+      return databaseError.code === "23514"
+        && databaseError.constraint === "teras_enrollment_pathway_history_guard";
+    },
+    "the backdated pathway selection must be rejected after the concurrent event commits",
+  );
+  await pathwayClient.query("ROLLBACK");
+
+  const eventFirstAudit = await client.query<{
+    id: string;
+    pathway_id: string;
+    selection_count: string;
+  }>(`
+    SELECT
+      event.id,
+      event.pathway_id,
+      count(selection.id)::text AS selection_count
+    FROM teras_activity_completion_events event
+    LEFT JOIN teras_enrollment_pathway_events selection
+      ON selection.enrollment_id = event.enrollment_id
+    WHERE event.id = 'context-event-first-race'
+    GROUP BY event.id, event.pathway_id
+  `);
+  assert.deepEqual(eventFirstAudit.rows, [{
+    id: "context-event-first-race",
+    pathway_id: "ownership-pathway-c",
+    selection_count: "0",
+  }], "the committed event remains in its original context after the selection is rejected");
 
   await client.query(contextMigration);
 
