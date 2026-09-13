@@ -8,6 +8,8 @@ type IsolatedIntegrationOptions = {
   schemaPrefix: string;
   testFile: string;
   setupCommand?: readonly string[];
+  setupTimeoutMs?: number;
+  testTimeoutMs?: number;
   setupEnvironment?: Readonly<Record<string, string>>;
   testEnvironment?: Readonly<Record<string, string>>;
   useEmptyDatabase?: boolean;
@@ -16,6 +18,8 @@ type IsolatedIntegrationOptions = {
 };
 
 const DEFAULT_STALE_SCHEMA_AGE_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_SETUP_TIMEOUT_MS = 2 * 60 * 1000;
+const DEFAULT_TEST_TIMEOUT_MS = 10 * 60 * 1000;
 const SCHEMA_METADATA_KIND = "teras-integration-test";
 const SCHEMA_METADATA_VERSION = 1;
 const ADVISORY_LOCK_SEED = 847_201;
@@ -206,15 +210,20 @@ function disposableDatabaseUrl(databaseUrl: string, databaseName: string) {
 async function runCommand(
   command: readonly string[],
   databaseUrl: string,
+  timeoutMs: number,
   extraEnvironment: Readonly<Record<string, string>> = {},
 ) {
   const [executable, ...args] = command;
   if (!executable) throw new Error("Isolated integration command cannot be empty");
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error(`Integration command timeout must be a positive number, received ${timeoutMs}`);
+  }
   const child = spawn(
     executable,
     args,
     {
       cwd: process.cwd(),
+      detached: true,
       env: {
         ...process.env,
         ...extraEnvironment,
@@ -224,10 +233,36 @@ async function runCommand(
       stdio: "inherit",
     },
   );
-  const [code, signal] = await once(child, "exit") as [
-    number | null,
-    NodeJS.Signals | null,
-  ];
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    if (child.pid) {
+      try {
+        process.kill(-child.pid, "SIGKILL");
+        return;
+      } catch {
+        // Fall back to killing the direct child if its process group already exited.
+      }
+    }
+    child.kill("SIGKILL");
+  }, timeoutMs);
+  timeout.unref();
+
+  let code: number | null;
+  let signal: NodeJS.Signals | null;
+  try {
+    [code, signal] = await once(child, "exit") as [
+      number | null,
+      NodeJS.Signals | null,
+    ];
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (timedOut) {
+    throw new Error(
+      `Integration command ${command.join(" ")} timed out after ${timeoutMs}ms`,
+    );
+  }
   if (code !== 0) {
     throw new Error(
       `Integration command ${command.join(" ")} failed with ${signal ?? `exit code ${code}`}`,
@@ -238,11 +273,13 @@ async function runCommand(
 async function runTestFile(
   testFile: string,
   databaseUrl: string,
+  timeoutMs: number,
   testEnvironment: Readonly<Record<string, string>> = {},
 ) {
   await runCommand(
     ["pnpm", "--filter", "@workspace/api-server", "exec", "tsx", testFile],
     databaseUrl,
+    timeoutMs,
     testEnvironment,
   );
 }
@@ -251,6 +288,8 @@ export async function runIsolatedIntegrationTest({
   schemaPrefix,
   testFile,
   setupCommand,
+  setupTimeoutMs = DEFAULT_SETUP_TIMEOUT_MS,
+  testTimeoutMs = DEFAULT_TEST_TIMEOUT_MS,
   setupEnvironment,
   testEnvironment,
   useEmptyDatabase = false,
@@ -270,9 +309,9 @@ export async function runIsolatedIntegrationTest({
       await admin.query(`CREATE DATABASE ${quoteIdentifier(schemaName)} TEMPLATE template0`);
       const databaseUrl = disposableDatabaseUrl(process.env.DATABASE_URL!, schemaName);
       if (setupCommand) {
-        await runCommand(setupCommand, databaseUrl, setupEnvironment);
+        await runCommand(setupCommand, databaseUrl, setupTimeoutMs, setupEnvironment);
       }
-      await runTestFile(testFile, databaseUrl, testEnvironment);
+      await runTestFile(testFile, databaseUrl, testTimeoutMs, testEnvironment);
       return;
     }
 
@@ -298,11 +337,12 @@ export async function runIsolatedIntegrationTest({
 
     const databaseUrl = isolatedDatabaseUrl(process.env.DATABASE_URL!, schemaName);
     if (setupCommand) {
-      await runCommand(setupCommand, databaseUrl, setupEnvironment);
+      await runCommand(setupCommand, databaseUrl, setupTimeoutMs, setupEnvironment);
     }
     await runTestFile(
       testFile,
       databaseUrl,
+      testTimeoutMs,
       testEnvironment,
     );
   } finally {

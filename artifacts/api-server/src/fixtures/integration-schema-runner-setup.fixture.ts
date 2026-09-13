@@ -39,6 +39,12 @@ if (markerFile) {
   await appendFile(markerFile, "setup\n");
 }
 
+if (process.env.SCHEMA_RUNNER_SETUP_SHOULD_HANG === "true") {
+  await new Promise(() => {
+    setInterval(() => {}, 60_000);
+  });
+}
+
 if (process.env.SCHEMA_RUNNER_SETUP_SHOULD_FAIL === "true") {
   throw new Error("intentional setup fixture failure");
 }

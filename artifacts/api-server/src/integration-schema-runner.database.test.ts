@@ -319,3 +319,52 @@ test("a failing setup command prevents the test file from running", {
     await client.end();
   }
 });
+
+test("a timed out setup is killed, prevents the test file, and cleans up its schema", {
+  skip: !databaseUrl,
+}, async () => {
+  const client = new Client({ connectionString: databaseUrl });
+  const contractPrefix =
+    `schema_runner_setup_t_${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`;
+  await client.connect();
+  try {
+    await withMarkerFile(async (markerFile) => {
+      const command = [
+        "pnpm",
+        "--filter",
+        "@workspace/api-server",
+        "exec",
+        "tsx",
+        setupFixture,
+      ] as const;
+      await assert.rejects(
+        runIsolatedIntegrationTest({
+          schemaPrefix: contractPrefix,
+          testFile: afterSetupFixture,
+          setupCommand: command,
+          setupTimeoutMs: 2_000,
+          setupEnvironment: {
+            SCHEMA_RUNNER_EXPECTED_ENV: "setup-environment-value",
+            SCHEMA_RUNNER_SETUP_SHOULD_HANG: "true",
+          },
+        }),
+        new RegExp(
+          `Integration command ${command.join(" ")} timed out after 2000ms`,
+        ),
+      );
+
+      assert.equal(await readFile(markerFile, "utf8"), "setup\n");
+      const remainingSchemas = await client.query<{ schema_name: string }>(
+        `
+          SELECT schema_name
+          FROM information_schema.schemata
+          WHERE schema_name LIKE $1 ESCAPE '\\'
+        `,
+        [`${contractPrefix.replaceAll("_", "\\_")}_%`],
+      );
+      assert.deepEqual(remainingSchemas.rows, []);
+    });
+  } finally {
+    await client.end();
+  }
+});
