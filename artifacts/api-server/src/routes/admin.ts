@@ -464,7 +464,10 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
       .innerJoin(diagnosticRecommendationsTable, eq(diagnosticRecommendationsTable.id, diagnosticRecommendationFollowUpsTable.recommendationId))
       .innerJoin(peopleTable, eq(peopleTable.id, diagnosticFollowUpReminderDeliveriesTable.trainerId))
       .leftJoin(diagnosticFollowUpReminderResolutionsTable, eq(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, diagnosticFollowUpReminderDeliveriesTable.id))
-      .leftJoin(diagnosticFollowUpFailureNotificationsTable, eq(diagnosticFollowUpFailureNotificationsTable.reminderDeliveryId, diagnosticFollowUpReminderDeliveriesTable.id))
+      .leftJoin(diagnosticFollowUpFailureNotificationsTable, and(
+        eq(diagnosticFollowUpFailureNotificationsTable.reminderDeliveryId, diagnosticFollowUpReminderDeliveriesTable.id),
+        eq(diagnosticFollowUpFailureNotificationsTable.channel, "email"),
+      ))
       .where(eq(diagnosticFollowUpReminderDeliveriesTable.status, "permanently_failed"))
       .orderBy(desc(diagnosticFollowUpReminderDeliveriesTable.lastAttemptAt)),
   ]);

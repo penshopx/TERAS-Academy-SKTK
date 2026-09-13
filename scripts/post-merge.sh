@@ -109,8 +109,12 @@ if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_people') IS
   # requiring it for causal learning transitions.
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0035_diagnostic_provenance.sql
+  # Create the escalation outbox before extending it with independent primary
+  # and fallback delivery channels.
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0036_trainer_reminder_failure_notifications.sql
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0041_trainer_reminder_failure_fallback.sql
   # Keep manual handling audit separate from the immutable reminder delivery.
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0037_trainer_reminder_escalation_resolutions.sql
@@ -183,6 +187,8 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0035_diagnostic_provenance.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0036_trainer_reminder_failure_notifications.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0041_trainer_reminder_failure_fallback.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0037_trainer_reminder_escalation_resolutions.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \

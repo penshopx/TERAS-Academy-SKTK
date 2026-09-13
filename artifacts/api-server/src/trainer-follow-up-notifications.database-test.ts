@@ -16,6 +16,7 @@ import {
   trainerReminderPreferencesTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { readFile } from "node:fs/promises";
 import { dispatchTrainerFollowUpReminders } from "./lib/trainer-follow-up-notifications";
 
 async function main() {
@@ -40,6 +41,7 @@ async function main() {
   process.env.TERAS_TRAINER_REMINDER_EMAIL_ENABLED = "true";
   process.env.TERAS_NOTIFICATION_FROM = "TERAS <notifications@example.test>";
   process.env.TERAS_OPERATIONS_NOTIFICATION_EMAIL = "operations@example.test";
+  process.env.TERAS_OPERATIONS_FALLBACK_WEBHOOK_URL = "https://operations.example.test/hooks/teras";
   const now = new Date("2026-09-10T12:00:00.000Z");
   let sends = 0;
   const sendEmail = async () => { sends += 1; };
@@ -106,20 +108,38 @@ async function main() {
 
   await db.delete(enrollmentPathwayEventsTable);
   await db.delete(diagnosticFollowUpReminderDeliveriesTable);
+  // Rehearse an existing installation at migration 0036, then apply the same
+  // additive upgrade used by post-merge reconciliation before dispatching.
+  await pool.query(`
+    ALTER TABLE teras_diagnostic_follow_up_failure_notifications
+      DROP CONSTRAINT IF EXISTS teras_diagnostic_follow_up_failure_notification_channel_check;
+    DROP INDEX IF EXISTS teras_follow_up_failure_notification_delivery_channel_unique;
+    ALTER TABLE teras_diagnostic_follow_up_failure_notifications DROP COLUMN channel;
+    CREATE UNIQUE INDEX teras_diagnostic_follow_up_failure_notification_delivery_unique
+      ON teras_diagnostic_follow_up_failure_notifications (reminder_delivery_id);
+  `);
+  const fallbackMigration = await readFile(
+    new URL("../../../lib/db/migrations/0041_trainer_reminder_failure_fallback.sql", import.meta.url),
+    "utf8",
+  );
+  await pool.query(fallbackMigration);
   let failedSends = 0;
   const operationsNotifications: unknown[] = [];
   const failingSender = async () => { failedSends += 1; throw new Error("simulated transport failure"); };
-  const captureOperationsNotification = async (input: unknown) => { operationsNotifications.push(input); };
-  await dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender, sendPermanentFailureNotification: captureOperationsNotification });
-  await dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender, sendPermanentFailureNotification: captureOperationsNotification });
+  const fallbackNotifications: unknown[] = [];
+  const failingOperationsNotification = async (input: unknown) => { operationsNotifications.push(input); throw new Error("simulated operations email failure"); };
+  const captureFallbackNotification = async (input: unknown) => { fallbackNotifications.push(input); };
+  await dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender, sendPermanentFailureNotification: failingOperationsNotification, sendPermanentFailureFallback: captureFallbackNotification });
+  await dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender, sendPermanentFailureNotification: failingOperationsNotification, sendPermanentFailureFallback: captureFallbackNotification });
   await Promise.all([
-    dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender, sendPermanentFailureNotification: captureOperationsNotification }),
-    dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender, sendPermanentFailureNotification: captureOperationsNotification }),
+    dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender, sendPermanentFailureNotification: failingOperationsNotification, sendPermanentFailureFallback: captureFallbackNotification }),
+    dispatchTrainerFollowUpReminders(now, { sendEmail: failingSender, sendPermanentFailureNotification: failingOperationsNotification, sendPermanentFailureFallback: captureFallbackNotification }),
   ]);
   audit = await db.select().from(diagnosticFollowUpReminderDeliveriesTable).where(eq(diagnosticFollowUpReminderDeliveriesTable.followUpId, "follow-up"));
   if (audit[0]?.status !== "permanently_failed" || audit[0]?.attemptCount !== 3) throw new Error("Failed delivery did not become a terminal escalation after three audited attempts");
   if (failedSends !== 3) throw new Error(`Terminal delivery was attempted ${failedSends} times instead of three`);
   if (operationsNotifications.length !== 1) throw new Error(`Permanent failure produced ${operationsNotifications.length} operations notifications instead of one`);
+  if (fallbackNotifications.length !== 1) throw new Error(`Failed operations email produced ${fallbackNotifications.length} fallback notifications instead of one`);
   const notification = operationsNotifications[0] as any;
   if (notification.trainerName !== "Trainer A" || notification.target !== "Supervised practice" || notification.lastAttemptAt?.toISOString() !== now.toISOString()) {
     throw new Error("Operations notification did not identify trainer, target, and last attempt time");
@@ -128,21 +148,26 @@ async function main() {
     throw new Error("Operations notification exposed an unsafe delivery failure reason");
   }
   const notificationAudit = await db.select().from(diagnosticFollowUpFailureNotificationsTable);
-  if (notificationAudit.length !== 1 || notificationAudit[0]?.status !== "sent") throw new Error("Operations notification audit was not persisted idempotently");
-  if (notification.idempotencyKey !== notificationAudit[0].id) throw new Error("Operations notification did not use its stable audit identity as the provider idempotency key");
+  const emailAudit = notificationAudit.find(item => item.channel === "email");
+  const fallbackAudit = notificationAudit.find(item => item.channel === "webhook");
+  if (notificationAudit.length !== 2 || emailAudit?.status !== "failed" || fallbackAudit?.status !== "sent") throw new Error("Per-channel operations notification audits were not persisted idempotently");
+  if (notification.idempotencyKey !== emailAudit.id) throw new Error("Operations notification did not use its stable audit identity as the provider idempotency key");
+  if ((fallbackNotifications[0] as any).idempotencyKey !== fallbackAudit.id) throw new Error("Fallback notification did not use its own stable audit identity");
 
   await db.update(diagnosticFollowUpFailureNotificationsTable)
     .set({ status: "sending", attemptedAt: new Date("2026-09-10T11:00:00.000Z"), sentAt: null })
-    .where(eq(diagnosticFollowUpFailureNotificationsTable.id, notificationAudit[0].id));
+    .where(eq(diagnosticFollowUpFailureNotificationsTable.id, fallbackAudit.id));
   const recoveredNotifications: any[] = [];
   await dispatchTrainerFollowUpReminders(new Date("2026-09-10T12:31:00.000Z"), {
     sendEmail: async () => { throw new Error("Trainer email must not be retried while recovering the operations outbox"); },
-    sendPermanentFailureNotification: async input => { recoveredNotifications.push(input); },
+    sendPermanentFailureNotification: async () => { throw new Error("Operations email must not be retried before its retry window"); },
+    sendPermanentFailureFallback: async input => { recoveredNotifications.push(input); },
   });
   if (recoveredNotifications.length !== 1) throw new Error("A stale operations notification claim was not recovered");
-  if (recoveredNotifications[0].idempotencyKey !== notification.idempotencyKey) throw new Error("Recovered operations notification changed its provider idempotency key");
+  if (recoveredNotifications[0].idempotencyKey !== fallbackAudit.id) throw new Error("Recovered fallback notification changed its provider idempotency key");
   const recoveredAudit = await db.select().from(diagnosticFollowUpFailureNotificationsTable);
-  if (recoveredAudit[0]?.status !== "sent" || !recoveredAudit[0].sentAt) throw new Error("Recovered operations notification did not reach a sent audit state");
+  const recoveredFallbackAudit = recoveredAudit.find(item => item.channel === "webhook");
+  if (recoveredFallbackAudit?.status !== "sent" || !recoveredFallbackAudit.sentAt) throw new Error("Recovered fallback notification did not reach a sent audit state");
   if (failedSends !== 3) throw new Error("Recovering the operations outbox retried the trainer email");
 }
 

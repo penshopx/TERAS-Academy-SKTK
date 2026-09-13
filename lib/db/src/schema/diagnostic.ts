@@ -165,6 +165,7 @@ export const diagnosticFollowUpReminderDeliveriesTable = pgTable("teras_diagnost
 export const diagnosticFollowUpFailureNotificationsTable = pgTable("teras_diagnostic_follow_up_failure_notifications", {
   id: text("id").primaryKey(),
   reminderDeliveryId: text("reminder_delivery_id").notNull().references(() => diagnosticFollowUpReminderDeliveriesTable.id, { onDelete: "cascade" }),
+  channel: text("channel").notNull().default("email"),
   destination: text("destination").notNull(),
   status: text("status").notNull().default("pending"),
   attemptedAt: timestamp("attempted_at", { withTimezone: true }),
@@ -172,7 +173,8 @@ export const diagnosticFollowUpFailureNotificationsTable = pgTable("teras_diagno
   failureReason: text("failure_reason"),
   ...audit,
 }, table => [
-  uniqueIndex("teras_diagnostic_follow_up_failure_notification_delivery_unique").on(table.reminderDeliveryId),
+  uniqueIndex("teras_follow_up_failure_notification_delivery_channel_unique").on(table.reminderDeliveryId, table.channel),
+  check("teras_diagnostic_follow_up_failure_notification_channel_check", sql`${table.channel} IN ('email','webhook')`),
   check("teras_diagnostic_follow_up_failure_notification_status_check", sql`${table.status} IN ('pending','sending','sent','failed')`),
 ]);
 export const diagnosticFollowUpReminderResolutionsTable = pgTable("teras_diagnostic_follow_up_reminder_resolutions", {
