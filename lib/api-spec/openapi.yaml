@@ -3510,7 +3510,7 @@ components:
           type: array
           items:
             type: object
-            required: [id, trainerId, trainerName, target, targetAt, lastAttemptAt, reason, status, resolution]
+            required: [id, trainerId, trainerName, target, targetAt, lastAttemptAt, reason, failureNotification, status, resolution]
             properties:
               id: { type: string }
               trainerId: { type: string }
@@ -3519,6 +3519,15 @@ components:
               targetAt: { type: string, format: date-time }
               lastAttemptAt: { type: string, format: date-time }
               reason: { type: string }
+              failureNotification:
+                anyOf:
+                  - type: object
+                    required: [destination, attemptedAt, reason]
+                    properties:
+                      destination: { type: string }
+                      attemptedAt: { type: string, format: date-time }
+                      reason: { type: string }
+                  - type: "null"
               status: { type: string, enum: [open, resolved] }
               resolution:
                 anyOf:

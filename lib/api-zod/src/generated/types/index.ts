@@ -45,6 +45,7 @@ export * from './adminOperationalQueueItem';
 export * from './adminOperationalQueueTargetTab';
 export * from './adminOperationalSummary';
 export * from './adminOperationalSummaryFailedTrainerRemindersItem';
+export * from './adminOperationalSummaryFailedTrainerRemindersItemFailureNotification';
 export * from './adminOperationalSummaryFailedTrainerRemindersItemStatus';
 export * from './adminOperationalSummaryIncompleteAssignments';
 export * from './adminPathway';

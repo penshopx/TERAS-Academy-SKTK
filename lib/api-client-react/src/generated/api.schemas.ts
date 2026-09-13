@@ -1486,6 +1486,12 @@ export type AdminOperationalSummaryIncompleteAssignments = {
   total: number;
 };
 
+export type AdminOperationalSummaryFailedTrainerRemindersItemFailureNotification = {
+  destination: string;
+  attemptedAt: string;
+  reason: string;
+} | null;
+
 export type AdminOperationalSummaryFailedTrainerRemindersItemStatus = typeof AdminOperationalSummaryFailedTrainerRemindersItemStatus[keyof typeof AdminOperationalSummaryFailedTrainerRemindersItemStatus];
 
 
@@ -1510,6 +1516,7 @@ export type AdminOperationalSummaryFailedTrainerRemindersItem = {
   targetAt: string;
   lastAttemptAt: string;
   reason: string;
+  failureNotification: AdminOperationalSummaryFailedTrainerRemindersItemFailureNotification;
   status: AdminOperationalSummaryFailedTrainerRemindersItemStatus;
   resolution: AdminReminderEscalationResolution | null;
 };

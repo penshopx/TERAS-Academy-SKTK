@@ -1,7 +1,7 @@
 import { createIntegrationTestApp } from "./integration-test-app";
 import {
   adminAuditEventsTable, assessmentAttemptsTable, assessmentsTable, db, enrollmentsTable, evidenceReviewsTable, evidenceTable,
-  competencyFrameworksTable, diagnosticFollowUpReminderDeliveriesTable, diagnosticFollowUpReminderResolutionsTable, diagnosticProfilesTable,
+  competencyFrameworksTable, diagnosticFollowUpFailureNotificationsTable, diagnosticFollowUpReminderDeliveriesTable, diagnosticFollowUpReminderResolutionsTable, diagnosticProfilesTable,
   diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSessionsTable,
   diagnosticTemplatesTable,
   gapsTable, modulesTable, pathwaysTable, peopleTable, personRolesTable, practiceAttemptsTable,
@@ -24,7 +24,8 @@ const ids = {
   activeActivity: id("active-activity"), inactiveActivity: id("inactive-activity"),
   inactiveReassessment: id("inactive-reassessment"), pendingAfterRemediation: id("pending-after-remediation"),
   trainer: id("trainer"), framework: id("framework"), template: id("template"), session: id("session"),
-  profile: id("profile"), recommendation: id("recommendation"), followUp: id("follow-up"), failedDelivery: id("failed-delivery"), admin: id("admin"),
+  profile: id("profile"), recommendation: id("recommendation"), followUp: id("follow-up"), failedDelivery: id("failed-delivery"),
+  failedNotification: id("failed-notification"), admin: id("admin"),
 };
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 
@@ -67,6 +68,10 @@ async function run() {
       id: ids.failedDelivery, followUpId: ids.followUp, trainerId: ids.trainer, channel: "email", reminderKind: "due_soon",
       destination: `trainer-${suffix}@example.test`, status: "permanently_failed", attemptCount: 3,
       lastAttemptAt: new Date("2030-01-09T03:00:00Z"), failureReason: "secret transport detail: smtp.example.test",
+    });
+    await db.insert(diagnosticFollowUpFailureNotificationsTable).values({
+      id: ids.failedNotification, reminderDeliveryId: ids.failedDelivery, destination: `operations-${suffix}@example.test`,
+      status: "failed", attemptedAt: new Date("2030-01-09T03:05:00Z"), failureReason: "raw operations transport: mx.internal.example",
     });
     await db.insert(modulesTable).values([
       { id: ids.activeModule, programId: ids.program, pathwayId: ids.activePath, sequence: 1, code: "AS", name: "Active", capability: "test", evidence: "test", learningOutcomes: [], theory: [] },
@@ -126,7 +131,15 @@ async function run() {
     assert(reminderFailure?.lastAttemptAt === "2030-01-09T03:00:00.000Z", "Permanent reminder failure must expose the last attempt time");
     assert(reminderFailure?.reason === "Layanan email tidak dapat menyelesaikan pengiriman.", "Admin summary must redact raw transport failure details");
     assert(!JSON.stringify(reminderFailure).includes("smtp.example.test"), "Admin summary leaked a raw transport failure reason");
+    assert(reminderFailure?.failureNotification?.destination === `operations-${suffix}@example.test`, "Failed operations notification must identify its destination");
+    assert(reminderFailure?.failureNotification?.attemptedAt === "2030-01-09T03:05:00.000Z", "Failed operations notification must expose its attempt time");
+    assert(reminderFailure?.failureNotification?.reason === "Layanan email tidak dapat menyelesaikan pengiriman.", "Failed operations notification must expose only a safe reason");
+    assert(!JSON.stringify(reminderFailure).includes("mx.internal.example"), "Admin summary leaked raw operations notification transport details");
     assert(reminderFailure?.status === "open" && reminderFailure?.resolution === null, "New permanent failure must be an open escalation");
+    const [profileAfterSummary] = await db.select().from(diagnosticProfilesTable).where(inArray(diagnosticProfilesTable.id, [ids.profile]));
+    const [deliveryAfterSummary] = await db.select().from(diagnosticFollowUpReminderDeliveriesTable).where(inArray(diagnosticFollowUpReminderDeliveriesTable.id, [ids.failedDelivery]));
+    assert(profileAfterSummary.currentState === "practice", "Operational summary must not change diagnostic status");
+    assert(deliveryAfterSummary.status === "permanently_failed", "Operational summary must not change reminder or readiness-related status");
 
     const resolutionResponse = await fetch(`http://127.0.0.1:${address.port}/api/admin/reminder-escalations/${ids.failedDelivery}/resolution`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: "Handled through a verified manual call." }),
@@ -166,6 +179,7 @@ async function run() {
     assert(completedRemediationCounts.assessment === baselineCounts.assessment + 1, "Pending reassessment attempt must remain in the assessment queue");
   } finally {
     await db.delete(diagnosticFollowUpReminderResolutionsTable).where(inArray(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, [ids.failedDelivery]));
+    await db.delete(diagnosticFollowUpFailureNotificationsTable).where(inArray(diagnosticFollowUpFailureNotificationsTable.reminderDeliveryId, [ids.failedDelivery]));
     await db.delete(diagnosticFollowUpReminderDeliveriesTable).where(inArray(diagnosticFollowUpReminderDeliveriesTable.id, [ids.failedDelivery]));
     await db.delete(diagnosticRecommendationFollowUpsTable).where(inArray(diagnosticRecommendationFollowUpsTable.id, [ids.followUp]));
     await db.delete(diagnosticRecommendationsTable).where(inArray(diagnosticRecommendationsTable.id, [ids.recommendation]));

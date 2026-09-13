@@ -4219,6 +4219,11 @@ export const GetAdminOperationalSummaryResponse = zod.object({
   "targetAt": zod.coerce.date(),
   "lastAttemptAt": zod.coerce.date(),
   "reason": zod.string(),
+  "failureNotification": zod.union([zod.object({
+  "destination": zod.string(),
+  "attemptedAt": zod.coerce.date(),
+  "reason": zod.string()
+}),zod.null()]),
   "status": zod.enum(['open', 'resolved']),
   "resolution": zod.union([zod.object({
   "id": zod.string(),
@@ -4337,6 +4342,11 @@ export const GetAdminLearnerDashboardProjectionResponse = zod.object({
   "targetAt": zod.coerce.date(),
   "lastAttemptAt": zod.coerce.date(),
   "reason": zod.string(),
+  "failureNotification": zod.union([zod.object({
+  "destination": zod.string(),
+  "attemptedAt": zod.coerce.date(),
+  "reason": zod.string()
+}),zod.null()]),
   "status": zod.enum(['open', 'resolved']),
   "resolution": zod.union([zod.object({
   "id": zod.string(),
@@ -4426,6 +4436,11 @@ export const GetAdminTrainerDashboardProjectionResponse = zod.object({
   "targetAt": zod.coerce.date(),
   "lastAttemptAt": zod.coerce.date(),
   "reason": zod.string(),
+  "failureNotification": zod.union([zod.object({
+  "destination": zod.string(),
+  "attemptedAt": zod.coerce.date(),
+  "reason": zod.string()
+}),zod.null()]),
   "status": zod.enum(['open', 'resolved']),
   "resolution": zod.union([zod.object({
   "id": zod.string(),
@@ -4515,6 +4530,11 @@ export const GetAdminAssessorDashboardProjectionResponse = zod.object({
   "targetAt": zod.coerce.date(),
   "lastAttemptAt": zod.coerce.date(),
   "reason": zod.string(),
+  "failureNotification": zod.union([zod.object({
+  "destination": zod.string(),
+  "attemptedAt": zod.coerce.date(),
+  "reason": zod.string()
+}),zod.null()]),
   "status": zod.enum(['open', 'resolved']),
   "resolution": zod.union([zod.object({
   "id": zod.string(),

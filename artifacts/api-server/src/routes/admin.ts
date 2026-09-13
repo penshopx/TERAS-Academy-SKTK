@@ -29,7 +29,7 @@ import {
   competencyFrameworksTable, competencyUnitsTable, pathwayCompetencyUnitsTable, competencyUnitOutcomesTable,
   competencyUnitPracticeTasksTable, competencyUnitEvidenceRequirementsTable, competencyUnitSimulationsTable, competencyUnitSafetyRulesTable,
   readinessEventsTable, readinessGatesTable,
-  diagnosticFollowUpReminderDeliveriesTable, diagnosticFollowUpReminderResolutionsTable, diagnosticRecommendationFollowUpsTable,
+  diagnosticFollowUpFailureNotificationsTable, diagnosticFollowUpReminderDeliveriesTable, diagnosticFollowUpReminderResolutionsTable, diagnosticRecommendationFollowUpsTable,
   diagnosticRecommendationsTable,
 } from "@workspace/db";
 import { authorizeAdmin, authorizeLocalUser, authorizeSuperAdmin, type AdminActor } from "../lib/authorization";
@@ -454,12 +454,17 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
       resolutionNote: diagnosticFollowUpReminderResolutionsTable.note,
       resolvedByPersonId: diagnosticFollowUpReminderResolutionsTable.resolvedByPersonId,
       resolvedAt: diagnosticFollowUpReminderResolutionsTable.resolvedAt,
+      failureNotificationStatus: diagnosticFollowUpFailureNotificationsTable.status,
+      failureNotificationDestination: diagnosticFollowUpFailureNotificationsTable.destination,
+      failureNotificationAttemptedAt: diagnosticFollowUpFailureNotificationsTable.attemptedAt,
+      failureNotificationReason: diagnosticFollowUpFailureNotificationsTable.failureReason,
     })
       .from(diagnosticFollowUpReminderDeliveriesTable)
       .innerJoin(diagnosticRecommendationFollowUpsTable, eq(diagnosticRecommendationFollowUpsTable.id, diagnosticFollowUpReminderDeliveriesTable.followUpId))
       .innerJoin(diagnosticRecommendationsTable, eq(diagnosticRecommendationsTable.id, diagnosticRecommendationFollowUpsTable.recommendationId))
       .innerJoin(peopleTable, eq(peopleTable.id, diagnosticFollowUpReminderDeliveriesTable.trainerId))
       .leftJoin(diagnosticFollowUpReminderResolutionsTable, eq(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, diagnosticFollowUpReminderDeliveriesTable.id))
+      .leftJoin(diagnosticFollowUpFailureNotificationsTable, eq(diagnosticFollowUpFailureNotificationsTable.reminderDeliveryId, diagnosticFollowUpReminderDeliveriesTable.id))
       .where(eq(diagnosticFollowUpReminderDeliveriesTable.status, "permanently_failed"))
       .orderBy(desc(diagnosticFollowUpReminderDeliveriesTable.lastAttemptAt)),
   ]);
@@ -537,6 +542,13 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
       targetAt: row.targetAt,
       lastAttemptAt: row.lastAttemptAt,
        reason: safeReminderFailureReason(row.failureReason),
+       failureNotification: row.failureNotificationStatus === "failed" && row.failureNotificationDestination && row.failureNotificationAttemptedAt
+         ? {
+           destination: row.failureNotificationDestination,
+           attemptedAt: row.failureNotificationAttemptedAt,
+           reason: safeReminderFailureReason(row.failureNotificationReason),
+         }
+         : null,
        status: row.resolutionId ? "resolved" : "open",
        resolution: row.resolutionId ? {
          id: row.resolutionId,
