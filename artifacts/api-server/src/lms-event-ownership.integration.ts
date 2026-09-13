@@ -398,53 +398,203 @@ try {
     "teras_enrollment_pathway_history_guard",
   );
 
-  await pathwayClient.query("BEGIN");
-  await pathwayClient.query(`
-    INSERT INTO teras_enrollment_pathway_events
-      (id, enrollment_id, pathway_id, program_id, sequence)
-    VALUES
-      ('ownership-pathway-selection-race', 'ownership-enrollment-b',
-       'ownership-pathway-b-switch', 'ownership-program-b', 1)
-  `);
-
-  await eventClient.query("BEGIN");
-  const concurrentEvent = eventClient.query(`
-    INSERT INTO teras_activity_completion_events
-      (id, activity_id, learner_id, enrollment_id, pathway_id, status, actor_id)
-    VALUES
-      ('context-concurrent-pathway-selection', 'ownership-activity-b-switch',
-       'ownership-learner-b', 'ownership-enrollment-b', 'ownership-pathway-b-switch',
-       'completed', 'ownership-actor')
-  `);
-  await waitForEnrollmentLockWait(
-    "lms-event-ownership-event-race",
-    "event transaction did not wait for the enrollment row lock",
-  );
-  await pathwayClient.query("COMMIT");
-  await concurrentEvent;
-  await eventClient.query("COMMIT");
-
-  const concurrentAudit = await client.query<{
-    selection_created_at: Date;
-    event_created_at: Date;
-    pathway_id: string;
-  }>(`
+  await client.query(`
+    INSERT INTO teras_enrollments
+      (id, learner_id, program_id, pathway_id, status)
     SELECT
-      selection.created_at AS selection_created_at,
-      event.created_at AS event_created_at,
-      event.pathway_id
-    FROM teras_enrollment_pathway_events selection
-    JOIN teras_activity_completion_events event
-      ON event.enrollment_id = selection.enrollment_id
-    WHERE selection.id = 'ownership-pathway-selection-race'
-      AND event.id = 'context-concurrent-pathway-selection'
+      'ownership-race-enrollment-' || race_id,
+      'ownership-race-learner-' || race_id,
+      'ownership-race-program-' || race_id,
+      'ownership-race-pathway-base-' || race_id,
+      'active'
+    FROM generate_series(1, 5) AS race_id
   `);
-  assert.equal(concurrentAudit.rows.length, 1);
-  assert.equal(concurrentAudit.rows[0]?.pathway_id, "ownership-pathway-b-switch");
-  assert.ok(
-    concurrentAudit.rows[0]!.selection_created_at <= concurrentAudit.rows[0]!.event_created_at,
-    "the committed pathway selection must precede the concurrent event in audit time",
-  );
+  await client.query(`
+    INSERT INTO teras_learning_activities
+      (id, lesson_id, program_id, pathway_id, type, title, description, sequence)
+    SELECT
+      'ownership-race-activity-' || race_id,
+      'ownership-race-lesson-' || race_id,
+      'ownership-race-program-' || race_id,
+      'ownership-race-pathway-latest-' || race_id,
+      'lesson',
+      'Race activity ' || race_id,
+      'Concurrent pathway context',
+      1
+    FROM generate_series(1, 5) AS race_id
+  `);
+  await client.query(`
+    INSERT INTO teras_learning_outcomes
+      (id, activity_id, description, verification_method, sequence)
+    SELECT
+      'ownership-race-outcome-' || race_id,
+      'ownership-race-activity-' || race_id,
+      'Race outcome ' || race_id,
+      'review',
+      1
+    FROM generate_series(1, 5) AS race_id
+  `);
+  await client.query(`
+    INSERT INTO teras_readiness_gates
+      (id, program_id, pathway_id, sequence, code, name, requirement)
+    SELECT
+      'ownership-race-gate-' || race_id,
+      'ownership-race-program-' || race_id,
+      'ownership-race-pathway-latest-' || race_id,
+      1,
+      'RACE-' || race_id,
+      'Race gate ' || race_id,
+      'Concurrent pathway requirement'
+    FROM generate_series(1, 5) AS race_id
+  `);
+
+  const concurrentEventCases = [
+    {
+      name: "activity completion",
+      table: "teras_activity_completion_events",
+      columns: "id, activity_id, learner_id, enrollment_id, pathway_id, status, actor_id",
+      values: "$1, $2, $3, $4, $5, 'completed', 'ownership-actor'",
+      argumentIndexes: [0, 1, 2, 3, 4],
+      context: {
+        activityId: "ownership-race-activity-1",
+        outcomeId: null,
+        gateId: null,
+      },
+    },
+    {
+      name: "outcome verification",
+      table: "teras_outcome_verification_events",
+      columns: "id, outcome_id, activity_id, learner_id, enrollment_id, pathway_id, verifier_id, result, reason",
+      values: "$1, $2, $3, $4, $5, $6, 'ownership-verifier', 'verified', 'concurrent pathway'",
+      argumentIndexes: [0, 5, 1, 2, 3, 4],
+      context: {
+        activityId: "ownership-race-activity-2",
+        outcomeId: "ownership-race-outcome-2",
+        gateId: null,
+      },
+    },
+    {
+      name: "readiness transfer",
+      table: "teras_readiness_transfer_events",
+      columns: "id, learner_id, enrollment_id, program_id, pathway_id, source_context, triggered_by",
+      values: "$1, $2, $3, $4, $5, '{}'::jsonb, 'ownership-actor'",
+      argumentIndexes: [0, 2, 3, 6, 4],
+      context: {
+        activityId: null,
+        outcomeId: null,
+        gateId: null,
+      },
+    },
+    {
+      name: "learning transition",
+      table: "teras_learning_transition_events",
+      columns: `id, activity_id, learner_id, enrollment_id, program_id, pathway_id,
+        from_state, to_state, actor_id, actor_role, entity_reference, reason, idempotency_key`,
+      values: `$1, $2, $3, $4, $5, $6, 'assigned', 'started', 'ownership-actor',
+        'learner', $2, 'concurrent pathway', $1`,
+      argumentIndexes: [0, 1, 2, 3, 6, 4],
+      context: {
+        activityId: "ownership-race-activity-4",
+        outcomeId: null,
+        gateId: null,
+      },
+    },
+    {
+      name: "readiness event",
+      table: "teras_readiness_events",
+      columns: "id, enrollment_id, pathway_id, gate_id, status, score",
+      values: "$1, $2, $3, $4, 'Developing', 50",
+      argumentIndexes: [0, 3, 4, 7],
+      context: {
+        activityId: null,
+        outcomeId: null,
+        gateId: "ownership-race-gate-5",
+      },
+    },
+  ] as const;
+
+  for (const [index, eventCase] of concurrentEventCases.entries()) {
+    const raceId = index + 1;
+    const eventId = `context-concurrent-${eventCase.table}`;
+    const enrollmentId = `ownership-race-enrollment-${raceId}`;
+    const learnerId = `ownership-race-learner-${raceId}`;
+    const programId = `ownership-race-program-${raceId}`;
+    const pathwayId = `ownership-race-pathway-latest-${raceId}`;
+    const selectionId = `ownership-race-selection-${raceId}`;
+    const activityId = `ownership-race-activity-${raceId}`;
+    const outcomeId = `ownership-race-outcome-${raceId}`;
+    const gateId = `ownership-race-gate-${raceId}`;
+
+    await pathwayClient.query("BEGIN");
+    await pathwayClient.query(
+      `INSERT INTO teras_enrollment_pathway_events
+         (id, enrollment_id, pathway_id, program_id, sequence)
+       VALUES ($1, $2, $3, $4, 1)`,
+      [selectionId, enrollmentId, pathwayId, programId],
+    );
+
+    await eventClient.query("BEGIN");
+    const concurrentEvent = eventClient.query(
+      `INSERT INTO ${eventCase.table} (${eventCase.columns})
+       VALUES (${eventCase.values})`,
+      eventCase.argumentIndexes.map(index =>
+        [eventId, activityId, learnerId, enrollmentId, pathwayId, outcomeId, programId, gateId][index]
+      ),
+    );
+    await waitForEnrollmentLockWait(
+      "lms-event-ownership-event-race",
+      `${eventCase.name} did not wait for the enrollment row lock`,
+    );
+    await pathwayClient.query("COMMIT");
+    await concurrentEvent;
+    await eventClient.query("COMMIT");
+
+    const concurrentAudit = await client.query<{
+      selection_created_at: Date;
+      event_created_at: Date;
+      program_id: string;
+      pathway_id: string;
+      activity_id: string | null;
+      outcome_id: string | null;
+      gate_id: string | null;
+    }>(`
+      SELECT
+        selection.created_at AS selection_created_at,
+        event.created_at AS event_created_at,
+        enrollment.program_id,
+        event.pathway_id,
+        to_jsonb(event)->>'activity_id' AS activity_id,
+        to_jsonb(event)->>'outcome_id' AS outcome_id,
+        to_jsonb(event)->>'gate_id' AS gate_id
+      FROM teras_enrollment_pathway_events selection
+      JOIN ${eventCase.table} event
+        ON event.enrollment_id = selection.enrollment_id
+      JOIN teras_enrollments enrollment
+        ON enrollment.id = event.enrollment_id
+      WHERE selection.id = $1
+        AND event.id = $2
+    `, [selectionId, eventId]);
+    assert.equal(concurrentAudit.rows.length, 1);
+    assert.deepEqual(
+      {
+        programId: concurrentAudit.rows[0]?.program_id,
+        pathwayId: concurrentAudit.rows[0]?.pathway_id,
+        activityId: concurrentAudit.rows[0]?.activity_id ?? null,
+        outcomeId: concurrentAudit.rows[0]?.outcome_id ?? null,
+        gateId: concurrentAudit.rows[0]?.gate_id ?? null,
+      },
+      {
+        programId,
+        pathwayId,
+        ...eventCase.context,
+      },
+      `${eventCase.name} must retain its committed enrollment context`,
+    );
+    assert.ok(
+      concurrentAudit.rows[0]!.selection_created_at <= concurrentAudit.rows[0]!.event_created_at,
+      `the committed pathway selection must precede the concurrent ${eventCase.name}`,
+    );
+  }
 
   await eventClient.query("BEGIN");
   await eventClient.query(`
