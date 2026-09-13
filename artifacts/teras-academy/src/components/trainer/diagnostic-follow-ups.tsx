@@ -9,6 +9,16 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 
 const statusLabels = { planned: "Planned", in_progress: "In progress", completed: "Completed" } as const;
@@ -43,7 +53,9 @@ function ReminderPreferences() {
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(false);
   const [quietHoursStart, setQuietHoursStart] = useState("20:00");
   const [quietHoursEnd, setQuietHoursEnd] = useState("07:00");
+  const [fullDayConfirmationOpen, setFullDayConfirmationOpen] = useState(false);
   const availability = preferences.data;
+  const isFullDayQuietHours = quietHoursEnabled && quietHoursStart === quietHoursEnd;
 
   useEffect(() => {
     if (!preferences.data) return;
@@ -54,12 +66,13 @@ function ReminderPreferences() {
     setQuietHoursEnd(preferences.data.quietHoursEnd ?? "07:00");
   }, [preferences.data]);
 
-  const save = () => mutation.mutate({
+  const persist = (confirmFullDayQuietHours: boolean) => mutation.mutate({
     data: {
       emailEnabled,
       timeZone,
       quietHoursStart: quietHoursEnabled ? quietHoursStart : null,
       quietHoursEnd: quietHoursEnabled ? quietHoursEnd : null,
+      confirmFullDayQuietHours,
     },
   }, {
     onSuccess: (updated) => {
@@ -69,6 +82,13 @@ function ReminderPreferences() {
     },
     onError: () => toast({ title: "Preferences not saved", description: "Please check the settings and try again.", variant: "destructive" }),
   });
+  const save = () => {
+    if (isFullDayQuietHours) {
+      setFullDayConfirmationOpen(true);
+      return;
+    }
+    persist(false);
+  };
 
   return (
     <section className="rounded-lg border border-border bg-background/40 p-4" data-testid="trainer-reminder-preferences">
@@ -106,9 +126,12 @@ function ReminderPreferences() {
             <SelectContent>{timeZones.map((zone) => <SelectItem key={zone} value={zone}>{zone}</SelectItem>)}</SelectContent>
           </Select>
         </div>
-        <div className="flex items-end gap-2 pb-2 md:col-span-2">
-          <Switch id="trainer-reminder-quiet-hours" checked={quietHoursEnabled} onCheckedChange={setQuietHoursEnabled} />
-          <label htmlFor="trainer-reminder-quiet-hours" className="text-sm">Use quiet hours</label>
+        <div className="space-y-1 pb-2 md:col-span-2">
+          <div className="flex items-center gap-2">
+            <Switch id="trainer-reminder-quiet-hours" checked={quietHoursEnabled} onCheckedChange={setQuietHoursEnabled} />
+            <label htmlFor="trainer-reminder-quiet-hours" className="text-sm">Use quiet hours</label>
+          </div>
+          <p className="text-xs text-muted-foreground">If start and end are the same, reminders pause for the full 24 hours and saving requires confirmation.</p>
         </div>
         {quietHoursEnabled && <>
           <div className="space-y-1.5">
@@ -118,6 +141,14 @@ function ReminderPreferences() {
           <div className="space-y-1.5">
             <label htmlFor="trainer-reminder-quiet-end" className="text-xs font-medium">Quiet hours end</label>
             <Input id="trainer-reminder-quiet-end" type="time" value={quietHoursEnd} onChange={(event) => setQuietHoursEnd(event.target.value)} />
+          </div>
+          <div className="md:col-span-3">
+            {isFullDayQuietHours ? (
+              <div className="flex gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100" role="alert" data-testid="full-day-quiet-hours-warning">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <p><strong>This pauses reminders for the full 24 hours.</strong> With the same start and end time, there is no delivery window. Saving requires explicit confirmation.</p>
+              </div>
+            ) : null}
           </div>
         </>}
       </div>
@@ -145,13 +176,33 @@ function ReminderPreferences() {
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
                   <span>Email: <strong className="text-foreground">{revision.emailEnabled ? "Enabled" : "Disabled"}</strong></span>
                   <span>Time zone: <strong className="text-foreground">{revision.timeZone}</strong></span>
-                  <span>Quiet hours: <strong className="text-foreground">{revision.quietHoursStart && revision.quietHoursEnd ? `${revision.quietHoursStart}–${revision.quietHoursEnd}` : "Off"}</strong></span>
+                  <span>Quiet hours: <strong className="text-foreground">{revision.quietHoursStart && revision.quietHoursEnd ? revision.quietHoursStart === revision.quietHoursEnd ? `${revision.quietHoursStart}–${revision.quietHoursEnd} (full 24 hours)` : `${revision.quietHoursStart}–${revision.quietHoursEnd}` : "Off"}</strong></span>
                 </div>
               </li>
             ))}
           </ol>
         ) : null}
       </details>
+      <AlertDialog open={fullDayConfirmationOpen} onOpenChange={setFullDayConfirmationOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pause reminders for the full 24 hours?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The start and end times are both {quietHoursStart}. No email reminders will be sent while this configuration remains active.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Go back</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => persist(true)}
+              data-testid="confirm-full-day-quiet-hours"
+            >
+              Confirm 24-hour pause
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

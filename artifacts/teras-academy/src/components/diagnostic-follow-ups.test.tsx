@@ -3,7 +3,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { getGetTrainerReminderPreferencesQueryKey } from "@workspace/api-client-react";
+import { getGetTrainerReminderPreferenceHistoryQueryKey, getGetTrainerReminderPreferencesQueryKey } from "@workspace/api-client-react";
 import { DiagnosticFollowUps } from "./trainer/diagnostic-follow-ups";
 
 const recommendation = {
@@ -35,11 +35,19 @@ test("marks overdue follow-ups and exposes status and target filters", () => {
     emailEnabled: true,
     timeZone: "Asia/Jakarta",
     quietHoursStart: "20:00",
-    quietHoursEnd: "07:00",
+    quietHoursEnd: "20:00",
     deliveryStatus: "paused_quiet_hours",
-    nextDeliveryAt: "2026-09-13T00:00:00.000Z",
+    nextDeliveryAt: null,
     updatedAt: "2026-09-12T12:00:00.000Z",
   });
+  queryClient.setQueryData(getGetTrainerReminderPreferenceHistoryQueryKey(), [{
+    id: "preference-1",
+    emailEnabled: true,
+    timeZone: "Asia/Jakarta",
+    quietHoursStart: "20:00",
+    quietHoursEnd: "20:00",
+    recordedAt: "2026-09-12T12:00:00.000Z",
+  }]);
   const markup = renderToStaticMarkup(<QueryClientProvider client={queryClient}><DiagnosticFollowUps items={[{
     learnerId: "learner-1",
     learnerName: "Learner",
@@ -61,4 +69,6 @@ test("marks overdue follow-ups and exposes status and target filters", () => {
   assert.match(markup, /Receive email reminders/);
   assert.match(markup, /Operational delivery settings only/);
   assert.match(markup, /data-testid="trainer-reminder-delivery-status"/);
+  assert.match(markup, /reminders pause for the full 24 hours and saving requires confirmation/);
+  assert.match(markup, /20:00–20:00 \(full 24 hours\)/);
 });

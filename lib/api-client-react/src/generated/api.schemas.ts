@@ -272,6 +272,8 @@ export interface TrainerReminderPreferencesInput {
      * @pattern ^([01][0-9]|2[0-3]):[0-5][0-9]$
      */
   quietHoursEnd: string | null;
+  /** Must be true when quiet-hours start and end are equal, confirming that reminders will be paused for the full 24 hours. */
+  confirmFullDayQuietHours: boolean;
 }
 
 export interface TrainerReminderPreferenceRevision {

@@ -51,3 +51,17 @@ test("delivery availability distinguishes active and disabled delivery", () => {
     nextDeliveryAt: null,
   });
 });
+
+test("equal quiet-hours times remain a full-day pause with no next delivery", () => {
+  const preferences = {
+    emailEnabled: true,
+    timeZone: "Asia/Jakarta",
+    quietHoursStart: "08:00",
+    quietHoursEnd: "08:00",
+  };
+  assert.equal(isWithinQuietHours(new Date("2026-09-12T05:00:00Z"), preferences), true);
+  assert.deepEqual(reminderDeliveryAvailability(new Date("2026-09-12T05:00:00Z"), preferences), {
+    deliveryStatus: "paused_quiet_hours",
+    nextDeliveryAt: null,
+  });
+});

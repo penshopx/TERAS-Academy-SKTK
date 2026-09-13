@@ -227,6 +227,16 @@ router.put("/trainer/reminder-preferences", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Quiet hours start and end must both be set or both be empty" });
     return;
   }
+  if (
+    body.data.quietHoursStart !== null
+    && body.data.quietHoursStart === body.data.quietHoursEnd
+    && !body.data.confirmFullDayQuietHours
+  ) {
+    res.status(400).json({
+      error: "Equal quiet-hours start and end pause reminders for the full 24 hours. Set confirmFullDayQuietHours to true to confirm.",
+    });
+    return;
+  }
   const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;
   const [revision] = await db.insert(trainerReminderPreferencesTable).values({
     id: id("trainer-reminder-preference"),

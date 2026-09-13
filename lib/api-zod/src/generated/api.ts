@@ -2294,7 +2294,8 @@ export const UpdateTrainerReminderPreferencesBody = zod.object({
   "emailEnabled": zod.boolean(),
   "timeZone": zod.string().min(1).max(updateTrainerReminderPreferencesBodyTimeZoneMax),
   "quietHoursStart": zod.string().regex(updateTrainerReminderPreferencesBodyQuietHoursStartRegExp).nullable(),
-  "quietHoursEnd": zod.string().regex(updateTrainerReminderPreferencesBodyQuietHoursEndRegExp).nullable()
+  "quietHoursEnd": zod.string().regex(updateTrainerReminderPreferencesBodyQuietHoursEndRegExp).nullable(),
+  "confirmFullDayQuietHours": zod.boolean().describe('Must be true when quiet-hours start and end are equal, confirming that reminders will be paused for the full 24 hours.')
 })
 
 export const updateTrainerReminderPreferencesResponseQuietHoursStartRegExp = new RegExp('^([01][0-9]|2[0-3]):[0-5][0-9]$');
