@@ -132,7 +132,7 @@ else
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0004_content_resource_uri_http_check.sql
 fi
-bash scripts/bootstrap-causal-link-ownership.sh
+bash scripts/bootstrap-database-protections.sh
 TERAS_MIGRATION_ACTOR=post-merge-upgrade \
   bash scripts/apply-resource-uri-upgrade.sh
 # New databases receive their tables from Drizzle, while existing databases
@@ -209,6 +209,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/schema-check.sql
 # API tests consume declaration output from composite workspace libraries.
 # Refresh it after merged schema changes and before any API test starts.
 pnpm run typecheck:libs
+pnpm --filter @workspace/api-server run test:database-protections-bootstrap
 pnpm --filter @workspace/api-server run test:resource-uri
 pnpm --filter @workspace/scripts run test:resource-uri-audit
 pnpm --filter @workspace/scripts run test:resource-uri-upgrade
