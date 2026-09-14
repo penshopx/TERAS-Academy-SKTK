@@ -325,7 +325,7 @@ export async function publishBaseline(
       eq(learningBaselineVersionsTable.baselineId, baselineId),
     )).limit(1);
     if (!draft) return { error: "Baseline draft not found" as const };
-    if (draft.status !== "DRAFT") return { error: "Baseline version is already published" as const };
+    if (draft.status !== "DRAFT") return { error: "Baseline version is not an active draft" as const };
     const preview = await baselinePublicationPreviewWithExecutor(baselineId, versionId, tx);
     if ("error" in preview) return preview;
     if (!manager.global) {
@@ -348,7 +348,7 @@ export async function publishBaseline(
     const [published] = await tx.update(learningBaselineVersionsTable).set({
       status: "PUBLISHED", publishedAt: new Date(), publishedBy: manager.id,
     }).where(and(eq(learningBaselineVersionsTable.id, versionId), eq(learningBaselineVersionsTable.status, "DRAFT"))).returning();
-    if (!published) return { error: "Baseline version is already published" as const };
+    if (!published) return { error: "Baseline version is not an active draft" as const };
     await tx.update(learningBaselinesTable).set({ publishedVersionId: published.id, status: "active" })
       .where(eq(learningBaselinesTable.id, baselineId));
     await tx.insert(learningBaselineAuditTable).values({
@@ -385,6 +385,36 @@ export async function updateBaselineDraft(baselineId: string, versionId: string,
       details: { version: draft.version },
     });
     return { baselineId, versionId, version: updated!.version, status: updated!.status, snapshot: updated!.snapshot };
+  });
+}
+
+export async function cancelBaselineDraft(baselineId: string, versionId: string, actorId: string, reason: string) {
+  const cancellationReason = reason.trim();
+  if (!cancellationReason) return { error: "Cancellation reason is required" as const, invalid: true as const };
+  return db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${baselineId}, 0))`);
+    const [draft] = await tx.select().from(learningBaselineVersionsTable).where(and(
+      eq(learningBaselineVersionsTable.id, versionId),
+      eq(learningBaselineVersionsTable.baselineId, baselineId),
+    )).limit(1);
+    if (!draft) return { error: "Baseline draft not found" as const };
+    if (draft.status !== "DRAFT") return { error: "Baseline version is not an active draft" as const };
+    const cancelledAt = new Date();
+    const [cancelled] = await tx.update(learningBaselineVersionsTable).set({
+      status: "CANCELLED", cancelledAt, cancelledBy: actorId,
+    }).where(and(
+      eq(learningBaselineVersionsTable.id, versionId),
+      eq(learningBaselineVersionsTable.status, "DRAFT"),
+    )).returning();
+    if (!cancelled) return { error: "Baseline version is not an active draft" as const };
+    await tx.insert(learningBaselineAuditTable).values({
+      id: id("baseline-audit"), baselineId, versionId, action: "CANCEL_DRAFT", actorId,
+      details: { version: cancelled.version, reason: cancellationReason },
+    });
+    return {
+      baselineId, versionId, version: cancelled.version, status: cancelled.status,
+      cancelledAt: cancelled.cancelledAt, cancelledBy: cancelled.cancelledBy,
+    };
   });
 }
 

@@ -7,6 +7,7 @@ import {
   PreviewAuthoredCourseParams, PreviewAuthoredCourseResponse,
   PublishAuthoredCourseParams, PublishAuthoredCourseResponse,
   CreateBaselineDraftParams, CreateBaselineDraftResponse,
+  CancelBaselineDraftBody, CancelBaselineDraftParams, CancelBaselineDraftResponse,
   UpdateBaselineDraftBody, UpdateBaselineDraftParams, UpdateBaselineDraftResponse,
   PublishBaselineVersionParams, PublishBaselineVersionResponse,
   PreviewBaselinePublicationParams, PreviewBaselinePublicationResponse, PublishBaselineVersionBody,
@@ -18,7 +19,7 @@ import { authorizeBaselineManager, authorizeWorkspaceRole, type BaselineManager 
 import { applyCourseAuthoring, authoredCourse, courseAudit, coursePreview, courseVersions, listAuthoredCourses, publishCourse, trainerHasAssignment, validateCourse } from "../lib/course-authoring";
 import { db, enrollmentsTable } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
-import { baselineAudit, baselinePathwayIds, baselinePublicationPreview, createBaselineDraft, listBaselineVersions, publishBaseline, snapshotPathwayIds, updateBaselineDraft } from "../lib/baseline-authoring";
+import { baselineAudit, baselinePathwayIds, baselinePublicationPreview, cancelBaselineDraft, createBaselineDraft, listBaselineVersions, publishBaseline, snapshotPathwayIds, updateBaselineDraft } from "../lib/baseline-authoring";
 
 const router: IRouter = Router();
 async function requireBaselineScope(baselineId: string, manager: BaselineManager, res: Response, additionalPathways: Iterable<string> = []) {
@@ -59,6 +60,19 @@ router.post("/trainer/authoring/baselines/:baselineId/versions/:versionId/publis
   const result = await publishBaseline(parsed.data.baselineId, parsed.data.versionId, manager, body.data.previewFingerprint);
   if ("error" in result) { res.status("forbidden" in result ? 403 : result.error === "Baseline draft not found" ? 404 : 409).json({ error: result.error, ...("report" in result ? { report: result.report } : {}) }); return; }
   res.status(201).json(PublishBaselineVersionResponse.parse(result));
+});
+
+router.post("/trainer/authoring/baselines/:baselineId/versions/:versionId/cancel", async (req, res): Promise<void> => {
+  const manager = await authorizeBaselineManager(req, res);
+  if (!manager) return;
+  const parsed = CancelBaselineDraftParams.safeParse(req.params);
+  const body = CancelBaselineDraftBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+  if (!await requireBaselineScope(parsed.data.baselineId, manager, res)) return;
+  const result = await cancelBaselineDraft(parsed.data.baselineId, parsed.data.versionId, manager.id, body.data.reason);
+  if ("error" in result) { res.status("invalid" in result ? 400 : result.error === "Baseline draft not found" ? 404 : 409).json({ error: result.error }); return; }
+  res.json(CancelBaselineDraftResponse.parse(result));
 });
 
 router.get("/trainer/authoring/baselines/:baselineId/versions/:versionId/publication-preview", async (req, res): Promise<void> => {

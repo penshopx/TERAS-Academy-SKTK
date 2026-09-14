@@ -33,12 +33,14 @@ export const learningBaselineVersionsTable = pgTable("teras_learning_baseline_ve
   createdBy: text("created_by").notNull().default("system"),
   publishedAt: timestamp("published_at", { withTimezone: true }),
   publishedBy: text("published_by"),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  cancelledBy: text("cancelled_by"),
 }, table => [
   uniqueIndex("teras_learning_baseline_versions_baseline_version_unique").on(table.baselineId, table.version),
   index("teras_learning_baseline_versions_baseline_published_idx").on(table.baselineId, table.publishedAt),
 ]);
 
-/** Append-only audit for baseline clone and publish commands. */
+/** Append-only audit for baseline clone, update, cancellation, and publish commands. */
 export const learningBaselineAuditTable = pgTable("teras_learning_baseline_audit", {
   id: text("id").primaryKey(),
   baselineId: text("baseline_id").notNull().references(() => learningBaselinesTable.id),

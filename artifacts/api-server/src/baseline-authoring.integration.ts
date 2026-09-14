@@ -211,6 +211,56 @@ async function main() {
     }
   }
 
+  const cancellationDraft = await createBaselineDraft(baseline.id, "trainer-cancellation");
+  assert(!("error" in cancellationDraft));
+  if (!("error" in cancellationDraft)) {
+    activeRole = "trainer";
+    activeLearner = person.id;
+    const pointerBeforeCancellation = (await db.select().from(learningBaselinesTable).where(eq(learningBaselinesTable.id, baseline.id)))[0]!.publishedVersionId;
+    const cancellationResponse = await request(
+      `/trainer/authoring/baselines/${baseline.id}/versions/${cancellationDraft.versionId}/cancel`,
+      "POST",
+      { reason: "Draft is no longer required" },
+    );
+    assert.equal(cancellationResponse.status, 200);
+    const cancellation = await cancellationResponse.json() as { status: string; cancelledBy: string };
+    assert.equal(cancellation.status, "CANCELLED");
+    assert.equal(cancellation.cancelledBy, person.id);
+    const blankReasonResponse = await request(
+      `/trainer/authoring/baselines/${baseline.id}/versions/${cancellationDraft.versionId}/cancel`,
+      "POST",
+      { reason: "   " },
+    );
+    assert.equal(blankReasonResponse.status, 400, "whitespace-only cancellation reasons are rejected");
+    const cancelled = (await db.select().from(learningBaselineVersionsTable).where(eq(learningBaselineVersionsTable.id, cancellationDraft.versionId)))[0]!;
+    assert.equal(cancelled.status, "CANCELLED");
+    assert.equal(cancelled.cancelledBy, person.id);
+    assert(cancelled.cancelledAt);
+    assert.equal((await db.select().from(learningBaselinesTable).where(eq(learningBaselinesTable.id, baseline.id)))[0]!.publishedVersionId, pointerBeforeCancellation);
+    assert.equal((await db.select().from(enrollmentsTable).where(eq(enrollmentsTable.id, enrollmentId)))[0]!.baselineVersionId, active.id);
+    assert("error" in await updateBaselineDraft(baseline.id, cancellationDraft.versionId, cancelled.snapshot as Record<string, unknown>, "trainer-cancellation"));
+    const cancelledPreview = await baselinePublicationPreview(baseline.id, cancellationDraft.versionId);
+    assert("error" in cancelledPreview);
+    const cancelledPublish = await request(
+      `/trainer/authoring/baselines/${baseline.id}/versions/${cancellationDraft.versionId}/publish`,
+      "POST",
+      { previewFingerprint: "a".repeat(64) },
+    );
+    assert.equal(cancelledPublish.status, 409, "cancelled drafts cannot be published");
+    const cancellationAudit = await db.select().from(learningBaselineAuditTable).where(and(
+      eq(learningBaselineAuditTable.versionId, cancellationDraft.versionId),
+      eq(learningBaselineAuditTable.action, "CANCEL_DRAFT"),
+    ));
+    assert.equal(cancellationAudit.length, 1);
+    assert.deepEqual(cancellationAudit[0]!.details, { version: cancellationDraft.version, reason: "Draft is no longer required" });
+    await assert.rejects(
+      db.update(learningBaselineVersionsTable).set({ snapshot: { malformed: true } }).where(eq(learningBaselineVersionsTable.id, cancellationDraft.versionId)),
+    );
+    await assert.rejects(
+      db.delete(learningBaselineVersionsTable).where(eq(learningBaselineVersionsTable.id, cancellationDraft.versionId)),
+    );
+  }
+
   const clones = await Promise.all([
     createBaselineDraft(baseline.id, "trainer-a"),
     createBaselineDraft(baseline.id, "trainer-b"),

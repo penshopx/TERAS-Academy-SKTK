@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ApplyCourseAuthoringCommandBody, RequestManagedResourceUploadUrlBody, CreateBaselineDraftResponse, PreviewBaselinePublicationResponse, PublishBaselineVersionBody, PublishBaselineVersionResponse, SelectLearnerPathwayResponse, UpdateBaselineDraftBody } from "@workspace/api-zod";
+import { ApplyCourseAuthoringCommandBody, RequestManagedResourceUploadUrlBody, CancelBaselineDraftBody, CancelBaselineDraftResponse, CreateBaselineDraftResponse, PreviewBaselinePublicationResponse, PublishBaselineVersionBody, PublishBaselineVersionResponse, SelectLearnerPathwayResponse, UpdateBaselineDraftBody } from "@workspace/api-zod";
 import { allocatedSiblingSequence, assignmentAllows, orderedSiblingIds } from "./lib/course-authoring";
 import { learnerCourseAvailable } from "./routes/learning";
 
@@ -87,6 +87,12 @@ assert.equal(PublishBaselineVersionResponse.safeParse({
 }).success, true, "baseline publish response is contract-valid");
 assert.equal(PublishBaselineVersionBody.safeParse({ previewFingerprint: "a".repeat(64) }).success, true, "baseline publish requires a reviewed preview");
 assert.equal(PublishBaselineVersionBody.safeParse({}).success, false, "baseline publish refuses a missing preview");
+assert.equal(CancelBaselineDraftBody.safeParse({ reason: "Superseded by a corrected draft" }).success, true);
+assert.equal(CancelBaselineDraftBody.safeParse({ reason: "" }).success, false, "baseline cancellation requires an audit reason");
+assert.equal(CancelBaselineDraftResponse.safeParse({
+  baselineId: "baseline-1", versionId: "baseline-version-3", version: 3, status: "CANCELLED",
+  cancelledAt: new Date().toISOString(), cancelledBy: "manager-1",
+}).success, true, "baseline cancellation response is contract-valid");
 assert.equal(PreviewBaselinePublicationResponse.safeParse({
   baselineId: "baseline-1",
   activeVersion: { versionId: "v1", version: 1 },

@@ -2977,6 +2977,36 @@ export const PublishBaselineVersionResponse = zod.object({
 
 
 /**
+ * @summary Cancel an unpublished baseline draft while preserving its audit history
+ */
+
+
+
+
+export const CancelBaselineDraftParams = zod.object({
+  "baselineId": zod.coerce.string().min(1),
+  "versionId": zod.coerce.string().min(1)
+})
+
+export const cancelBaselineDraftBodyReasonMax = 500;
+
+
+
+export const CancelBaselineDraftBody = zod.object({
+  "reason": zod.string().min(1).max(cancelBaselineDraftBodyReasonMax)
+})
+
+export const CancelBaselineDraftResponse = zod.object({
+  "baselineId": zod.string(),
+  "versionId": zod.string(),
+  "version": zod.int(),
+  "status": zod.enum(['CANCELLED']),
+  "cancelledAt": zod.coerce.date(),
+  "cancelledBy": zod.string()
+})
+
+
+/**
  * @summary Compare an immutable active snapshot with a draft and show publication impact
  */
 
@@ -3121,12 +3151,14 @@ export const ListBaselineVersionsResponseItem = zod.object({
   "id": zod.string(),
   "baselineId": zod.string(),
   "version": zod.int(),
-  "status": zod.enum(['DRAFT', 'PUBLISHED']),
+  "status": zod.enum(['DRAFT', 'PUBLISHED', 'CANCELLED']),
   "snapshot": zod.record(zod.string(), zod.unknown()),
   "createdAt": zod.coerce.date(),
   "createdBy": zod.string(),
   "publishedAt": zod.coerce.date().nullable(),
-  "publishedBy": zod.string().nullable()
+  "publishedBy": zod.string().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "cancelledBy": zod.string().nullable()
 })
 export const ListBaselineVersionsResponse = zod.array(ListBaselineVersionsResponseItem)
 

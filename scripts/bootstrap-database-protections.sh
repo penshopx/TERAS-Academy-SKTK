@@ -9,6 +9,7 @@ readonly protection_migrations=(
   "lib/db/migrations/0033_enrollment_event_context.sql"
   "lib/db/migrations/0038_learning_resource_progress_context.sql"
   "lib/db/migrations/0039_baseline_versioned_publishing.sql"
+  "lib/db/migrations/0044_baseline_draft_cancellation.sql"
 )
 
 pnpm --filter @workspace/db run push

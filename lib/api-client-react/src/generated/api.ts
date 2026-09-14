@@ -58,6 +58,8 @@ import type {
   BadRequestResponse,
   BaselineAuditEvent,
   BaselineDraft,
+  BaselineDraftCancellation,
+  BaselineDraftCancelled,
   BaselineDraftInput,
   BaselineDraftUpdated,
   BaselinePublicationConfirmation,
@@ -3754,6 +3756,80 @@ export const usePublishBaselineVersion = <TError = ErrorType<UnauthorizedRespons
         TContext
       > => {
       return useMutation(getPublishBaselineVersionMutationOptions(options));
+    }
+
+export const getCancelBaselineDraftUrl = (baselineId: string,
+    versionId: string,) => {
+
+
+
+
+  return `/api/trainer/authoring/baselines/${baselineId}/versions/${versionId}/cancel`
+}
+
+/**
+ * @summary Cancel an unpublished baseline draft while preserving its audit history
+ */
+export const cancelBaselineDraft = async (baselineId: string,
+    versionId: string,
+    baselineDraftCancellation: BaselineDraftCancellation, options?: Parameters<typeof customFetch>[1]): Promise<BaselineDraftCancelled> => {
+
+  return customFetch<BaselineDraftCancelled>(getCancelBaselineDraftUrl(baselineId,versionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(baselineDraftCancellation)
+  }
+);}
+
+
+
+
+
+export const getCancelBaselineDraftMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelBaselineDraft>>, TError,{baselineId: string;versionId: string;data: BodyType<BaselineDraftCancellation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelBaselineDraft>>, TError,{baselineId: string;versionId: string;data: BodyType<BaselineDraftCancellation>}, TContext> => {
+
+const mutationKey = ['cancelBaselineDraft'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelBaselineDraft>>, {baselineId: string;versionId: string;data: BodyType<BaselineDraftCancellation>}> = (props) => {
+          const {baselineId,versionId,data} = props ?? {};
+
+          return  cancelBaselineDraft(baselineId,versionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelBaselineDraftMutationResult = NonNullable<Awaited<ReturnType<typeof cancelBaselineDraft>>>
+    export type CancelBaselineDraftMutationBody = BodyType<BaselineDraftCancellation>
+    export type CancelBaselineDraftMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>
+
+    /**
+ * @summary Cancel an unpublished baseline draft while preserving its audit history
+ */
+export const useCancelBaselineDraft = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelBaselineDraft>>, TError,{baselineId: string;versionId: string;data: BodyType<BaselineDraftCancellation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelBaselineDraft>>,
+        TError,
+        {baselineId: string;versionId: string;data: BodyType<BaselineDraftCancellation>},
+        TContext
+      > => {
+      return useMutation(getCancelBaselineDraftMutationOptions(options));
     }
 
 export const getPreviewBaselinePublicationUrl = (baselineId: string,

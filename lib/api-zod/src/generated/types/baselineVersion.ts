@@ -20,4 +20,8 @@ export interface BaselineVersion {
   publishedAt: Date | null;
   /** @nullable */
   publishedBy: string | null;
+  /** @nullable */
+  cancelledAt: Date | null;
+  /** @nullable */
+  cancelledBy: string | null;
 }

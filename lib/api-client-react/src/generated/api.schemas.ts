@@ -1034,6 +1034,7 @@ export type BaselineVersionStatus = typeof BaselineVersionStatus[keyof typeof Ba
 export const BaselineVersionStatus = {
   DRAFT: 'DRAFT',
   PUBLISHED: 'PUBLISHED',
+  CANCELLED: 'CANCELLED',
 } as const;
 
 export type BaselineVersionSnapshot = { [key: string]: unknown };
@@ -1050,6 +1051,34 @@ export interface BaselineVersion {
   publishedAt: string | null;
   /** @nullable */
   publishedBy: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  /** @nullable */
+  cancelledBy: string | null;
+}
+
+export interface BaselineDraftCancellation {
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  reason: string;
+}
+
+export type BaselineDraftCancelledStatus = typeof BaselineDraftCancelledStatus[keyof typeof BaselineDraftCancelledStatus];
+
+
+export const BaselineDraftCancelledStatus = {
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export interface BaselineDraftCancelled {
+  baselineId: string;
+  versionId: string;
+  version: number;
+  status: BaselineDraftCancelledStatus;
+  cancelledAt: string;
+  cancelledBy: string;
 }
 
 export interface BaselinePublicationConfirmation {

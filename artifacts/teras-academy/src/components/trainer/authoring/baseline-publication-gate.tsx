@@ -2,12 +2,13 @@ import { useState } from "react";
 import {
   getListBaselineVersionsQueryKey,
   getPreviewBaselinePublicationQueryKey,
+  useCancelBaselineDraft,
   useListBaselineVersions,
   usePreviewBaselinePublication,
   usePublishBaselineVersion,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, GitCompareArrows, Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, GitCompareArrows, Loader2, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +26,7 @@ export function BaselinePublicationGate() {
   const [baselineInput, setBaselineInput] = useState("");
   const [baselineId, setBaselineId] = useState("");
   const [versionId, setVersionId] = useState("");
+  const [cancellationReason, setCancellationReason] = useState("");
   const [confirmedFingerprint, setConfirmedFingerprint] = useState<string | null>(null);
   const versions = useListBaselineVersions(baselineId, {
     query: { enabled: Boolean(baselineId), queryKey: getListBaselineVersionsQueryKey(baselineId) },
@@ -36,13 +38,37 @@ export function BaselinePublicationGate() {
     },
   });
   const publish = usePublishBaselineVersion();
+  const cancel = useCancelBaselineDraft();
   const drafts = versions.data?.filter(version => version.status === "DRAFT") ?? [];
 
   const inspect = () => {
     const next = baselineInput.trim();
     setBaselineId(next);
     setVersionId("");
+    setCancellationReason("");
     setConfirmedFingerprint(null);
+  };
+
+  const cancelSelectedDraft = () => {
+    const reason = cancellationReason.trim();
+    if (!versionId || !reason) return;
+    cancel.mutate({ baselineId, versionId, data: { reason } }, {
+      onSuccess: async result => {
+        setConfirmedFingerprint(null);
+        setVersionId("");
+        setCancellationReason("");
+        await queryClient.invalidateQueries({ queryKey: getListBaselineVersionsQueryKey(baselineId) });
+        toast({
+          title: `Draft baseline v${result.version} ditutup`,
+          description: "Snapshot dan audit tetap tersimpan. Versi published serta pin learner tidak berubah.",
+        });
+      },
+      onError: error => toast({
+        variant: "destructive",
+        title: "Draft tidak dapat ditutup",
+        description: (error as { data?: { error?: string } }).data?.error ?? "Muat ulang daftar versi dan coba lagi.",
+      }),
+    });
   };
 
   const publishReviewedDraft = () => {
@@ -80,12 +106,31 @@ export function BaselinePublicationGate() {
       {versions.error && <p className="text-sm text-destructive" role="alert">Baseline tidak dapat dimuat atau berada di luar scope Anda.</p>}
       {baselineId && !versions.isLoading && !versions.error && <label className="grid gap-2 text-sm">
         <span className="font-medium">Draft yang akan ditinjau</span>
-        <select className="h-10 rounded-md border border-input bg-background px-3" value={versionId} onChange={event => { setVersionId(event.target.value); setConfirmedFingerprint(null); }}>
+        <select className="h-10 rounded-md border border-input bg-background px-3" value={versionId} onChange={event => { setVersionId(event.target.value); setCancellationReason(""); setConfirmedFingerprint(null); }}>
           <option value="">Pilih draft</option>
           {drafts.map(version => <option key={version.id} value={version.id}>Versi {version.version}</option>)}
         </select>
         {!drafts.length && <span className="text-muted-foreground">Tidak ada draft yang dapat dipublikasikan.</span>}
       </label>}
+      {versionId && <section className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+        <div>
+          <strong className="text-sm">Tutup draft ini</strong>
+          <p className="mt-1 text-xs text-muted-foreground">Tindakan ini permanen untuk draft terpilih. Snapshot dan audit dipertahankan; versi published dan pin learner tidak berubah.</p>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            value={cancellationReason}
+            onChange={event => setCancellationReason(event.target.value)}
+            placeholder="Alasan penutupan draft"
+            aria-label="Alasan penutupan draft"
+            maxLength={500}
+          />
+          <Button type="button" variant="destructive" onClick={cancelSelectedDraft} disabled={!cancellationReason.trim() || cancel.isPending}>
+            {cancel.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
+            Tutup draft
+          </Button>
+        </div>
+      </section>}
       {preview.isLoading && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Menghitung dampak dari snapshot immutable…</p>}
       {preview.error && <p className="text-sm text-destructive" role="alert">Pratinjau tidak dapat dibuat. Draft mungkin telah berubah atau tidak lagi tersedia.</p>}
       {preview.data && <div className="space-y-4" data-testid="baseline-publication-preview">

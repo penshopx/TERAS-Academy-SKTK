@@ -12,4 +12,5 @@ export type BaselineVersionStatus = typeof BaselineVersionStatus[keyof typeof Ba
 export const BaselineVersionStatus = {
   DRAFT: 'DRAFT',
   PUBLISHED: 'PUBLISHED',
+  CANCELLED: 'CANCELLED',
 } as const;

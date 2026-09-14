@@ -20,24 +20,22 @@ CREATE TABLE IF NOT EXISTS teras_learning_baseline_versions (
   created_by text NOT NULL DEFAULT 'system',
   published_at timestamptz,
   published_by text,
-  CONSTRAINT teras_learning_baseline_versions_status_check CHECK (status IN ('DRAFT', 'PUBLISHED'))
+  cancelled_at timestamptz,
+  cancelled_by text,
+  CONSTRAINT teras_learning_baseline_versions_status_check CHECK (status IN ('DRAFT', 'PUBLISHED', 'CANCELLED'))
 );
+ALTER TABLE teras_learning_baseline_versions
+  ADD COLUMN IF NOT EXISTS cancelled_at timestamptz,
+  ADD COLUMN IF NOT EXISTS cancelled_by text;
 CREATE UNIQUE INDEX IF NOT EXISTS teras_learning_baseline_versions_baseline_version_unique
   ON teras_learning_baseline_versions (baseline_id, version);
 CREATE INDEX IF NOT EXISTS teras_learning_baseline_versions_baseline_published_idx
   ON teras_learning_baseline_versions (baseline_id, published_at);
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'teras_learning_baseline_versions_status_check'
-      AND conrelid = 'teras_learning_baseline_versions'::regclass
-  ) THEN
-    ALTER TABLE teras_learning_baseline_versions
-      ADD CONSTRAINT teras_learning_baseline_versions_status_check
-      CHECK (status IN ('DRAFT', 'PUBLISHED'));
-  END IF;
-END $$;
+ALTER TABLE teras_learning_baseline_versions
+  DROP CONSTRAINT IF EXISTS teras_learning_baseline_versions_status_check;
+ALTER TABLE teras_learning_baseline_versions
+  ADD CONSTRAINT teras_learning_baseline_versions_status_check
+  CHECK (status IN ('DRAFT', 'PUBLISHED', 'CANCELLED'));
 
 CREATE TABLE IF NOT EXISTS teras_learning_baseline_audit (
   id text PRIMARY KEY,
@@ -199,11 +197,14 @@ BEGIN
     IF NEW.status = 'DRAFT' AND (NEW.published_at IS NOT NULL OR NEW.published_by IS NOT NULL) THEN
       RAISE EXCEPTION 'draft baseline versions cannot have publication metadata';
     END IF;
+    IF NEW.cancelled_at IS NOT NULL OR NEW.cancelled_by IS NOT NULL THEN
+      RAISE EXCEPTION 'baseline cancellation metadata must be set by cancelling a draft';
+    END IF;
     RETURN NEW;
   END IF;
   IF TG_OP = 'DELETE' THEN
-    IF OLD.status = 'PUBLISHED' THEN
-      RAISE EXCEPTION 'published baseline snapshots are immutable';
+    IF OLD.status IN ('PUBLISHED', 'CANCELLED') THEN
+      RAISE EXCEPTION 'terminal baseline snapshots are immutable';
     END IF;
     RETURN OLD;
   END IF;
@@ -211,11 +212,14 @@ BEGIN
     OR OLD.version IS DISTINCT FROM NEW.version THEN
     RAISE EXCEPTION 'baseline version identity is immutable';
   END IF;
-  IF OLD.status = 'PUBLISHED' THEN
-    RAISE EXCEPTION 'published baseline snapshots are immutable';
+  IF OLD.status IN ('PUBLISHED', 'CANCELLED') THEN
+    RAISE EXCEPTION 'terminal baseline snapshots are immutable';
   END IF;
   IF NEW.status = 'DRAFT' AND (NEW.published_at IS NOT NULL OR NEW.published_by IS NOT NULL) THEN
     RAISE EXCEPTION 'draft baseline versions cannot have publication metadata';
+  END IF;
+  IF NEW.status = 'DRAFT' AND (NEW.cancelled_at IS NOT NULL OR NEW.cancelled_by IS NOT NULL) THEN
+    RAISE EXCEPTION 'draft baseline versions cannot have cancellation metadata';
   END IF;
   -- Draft content may be edited. Promotion must carry the exact draft
   -- snapshot through the status transition; it may not smuggle in a new
@@ -223,6 +227,15 @@ BEGIN
   IF OLD.status = 'DRAFT' AND NEW.status = 'PUBLISHED'
     AND OLD.snapshot IS DISTINCT FROM NEW.snapshot THEN
     RAISE EXCEPTION 'baseline publication cannot mutate the draft snapshot';
+  END IF;
+  IF OLD.status = 'DRAFT' AND NEW.status = 'CANCELLED' THEN
+    IF OLD.snapshot IS DISTINCT FROM NEW.snapshot
+      OR NEW.published_at IS NOT NULL OR NEW.published_by IS NOT NULL
+      OR NEW.cancelled_at IS NULL OR NEW.cancelled_by IS NULL THEN
+      RAISE EXCEPTION 'baseline cancellation must preserve the draft and include cancellation metadata';
+    END IF;
+  ELSIF NEW.status = 'CANCELLED' THEN
+    RAISE EXCEPTION 'only drafts can be cancelled';
   END IF;
   IF NEW.status = 'PUBLISHED' AND (NEW.published_at IS NULL OR NEW.published_by IS NULL) THEN
     RAISE EXCEPTION 'published baseline versions require publication metadata';

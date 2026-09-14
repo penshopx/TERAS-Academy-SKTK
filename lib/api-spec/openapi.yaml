@@ -863,6 +863,24 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /trainer/authoring/baselines/{baselineId}/versions/{versionId}/cancel:
+    post:
+      operationId: cancelBaselineDraft
+      tags: [trainer]
+      summary: Cancel an unpublished baseline draft while preserving its audit history
+      parameters:
+        - $ref: "#/components/parameters/BaselineId"
+        - $ref: "#/components/parameters/BaselineVersionId"
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/BaselineDraftCancellation" } } }
+      responses:
+        "200": { description: Baseline draft cancelled, content: { application/json: { schema: { $ref: "#/components/schemas/BaselineDraftCancelled" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /trainer/authoring/baselines/{baselineId}/versions/{versionId}/publication-preview:
     get:
       operationId: previewBaselinePublication
@@ -3207,13 +3225,31 @@ components:
         id: { type: string }
         baselineId: { type: string }
         version: { type: integer }
-        status: { type: string, enum: [DRAFT, PUBLISHED] }
+        status: { type: string, enum: [DRAFT, PUBLISHED, CANCELLED] }
         snapshot: { type: object, additionalProperties: true }
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
         publishedAt: { type: ["string", "null"], format: date-time }
         publishedBy: { type: ["string", "null"] }
-      required: [id, baselineId, version, status, snapshot, createdAt, createdBy, publishedAt, publishedBy]
+        cancelledAt: { type: ["string", "null"], format: date-time }
+        cancelledBy: { type: ["string", "null"] }
+      required: [id, baselineId, version, status, snapshot, createdAt, createdBy, publishedAt, publishedBy, cancelledAt, cancelledBy]
+    BaselineDraftCancellation:
+      type: object
+      additionalProperties: false
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 500 }
+      required: [reason]
+    BaselineDraftCancelled:
+      type: object
+      properties:
+        baselineId: { type: string }
+        versionId: { type: string }
+        version: { type: integer }
+        status: { type: string, enum: [CANCELLED] }
+        cancelledAt: { type: string, format: date-time }
+        cancelledBy: { type: string }
+      required: [baselineId, versionId, version, status, cancelledAt, cancelledBy]
     BaselinePublicationConfirmation:
       type: object
       additionalProperties: false
