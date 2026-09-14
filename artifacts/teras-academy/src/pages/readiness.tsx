@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Activity, Lock, Unlock, CheckCircle2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LearnerCondition } from "@/components/learner-condition";
+import { getReadinessPresentation } from "@/lib/readiness-presentation";
 
 export default function Readiness() {
   const { data: readiness, isLoading, error } = useGetLearnerReadiness();
@@ -16,6 +17,7 @@ export default function Readiness() {
   if (error || !readiness) {
     return <div className="text-destructive">Failed to load readiness status.</div>;
   }
+  const readinessPresentation = getReadinessPresentation(readiness.status);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -52,8 +54,8 @@ export default function Readiness() {
               <div className="flex-1 space-y-6 w-full">
                 <div>
                   <h3 className="text-lg font-semibold mb-2">Current Status</h3>
-                  <Badge variant={readiness.status === "Ready for Official Assessment" ? "success" : readiness.status === "Not Ready" ? "destructive" : "warning"} className="text-sm px-3 py-1">
-                    {readiness.status}
+                  <Badge variant={readinessPresentation.badgeVariant} className="text-sm px-3 py-1">
+                    {readinessPresentation.label}
                   </Badge>
                   <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{readiness.decisionReason}</p>
                   <p className="mt-2 font-mono text-xs text-muted-foreground">Rule version {readiness.ruleVersion} · evaluated {new Date(readiness.evaluatedAt).toLocaleString("id-ID")}</p>

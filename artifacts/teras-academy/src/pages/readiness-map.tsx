@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { getReadinessPresentation } from "@/lib/readiness-presentation";
 
 export default function ReadinessMap() {
   const { data: mapData, isLoading, isError } = useGetReadinessMap();
@@ -44,7 +45,7 @@ export default function ReadinessMap() {
   }
 
   const { profile, readiness } = mapData;
-  const isReady = readiness.status === "Ready for Official Assessment";
+  const readinessPresentation = getReadinessPresentation(readiness.status);
   const hasBlockers = readiness.blockers && readiness.blockers.length > 0;
 
   return (
@@ -61,8 +62,8 @@ export default function ReadinessMap() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Badge variant={isReady ? "success" : "warning"} className="font-mono uppercase px-3 py-1 text-sm border-2">
-            Status: {readiness.status}
+          <Badge variant={readinessPresentation.badgeVariant} className="font-mono uppercase px-3 py-1 text-sm border-2">
+            Status: {readinessPresentation.label}
           </Badge>
         </div>
       </header>
@@ -167,7 +168,7 @@ export default function ReadinessMap() {
             </CardHeader>
             <CardContent>
               <div className="flex items-end gap-2 mb-2">
-                <span className={cn("text-5xl font-bold font-mono tracking-tighter", isReady ? "text-green-500" : "text-amber-500")}>
+                <span className={cn("text-5xl font-bold font-mono tracking-tighter", readinessPresentation.scoreClassName)}>
                   {readiness.score}
                 </span>
                 <span className="text-muted-foreground pb-1">/ 100</span>

@@ -8,6 +8,7 @@ import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import { LearnerCondition } from "@/components/learner-condition";
 import { AdminReadOnlyDashboard } from "@/components/admin-read-only-dashboard";
+import { getReadinessPresentation } from "@/lib/readiness-presentation";
 
 export default function Dashboard() {
   const session = useGetCurrentSession({ query: { queryKey: getGetCurrentSessionQueryKey(), staleTime: 60_000 } });
@@ -19,6 +20,7 @@ export default function Dashboard() {
   const diagnostic = useGetDiagnostic({ query: { queryKey: getGetDiagnosticQueryKey(), enabled: !adminReadOnly && !session.isLoading } });
 
   const dashboard = learnerDashboard.data;
+  const readinessPresentation = getReadinessPresentation(dashboard?.readiness.status);
   const isLoading = session.isLoading || (adminReadOnly ? adminProjection.isLoading : learnerDashboard.isLoading);
   const error = adminReadOnly ? adminProjection.error : learnerDashboard.error;
 
@@ -90,8 +92,8 @@ export default function Dashboard() {
           <CardHeader className="pb-2">
             <CardTitle className="text-lg flex justify-between items-center">
               <span>Capability Readiness</span>
-              <Badge variant={dashboard.readiness.status === "Ready for Official Assessment" ? "success" : "warning"} className="font-mono">
-                {dashboard.readiness.status}
+              <Badge variant={readinessPresentation.badgeVariant} className="font-mono">
+                {readinessPresentation.label}
               </Badge>
             </CardTitle>
             <CardDescription>Overall progression towards next gate</CardDescription>

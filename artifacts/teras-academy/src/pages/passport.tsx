@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
+import { Badge } from "@/components/ui/badge";
+import { getReadinessPresentation } from "@/lib/readiness-presentation";
 
 type DownloadDependencies = {
   createObjectURL: (blob: Blob) => string;
@@ -85,6 +87,7 @@ export default function Passport() {
   if (error || !passport) {
     return <div className="text-destructive p-8 bg-destructive/10 rounded-lg border border-destructive/20 text-center font-mono">Failed to load capability record.</div>;
   }
+  const readinessPresentation = getReadinessPresentation(passport.readiness.status);
 
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-6xl mx-auto pb-20">
@@ -161,7 +164,7 @@ export default function Passport() {
       <Card className="border-primary/30" data-testid="passport-readiness-basis">
         <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><ShieldCheck className="h-5 w-5 text-primary" />Dasar keputusan readiness</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3"><strong className="text-xl">{passport.readiness.status}</strong><span className="font-mono text-xs text-muted-foreground">Rule v{passport.readiness.ruleVersion} · {new Date(passport.readiness.evaluatedAt).toLocaleString("id-ID")}</span></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><Badge variant={readinessPresentation.badgeVariant} className="px-3 py-1 text-sm">{readinessPresentation.label}</Badge><span className="font-mono text-xs text-muted-foreground">Rule v{passport.readiness.ruleVersion} · {new Date(passport.readiness.evaluatedAt).toLocaleString("id-ID")}</span></div>
           <p className="text-sm leading-relaxed text-muted-foreground">{passport.readiness.decisionReason}</p>
           {passport.readiness.blockers.length > 0 && <ul className="space-y-2 border-l-2 border-destructive pl-4 text-sm">{passport.readiness.blockers.map((blocker, index) => <li key={`${blocker}-${index}`}>{blocker}</li>)}</ul>}
           <div className="grid gap-3 sm:grid-cols-3 text-sm"><div><strong>{passport.readiness.score}/100</strong><p className="text-muted-foreground">Current evidence score</p></div><div><strong>{passport.readiness.inputEvidence.evidence.filter(item => item.satisfied).length}/{passport.readiness.inputEvidence.evidence.length}</strong><p className="text-muted-foreground">Evidence requirements</p></div><div><strong>{passport.readiness.inputEvidence.openCriticalGaps.length}</strong><p className="text-muted-foreground">Critical safety gaps</p></div></div>

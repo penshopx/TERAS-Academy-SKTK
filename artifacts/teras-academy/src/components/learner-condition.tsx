@@ -1,5 +1,4 @@
 import {
-  ReadinessSummaryStatus,
   useGetLearnerDashboard,
   useGetLearnerReadiness,
   type ReadinessSummaryStatus as ReadinessStatus,
@@ -9,6 +8,7 @@ import React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { getReadinessPresentation, type ReadinessSafetyState } from "@/lib/readiness-presentation";
 
 type LearnerConditionProps = {
   owner: string;
@@ -37,18 +37,8 @@ type LearnerConditionViewProps = LearnerConditionProps & {
   };
 };
 
-type SafetyState = "CLEAR" | "BLOCKED" | "NOT CLEARED";
-
-const safetyStateByReadinessStatus = {
-  [ReadinessSummaryStatus.Not_Ready]: "BLOCKED",
-  [ReadinessSummaryStatus.Developing]: "NOT CLEARED",
-  [ReadinessSummaryStatus.Ready_for_Official_Assessment]: "CLEAR",
-} satisfies Record<ReadinessStatus, SafetyState>;
-
-export function getSafetyState(status: unknown): SafetyState {
-  return typeof status === "string" && Object.hasOwn(safetyStateByReadinessStatus, status)
-    ? safetyStateByReadinessStatus[status as ReadinessStatus]
-    : "NOT CLEARED";
+export function getSafetyState(status: unknown): ReadinessSafetyState {
+  return getReadinessPresentation(status).safetyState;
 }
 
 type LearnerConditionStateProps = LearnerConditionProps & {
