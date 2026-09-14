@@ -43,6 +43,7 @@ import TrainerDesk from '@/pages/trainer';
 import AssessorDesk from '@/pages/assessor';
 import Admin from '@/pages/admin';
 import Security from '@/pages/security';
+import VerifyPortfolio from '@/pages/verify-portfolio';
 
 const queryClient = new QueryClient();
 
@@ -788,6 +789,7 @@ function SupabaseProviderWithRoutes() {
           <Switch>
             <Route path="/sign-in" component={() => <AuthPage mode="sign-in" />} />
             <Route path="/sign-up" component={() => <AuthPage mode="sign-up" />} />
+            <Route path="/verify-portfolio" component={VerifyPortfolio} />
             <Route path="/" component={HomeRedirect} />
             <Route component={ProtectedWorkspace} />
           </Switch>

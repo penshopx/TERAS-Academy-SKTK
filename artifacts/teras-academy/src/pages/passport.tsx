@@ -6,6 +6,7 @@ import { PassportRecord } from "@/components/passport-record";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Link } from "wouter";
 
 type DownloadDependencies = {
   createObjectURL: (blob: Blob) => string;
@@ -130,6 +131,9 @@ export default function Passport() {
                   <p className="mt-2 max-w-xl text-xs text-muted-foreground">
                     File JSON memuat timeline, referensi evidence, snapshot readiness, tanggal ekspor, dan checksum SHA-256 untuk verifikasi integritas.
                   </p>
+                  <Link href="/verify-portfolio" className="mt-2 inline-flex text-xs font-semibold text-primary hover:underline" data-testid="link-portfolio-verifier">
+                    Buka verifier publik
+                  </Link>
                 </div>
               </div>
               
