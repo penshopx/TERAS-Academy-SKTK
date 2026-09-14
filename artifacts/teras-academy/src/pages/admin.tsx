@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import {
-  type AdminModuleCatalogue, type AdminOperationalSummary,
+  type AdminDiagnosticProvenanceException, type AdminModuleCatalogue, type AdminOperationalSummary,
   getGetAdminAccessQueryKey, getGetAdminOperationalSummaryQueryKey, getGetCurrentSessionQueryKey, getListAdminAccessRequestsQueryKey, getListAdminAuditEventsQueryKey, getListAdminCohortsQueryKey, getListAdminEnrollmentsQueryKey,
   getListAdminPathwaysQueryKey, getListAdminProgramsQueryKey, getListAdminUsersQueryKey,
   getGetAdminModuleCatalogueQueryKey, useGetAdminModuleCatalogue,
@@ -17,6 +17,8 @@ import {
   getListAdminCompetencyFrameworksQueryKey, useListAdminCompetencyFrameworks, useCreateAdminCompetencyFramework, useCreateAdminCompetencyUnit, useUpdateAdminCompetencyUnit,
   getListAdminReadinessRulesQueryKey, useCreateAdminReadinessRuleVersion, useListAdminReadinessRules,
   useResolveAdminReminderEscalation,
+  useListAdminDiagnosticProvenanceExceptions,
+  getListAdminDiagnosticProvenanceExceptionsQueryKey,
 } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -168,9 +170,51 @@ function ModuleCatalogue({ catalogue }: { catalogue: ReturnType<typeof useGetAdm
   </Card>;
 }
 
+const diagnosticEntityLabels: Record<string, string> = {
+  profile: "Profil diagnostik",
+  profile_item: "Item profil",
+  gap: "Gap diagnostik",
+};
+
+function DiagnosticProvenanceExceptions({ query }: { query: {
+  data?: AdminDiagnosticProvenanceException[];
+  isLoading: boolean;
+  error: unknown;
+} }) {
+  return <Card data-testid="admin-diagnostic-provenance-exceptions">
+    <CardHeader>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <CardTitle>Pengecualian sumber diagnostik lama</CardTitle>
+          <p className="mt-2 max-w-3xl text-sm text-muted-foreground">Record read-only yang belum dapat dipetakan ke sumber respons diagnostik lengkap. Gunakan identitas di bawah untuk investigasi dan perbaikan data.</p>
+        </div>
+        <Badge variant={query.data?.length ? "destructive" : "outline"}>{query.data?.length ?? 0} perlu ditinjau</Badge>
+      </div>
+    </CardHeader>
+    <CardContent>
+      <State loading={query.isLoading} error={query.error} empty={!query.data?.length}>
+        <div className="space-y-3">
+          {query.data?.map(item => <article key={`${item.entityType}:${item.entityId}`} className="rounded-md border p-4" data-testid={`row-provenance-exception-${item.entityType}-${item.entityId}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2"><Badge variant="secondary">{diagnosticEntityLabels[item.entityType] ?? item.entityType}</Badge><span className="font-mono text-xs text-muted-foreground">{item.entityId}</span></div>
+              <time className="text-xs text-muted-foreground" dateTime={String(item.detectedAt)}>{auditTime(item.detectedAt)}</time>
+            </div>
+            <p className="mt-3 text-sm font-medium">{item.reason}</p>
+            <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+              <div><dt className="text-xs text-muted-foreground">Session</dt><dd className="mt-1 break-all font-mono">{item.sessionId ?? "Tidak ditemukan"}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Unit kompetensi</dt><dd className="mt-1 break-all font-mono">{item.competencyUnitId ?? "Tidak ditemukan"}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Profil</dt><dd className="mt-1 break-all font-mono">{item.profileId ?? "Tidak ditemukan"}</dd></div>
+            </dl>
+          </article>)}
+        </div>
+      </State>
+    </CardContent>
+  </Card>;
+}
+
 export default function Admin() {
   const client = useQueryClient(); const { toast } = useToast();
-  const [tab, setTab] = useState<"summary" | "users" | "programs" | "pathways" | "cohorts" | "enrollments" | "knowledge" | "competencies" | "readiness" | "readinessAudit" | "audit">("summary");
+  const [tab, setTab] = useState<AdminTab>("summary");
   const [selectedQueue, setSelectedQueue] = useState<QueueId | null>(() => queueStateFromSearch(window.location.search).selectedQueue);
   const [queueFilters, setQueueFilters] = useState<QueueFilters>(() => queueStateFromSearch(window.location.search).filters);
   const [confirm, setConfirm] = useState<{ kind: "user" | "program" | "pathway" | "cohort" | "enrollment"; id: string; label: string } | null>(null);
@@ -192,6 +236,7 @@ export default function Admin() {
   const unansweredTopics = useListAdminKnowledgeNotFoundTopics({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getListAdminKnowledgeNotFoundTopicsQueryKey() } });
   const competencies = useListAdminCompetencyFrameworks({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getListAdminCompetencyFrameworksQueryKey() } });
   const readinessRules = useListAdminReadinessRules({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getListAdminReadinessRulesQueryKey() } });
+  const provenanceExceptions = useListAdminDiagnosticProvenanceExceptions({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getListAdminDiagnosticProvenanceExceptionsQueryKey() } });
   const summary = useGetAdminOperationalSummary<AdminOperationalSummary>({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getGetAdminOperationalSummaryQueryKey() } });
   const createUser = useCreateAdminUser(); const rolesMutation = useReplaceAdminUserRoles(); const updateUser = useUpdateAdminUser();
   const createAccessRequest = useCreateAdminAccessRequest();
@@ -309,7 +354,7 @@ export default function Admin() {
       onError: error => toast({ variant: "destructive", title: "Gagal menerbitkan aturan", description: adminErrorMessage(error) }),
     });
   };
-  const tabs = [["summary", "Ringkasan"], ["users", "Pengguna"], ["programs", "Program"], ["pathways", "Pathway"], ["cohorts", "Cohort"], ["enrollments", "Enrollment"], ["knowledge", "Knowledge"], ["competencies", "Kompetensi"], ["readiness", "Readiness"], ["readinessAudit", "Riwayat Readiness"], ["audit", "Audit"]] as const;
+  const tabs = [["summary", "Ringkasan"], ["users", "Pengguna"], ["programs", "Program"], ["pathways", "Pathway"], ["cohorts", "Cohort"], ["enrollments", "Enrollment"], ["knowledge", "Knowledge"], ["competencies", "Kompetensi"], ["readiness", "Readiness"], ["readinessAudit", "Riwayat Readiness"], ["diagnosticExceptions", "Sumber Diagnostik"], ["audit", "Audit"]] as const;
   const openTab = (nextTab: AdminTab) => {
     setTab(nextTab);
     if (nextTab !== "summary") {
@@ -356,6 +401,7 @@ export default function Admin() {
     {tab === "competencies" && <CompetencyUnitEditor frameworks={competencies.data ?? []} invalidate={invalidate} />}
     {tab === "readiness" && <><Card><CardHeader><CardTitle>Versi aturan readiness baru</CardTitle><p className="text-sm text-muted-foreground">Aturan lama tetap tersimpan untuk audit. Critical safety selalu menjadi hard gate yang tidak dapat ditutupi skor lain.</p></CardHeader><CardContent><form onSubmit={createRule} className="grid gap-3 md:grid-cols-3"><select name="pathwayId" required className="h-10 rounded-md border bg-background px-3"><option value="">Pilih pathway</option>{pathways.data?.filter(pathway => pathway.status === "active").map(pathway => <option key={pathway.id} value={pathway.id}>{pathway.name}</option>)}</select><Input name="code" required placeholder="Kode aturan, contoh G1" /><Input name="name" required placeholder="Nama gate" /><Input name="sequence" required type="number" min="1" placeholder="Urutan" /><Input name="threshold" required type="number" min="0" max="100" defaultValue="80" aria-label="Threshold readiness" /><Input name="competencyUnitId" placeholder="ID unit kompetensi (opsional)" /><select name="assessmentMode" defaultValue="Mapped" className="h-10 rounded-md border bg-background px-3"><option>Mapped</option><option>All</option><option>None</option></select><select name="evidenceMode" defaultValue="Mapped" className="h-10 rounded-md border bg-background px-3"><option>Mapped</option><option>All</option><option>None</option></select><label className="flex items-center gap-2 text-sm"><input name="hardGate" type="checkbox" /> Hard gate unit/pathway</label><textarea name="requirement" required placeholder="Dasar dan persyaratan keputusan" className="min-h-24 rounded-md border bg-background p-3 text-sm md:col-span-3" /><Button type="submit" disabled={createReadinessRule.isPending} className="md:col-span-3">{createReadinessRule.isPending ? <Loader2 className="animate-spin" /> : "Publikasikan versi aturan"}</Button></form></CardContent></Card><State loading={readinessRules.isLoading} error={readinessRules.error} empty={!readinessRules.data?.length}><div className="grid gap-3">{readinessRules.data?.map(rule => <Card key={rule.id}><CardContent className="flex flex-wrap items-start justify-between gap-3 p-4"><div><strong>{rule.code} · {rule.name}</strong><p className="text-sm text-muted-foreground">{rule.pathwayId}{rule.competencyUnitId ? ` · Unit ${rule.competencyUnitId}` : " · Pathway-wide"} · threshold {rule.threshold}%</p><p className="mt-1 text-xs text-muted-foreground">{rule.requirement}</p></div><div className="flex gap-2"><Badge variant="outline">v{rule.ruleVersion}</Badge>{rule.hardGate && <Badge variant="destructive">HARD GATE</Badge>}</div></CardContent></Card>)}</div></State></>}
     {tab === "readinessAudit" && <ReadinessAuditHistory enabled={adminQueriesEnabled} users={users.data ?? []} pathways={pathways.data ?? []} errorMessage={adminErrorMessage} />}
+    {tab === "diagnosticExceptions" && <DiagnosticProvenanceExceptions query={provenanceExceptions} />}
     {tab === "audit" && <State loading={audit.isLoading} error={audit.error} empty={!audit.data?.length}><div className="space-y-2">{audit.data?.map(event => <Card key={event.id} data-testid={`row-audit-${event.id}`}><CardContent className="p-4"><p className="font-medium">{auditDescription(event.action, event.entityType)}</p><p className="mt-1 text-sm text-muted-foreground">Dilakukan oleh administrator · {auditTime(event.createdAt)}</p></CardContent></Card>)}</div></State>}
     <div aria-live="polite" className="sr-only">{createUser.isPending ? "Menyimpan perubahan" : ""}</div>
     <AlertDialog open={!!confirm} onOpenChange={open => !open && setConfirm(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Konfirmasi perubahan status</AlertDialogTitle><AlertDialogDescription>Anda akan menonaktifkan atau mengarsipkan {confirm?.label}. Aksi ini tercatat dalam audit dan dapat memengaruhi akses aktif.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel data-testid="button-cancel-admin-confirm">Batal</AlertDialogCancel><AlertDialogAction onClick={archive} data-testid="button-confirm-admin-status">Lanjutkan</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
@@ -372,7 +418,7 @@ export default function Admin() {
   </div>;
 }
 
-type AdminTab = "summary" | "users" | "programs" | "pathways" | "cohorts" | "enrollments" | "knowledge" | "competencies" | "readiness" | "readinessAudit" | "audit";
+type AdminTab = "summary" | "users" | "programs" | "pathways" | "cohorts" | "enrollments" | "knowledge" | "competencies" | "readiness" | "readinessAudit" | "diagnosticExceptions" | "audit";
 type SummaryQuery = { data?: AdminOperationalSummary; isLoading: boolean; error: unknown };
 
 export function hasPermanentReminderEscalations(summary?: Pick<AdminOperationalSummary, "failedTrainerReminders">) {

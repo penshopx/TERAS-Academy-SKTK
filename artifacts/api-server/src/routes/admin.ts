@@ -19,6 +19,7 @@ import {
   CreateAdminCompetencyUnitBody, CreateAdminCompetencyUnitResponse, UpdateAdminCompetencyUnitBody, UpdateAdminCompetencyUnitParams, UpdateAdminCompetencyUnitResponse,
   CreateAdminReadinessRuleVersionBody, CreateAdminReadinessRuleVersionResponse, ExportAdminReadinessHistoryQueryParams,
   ListAdminReadinessHistoryQueryParams, ListAdminReadinessHistoryResponse,
+  ListAdminDiagnosticProvenanceExceptionsResponse,
   ListAdminReadinessRulesResponse,
   ListAdminReminderEscalationsQueryParams, ListAdminReminderEscalationsResponse,
   ResolveAdminReminderEscalationBody, ResolveAdminReminderEscalationParams, ResolveAdminReminderEscalationResponse,
@@ -33,6 +34,7 @@ import {
   readinessEventsTable, readinessGatesTable,
   diagnosticFollowUpFailureNotificationsTable, diagnosticFollowUpReminderDeliveriesTable, diagnosticFollowUpReminderResolutionsTable, diagnosticRecommendationFollowUpsTable,
   diagnosticRecommendationsTable,
+  diagnosticProvenanceExceptionsTable,
   readinessAuditExportAggregatesTable,
 } from "@workspace/db";
 import { authorizeAdmin, authorizeLocalUser, authorizeSuperAdmin, type AdminActor } from "../lib/authorization";
@@ -441,6 +443,23 @@ router.get("/admin/readiness-history", async (req, res): Promise<void> => {
     readinessHistoryCount(filters),
   ]);
   res.json(ListAdminReadinessHistoryResponse.parse({ items, page, pageSize, total }));
+});
+
+router.get("/admin/diagnostic-provenance-exceptions", async (req, res): Promise<void> => {
+  if (!await authorizeAdmin(req, res)) return;
+  const exceptions = await db
+    .select({
+      entityType: diagnosticProvenanceExceptionsTable.entityType,
+      entityId: diagnosticProvenanceExceptionsTable.entityId,
+      profileId: diagnosticProvenanceExceptionsTable.profileId,
+      sessionId: diagnosticProvenanceExceptionsTable.sessionId,
+      competencyUnitId: diagnosticProvenanceExceptionsTable.competencyUnitId,
+      reason: diagnosticProvenanceExceptionsTable.reason,
+      detectedAt: diagnosticProvenanceExceptionsTable.detectedAt,
+    })
+    .from(diagnosticProvenanceExceptionsTable)
+    .orderBy(desc(diagnosticProvenanceExceptionsTable.detectedAt), diagnosticProvenanceExceptionsTable.entityType, diagnosticProvenanceExceptionsTable.entityId);
+  res.json(ListAdminDiagnosticProvenanceExceptionsResponse.parse(exceptions));
 });
 
 router.get("/admin/readiness-history/export", async (req, res): Promise<void> => {

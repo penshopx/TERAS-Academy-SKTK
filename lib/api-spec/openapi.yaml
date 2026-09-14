@@ -1044,6 +1044,21 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/diagnostic-provenance-exceptions:
+    get:
+      operationId: listAdminDiagnosticProvenanceExceptions
+      tags: [admin]
+      summary: List unresolved legacy diagnostic provenance exceptions
+      responses:
+        "200":
+          description: Diagnostic provenance exceptions ordered by latest detection
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AdminDiagnosticProvenanceException" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /admin/readiness-history/export:
     get:
       operationId: exportAdminReadinessHistory
@@ -4510,6 +4525,17 @@ components:
         inputEvidence: { $ref: "#/components/schemas/ReadinessEvidenceSnapshot" }
         decisionReason: { type: string }
         evaluatedAt: { type: string, format: date-time }
+    AdminDiagnosticProvenanceException:
+      type: object
+      required: [entityType, entityId, profileId, sessionId, competencyUnitId, reason, detectedAt]
+      properties:
+        entityType: { type: string, enum: [profile, profile_item, gap] }
+        entityId: { type: string }
+        profileId: { type: ["string", "null"] }
+        sessionId: { type: ["string", "null"] }
+        competencyUnitId: { type: ["string", "null"] }
+        reason: { type: string }
+        detectedAt: { type: string, format: date-time }
     AdminReadinessHistoryPage:
       type: object
       required: [items, page, pageSize, total]

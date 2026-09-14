@@ -2679,6 +2679,28 @@ export interface AdminReadinessEvaluation {
   evaluatedAt: string;
 }
 
+export type AdminDiagnosticProvenanceExceptionEntityType = typeof AdminDiagnosticProvenanceExceptionEntityType[keyof typeof AdminDiagnosticProvenanceExceptionEntityType];
+
+
+export const AdminDiagnosticProvenanceExceptionEntityType = {
+  profile: 'profile',
+  profile_item: 'profile_item',
+  gap: 'gap',
+} as const;
+
+export interface AdminDiagnosticProvenanceException {
+  entityType: AdminDiagnosticProvenanceExceptionEntityType;
+  entityId: string;
+  /** @nullable */
+  profileId: string | null;
+  /** @nullable */
+  sessionId: string | null;
+  /** @nullable */
+  competencyUnitId: string | null;
+  reason: string;
+  detectedAt: string;
+}
+
 export interface AdminReadinessHistoryPage {
   items: AdminReadinessEvaluation[];
   /** @minimum 1 */

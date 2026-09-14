@@ -22,6 +22,8 @@ export * from './adminCohortUpdate';
 export * from './adminCohortUpdateStatus';
 export * from './adminCompetencyFramework';
 export * from './adminCompetencyUnit';
+export * from './adminDiagnosticProvenanceException';
+export * from './adminDiagnosticProvenanceExceptionEntityType';
 export * from './adminEnrollment';
 export * from './adminEnrollmentInput';
 export * from './adminEnrollmentStatus';

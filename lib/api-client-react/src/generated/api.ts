@@ -30,6 +30,7 @@ import type {
   AdminCohortUpdate,
   AdminCompetencyFramework,
   AdminCompetencyUnit,
+  AdminDiagnosticProvenanceException,
   AdminEnrollment,
   AdminEnrollmentInput,
   AdminEnrollmentUpdate,
@@ -4937,6 +4938,83 @@ export function useListAdminReadinessHistory<TData = Awaited<ReturnType<typeof l
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListAdminReadinessHistoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListAdminDiagnosticProvenanceExceptionsUrl = () => {
+
+
+
+
+  return `/api/admin/diagnostic-provenance-exceptions`
+}
+
+/**
+ * @summary List unresolved legacy diagnostic provenance exceptions
+ */
+export const listAdminDiagnosticProvenanceExceptions = async ( options?: Parameters<typeof customFetch>[1]): Promise<AdminDiagnosticProvenanceException[]> => {
+
+  return customFetch<AdminDiagnosticProvenanceException[]>(getListAdminDiagnosticProvenanceExceptionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAdminDiagnosticProvenanceExceptionsQueryKey = () => {
+    return [
+    `/api/admin/diagnostic-provenance-exceptions`
+    ] as const;
+    }
+
+
+export const getListAdminDiagnosticProvenanceExceptionsQueryOptions = <TData = Awaited<ReturnType<typeof listAdminDiagnosticProvenanceExceptions>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminDiagnosticProvenanceExceptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAdminDiagnosticProvenanceExceptionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminDiagnosticProvenanceExceptions>>> = ({ signal }) => listAdminDiagnosticProvenanceExceptions({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAdminDiagnosticProvenanceExceptions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAdminDiagnosticProvenanceExceptionsQueryResult = NonNullable<Awaited<ReturnType<typeof listAdminDiagnosticProvenanceExceptions>>>
+export type ListAdminDiagnosticProvenanceExceptionsQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse>
+
+
+/**
+ * @summary List unresolved legacy diagnostic provenance exceptions
+ */
+
+export function useListAdminDiagnosticProvenanceExceptions<TData = Awaited<ReturnType<typeof listAdminDiagnosticProvenanceExceptions>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminDiagnosticProvenanceExceptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAdminDiagnosticProvenanceExceptionsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

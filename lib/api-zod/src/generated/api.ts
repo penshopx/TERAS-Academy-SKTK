@@ -3585,6 +3585,21 @@ export const ListAdminReadinessHistoryResponse = zod.object({
 
 
 /**
+ * @summary List unresolved legacy diagnostic provenance exceptions
+ */
+export const ListAdminDiagnosticProvenanceExceptionsResponseItem = zod.object({
+  "entityType": zod.enum(['profile', 'profile_item', 'gap']),
+  "entityId": zod.string(),
+  "profileId": zod.string().nullable(),
+  "sessionId": zod.string().nullable(),
+  "competencyUnitId": zod.string().nullable(),
+  "reason": zod.string(),
+  "detectedAt": zod.coerce.date()
+})
+export const ListAdminDiagnosticProvenanceExceptionsResponse = zod.array(ListAdminDiagnosticProvenanceExceptionsResponseItem)
+
+
+/**
  * @summary Export filtered immutable readiness evaluations as audit-safe JSON
  */
 
