@@ -1052,6 +1052,111 @@ export interface BaselineVersion {
   publishedBy: string | null;
 }
 
+export interface BaselinePublicationConfirmation {
+  /** @pattern ^[a-f0-9]{64}$ */
+  previewFingerprint: string;
+}
+
+export type BaselinePublicationModuleDetails = { [key: string]: unknown };
+
+export interface BaselinePublicationModule {
+  id: string;
+  moduleId: string;
+  code: string;
+  name: string;
+  sequence: number;
+  details: BaselinePublicationModuleDetails;
+}
+
+export type BaselinePublicationPathwayChangeStatus = typeof BaselinePublicationPathwayChangeStatus[keyof typeof BaselinePublicationPathwayChangeStatus];
+
+
+export const BaselinePublicationPathwayChangeStatus = {
+  ADDED: 'ADDED',
+  REMOVED: 'REMOVED',
+  CHANGED: 'CHANGED',
+} as const;
+
+export type BaselinePublicationPathwayChangeModifiedModulesItem = {
+  before: BaselinePublicationModule;
+  after: BaselinePublicationModule;
+  changedFields: string[];
+};
+
+export interface BaselinePublicationPathwayChange {
+  pathwayId: string;
+  pathwayName: string;
+  status: BaselinePublicationPathwayChangeStatus;
+  addedModules: BaselinePublicationModule[];
+  removedModules: BaselinePublicationModule[];
+  modifiedModules: BaselinePublicationPathwayChangeModifiedModulesItem[];
+  orderChanged: boolean;
+  before: BaselinePublicationModule[];
+  after: BaselinePublicationModule[];
+}
+
+export type BaselinePublicationPreviewActiveVersion = {
+  versionId: string;
+  version: number;
+};
+
+export type BaselinePublicationPreviewDraftVersion = {
+  versionId: string;
+  version: number;
+};
+
+export type BaselinePublicationPreviewBaselineBefore = { [key: string]: unknown };
+
+export type BaselinePublicationPreviewBaselineAfter = { [key: string]: unknown };
+
+export type BaselinePublicationPreviewImpactAffectedPathwaysItemPublicationOutcome = typeof BaselinePublicationPreviewImpactAffectedPathwaysItemPublicationOutcome[keyof typeof BaselinePublicationPreviewImpactAffectedPathwaysItemPublicationOutcome];
+
+
+export const BaselinePublicationPreviewImpactAffectedPathwaysItemPublicationOutcome = {
+  NEW_ENROLLMENTS_USE_DRAFT: 'NEW_ENROLLMENTS_USE_DRAFT',
+  REMOVED_FROM_DRAFT: 'REMOVED_FROM_DRAFT',
+} as const;
+
+export type BaselinePublicationPreviewImpactAffectedPathwaysItem = {
+  pathwayId: string;
+  pathwayName: string;
+  publicationOutcome: BaselinePublicationPreviewImpactAffectedPathwaysItemPublicationOutcome;
+};
+
+export type BaselinePublicationPreviewImpactEligibleCohortsItem = {
+  id: string;
+  name: string;
+  programId: string;
+  status: string;
+};
+
+export type BaselinePublicationPreviewImpactPreservedEnrollmentsByVersionItem = {
+  baselineVersionId: string;
+  count: number;
+};
+
+export type BaselinePublicationPreviewImpact = {
+  affectedPathways: BaselinePublicationPreviewImpactAffectedPathwaysItem[];
+  eligibleCohorts: BaselinePublicationPreviewImpactEligibleCohortsItem[];
+  futureEnrollmentRule: string;
+  preservedEnrollmentCount: number;
+  preservedEnrollmentsByVersion: BaselinePublicationPreviewImpactPreservedEnrollmentsByVersionItem[];
+  historyRule: string;
+};
+
+export interface BaselinePublicationPreview {
+  baselineId: string;
+  activeVersion: BaselinePublicationPreviewActiveVersion;
+  draftVersion: BaselinePublicationPreviewDraftVersion;
+  /** @pattern ^[a-f0-9]{64}$ */
+  previewFingerprint: string;
+  baselineChanged: boolean;
+  baselineBefore: BaselinePublicationPreviewBaselineBefore;
+  baselineAfter: BaselinePublicationPreviewBaselineAfter;
+  changes: BaselinePublicationPathwayChange[];
+  impact: BaselinePublicationPreviewImpact;
+}
+
 export type BaselineAuditEventDetails = { [key: string]: unknown };
 
 export interface BaselineAuditEvent {

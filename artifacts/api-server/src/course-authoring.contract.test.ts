@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ApplyCourseAuthoringCommandBody, RequestManagedResourceUploadUrlBody, CreateBaselineDraftResponse, PublishBaselineVersionResponse, SelectLearnerPathwayResponse, UpdateBaselineDraftBody } from "@workspace/api-zod";
+import { ApplyCourseAuthoringCommandBody, RequestManagedResourceUploadUrlBody, CreateBaselineDraftResponse, PreviewBaselinePublicationResponse, PublishBaselineVersionBody, PublishBaselineVersionResponse, SelectLearnerPathwayResponse, UpdateBaselineDraftBody } from "@workspace/api-zod";
 import { allocatedSiblingSequence, assignmentAllows, orderedSiblingIds } from "./lib/course-authoring";
 import { learnerCourseAvailable } from "./routes/learning";
 
@@ -85,6 +85,37 @@ assert.equal(PublishBaselineVersionResponse.safeParse({
   baselineId: "baseline-1", versionId: "baseline-version-2", version: 2, status: "PUBLISHED",
   publishedAt: new Date().toISOString(),
 }).success, true, "baseline publish response is contract-valid");
+assert.equal(PublishBaselineVersionBody.safeParse({ previewFingerprint: "a".repeat(64) }).success, true, "baseline publish requires a reviewed preview");
+assert.equal(PublishBaselineVersionBody.safeParse({}).success, false, "baseline publish refuses a missing preview");
+assert.equal(PreviewBaselinePublicationResponse.safeParse({
+  baselineId: "baseline-1",
+  activeVersion: { versionId: "v1", version: 1 },
+  draftVersion: { versionId: "v2", version: 2 },
+  previewFingerprint: "b".repeat(64),
+  baselineChanged: false,
+  baselineBefore: { id: "baseline-1" },
+  baselineAfter: { id: "baseline-1" },
+  changes: [{
+    pathwayId: "path-1", pathwayName: "Primary", status: "CHANGED",
+    addedModules: [], removedModules: [],
+    modifiedModules: [{
+      before: { id: "bm-1", moduleId: "m-1", code: "M01", name: "Old", sequence: 1, details: { name: "Old" } },
+      after: { id: "bm-1", moduleId: "m-1", code: "M01", name: "New", sequence: 1, details: { name: "New" } },
+      changedFields: ["name"],
+    }],
+    orderChanged: false,
+    before: [{ id: "bm-1", moduleId: "m-1", code: "M01", name: "Old", sequence: 1, details: { name: "Old" } }],
+    after: [{ id: "bm-1", moduleId: "m-1", code: "M01", name: "New", sequence: 1, details: { name: "New" } }],
+  }],
+  impact: {
+    affectedPathways: [{ pathwayId: "path-1", pathwayName: "Primary", publicationOutcome: "NEW_ENROLLMENTS_USE_DRAFT" }],
+    eligibleCohorts: [{ id: "cohort-1", name: "2026", programId: "program-1", status: "active" }],
+    futureEnrollmentRule: "New enrollments pin v2.",
+    preservedEnrollmentCount: 2,
+    preservedEnrollmentsByVersion: [{ baselineVersionId: "v1", count: 2 }],
+    historyRule: "Existing history stays on v1.",
+  },
+}).success, true, "baseline publication preview is contract-valid");
 assert.equal(UpdateBaselineDraftBody.safeParse({ snapshot: { modules: [], selections: [] } }).success, true, "baseline draft edits are contract-valid");
 assert.equal(SelectLearnerPathwayResponse.safeParse({
   pathway: { id: "path-1", name: "Path", type: "Primary", purpose: "unspecified", outcome: "Outcome", moduleCount: 1, gateCount: 0, gates: [], terminalPortfolio: "Capability Portfolio" },

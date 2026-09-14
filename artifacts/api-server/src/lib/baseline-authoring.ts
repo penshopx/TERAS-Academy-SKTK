@@ -1,9 +1,12 @@
+import { createHash } from "node:crypto";
 import { and, desc, eq, inArray, max, sql } from "drizzle-orm";
 import {
   db,
   learningBaselineAuditTable,
   learningBaselineVersionsTable,
   learningBaselinesTable,
+  cohortsTable,
+  enrollmentsTable,
   modulesTable,
   pathwaysTable,
 } from "@workspace/db";
@@ -122,6 +125,143 @@ function snapshotOf(row: typeof learningBaselineVersionsTable.$inferSelect): Sna
   return row.snapshot as Snapshot;
 }
 
+const stringField = (row: Record<string, unknown>, camel: string, snake: string) =>
+  typeof row[camel] === "string" ? String(row[camel]) : typeof row[snake] === "string" ? String(row[snake]) : "";
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, item]) => [key, canonicalize(item)]));
+}
+
+const moduleSummary = (row: Record<string, unknown>) => ({
+  id: stringField(row, "id", "id"),
+  moduleId: stringField(row, "moduleId", "module_id"),
+  code: stringField(row, "code", "code"),
+  name: stringField(row, "name", "name"),
+  details: canonicalize(row) as Record<string, unknown>,
+});
+
+const pathwayModules = (snapshot: Snapshot) => {
+  const modules = new Map((snapshot.modules ?? []).map(module => [String(module.id), module]));
+  const result = new Map<string, Array<ReturnType<typeof moduleSummary> & { sequence: number }>>();
+  for (const selection of snapshot.selections ?? []) {
+    const pathwayId = stringField(selection, "pathwayId", "pathway_id");
+    const selected = modules.get(stringField(selection, "baselineModuleId", "baseline_module_id"));
+    if (!pathwayId || !selected) continue;
+    const rows = result.get(pathwayId) ?? [];
+    rows.push({ ...moduleSummary(selected), sequence: Number(selection.sequence ?? rows.length + 1) });
+    result.set(pathwayId, rows);
+  }
+  for (const rows of result.values()) rows.sort((a, b) => a.sequence - b.sequence || a.id.localeCompare(b.id));
+  return result;
+};
+
+const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+
+async function baselinePublicationPreviewWithExecutor(baselineId: string, versionId: string, executor: any) {
+  const [baseline] = await executor.select().from(learningBaselinesTable).where(eq(learningBaselinesTable.id, baselineId)).limit(1);
+  if (!baseline?.publishedVersionId) return { error: "Baseline has no active published version" as const };
+  const versions = await executor.select().from(learningBaselineVersionsTable).where(inArray(
+    learningBaselineVersionsTable.id, [baseline.publishedVersionId, versionId],
+  ));
+  const active = versions.find((row: typeof learningBaselineVersionsTable.$inferSelect) => row.id === baseline.publishedVersionId && row.status === "PUBLISHED");
+  const draft = versions.find((row: typeof learningBaselineVersionsTable.$inferSelect) => row.id === versionId && row.baselineId === baselineId && row.status === "DRAFT");
+  if (!active) return { error: "Baseline has no active published version" as const };
+  if (!draft) return { error: "Baseline draft not found" as const };
+
+  const activeByPathway = pathwayModules(snapshotOf(active));
+  const draftByPathway = pathwayModules(snapshotOf(draft));
+  const activeBaseline = canonicalize(snapshotOf(active).baseline ?? {}) as Record<string, unknown>;
+  const draftBaseline = canonicalize(snapshotOf(draft).baseline ?? {}) as Record<string, unknown>;
+  const baselineChanged = JSON.stringify(activeBaseline) !== JSON.stringify(draftBaseline);
+  const pathwayIds = [...new Set([...activeByPathway.keys(), ...draftByPathway.keys()])].sort();
+  const pathwayRows = (pathwayIds.length
+    ? await executor.select({ id: pathwaysTable.id, name: pathwaysTable.name, programId: pathwaysTable.programId }).from(pathwaysTable).where(inArray(pathwaysTable.id, pathwayIds))
+    : []).sort((a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id));
+  const pathwayNames = new Map(pathwayRows.map((row: { id: string; name: string }) => [row.id, row.name]));
+  const changes = pathwayIds.map(pathwayId => {
+    const before = activeByPathway.get(pathwayId) ?? [];
+    const after = draftByPathway.get(pathwayId) ?? [];
+    const beforeById = new Map(before.map(row => [row.id, row]));
+    const afterById = new Map(after.map(row => [row.id, row]));
+    const content = (row: typeof before[number]) => JSON.stringify(row.details);
+    const sharedBeforeIds = before.map(row => row.id).filter(moduleId => afterById.has(moduleId));
+    const sharedAfterIds = after.map(row => row.id).filter(moduleId => beforeById.has(moduleId));
+    const orderChanged = sharedBeforeIds.some((moduleId, index) => moduleId !== sharedAfterIds[index]);
+    return {
+      pathwayId,
+      pathwayName: pathwayNames.get(pathwayId) ?? pathwayId,
+      status: !activeByPathway.has(pathwayId) ? "ADDED" : !draftByPathway.has(pathwayId) ? "REMOVED" : "CHANGED",
+      addedModules: after.filter(row => !beforeById.has(row.id)),
+      removedModules: before.filter(row => !afterById.has(row.id)),
+      modifiedModules: before.flatMap(previous => {
+        const next = afterById.get(previous.id);
+        if (!next || content(previous) === content(next)) return [];
+        const fields = [...new Set([...Object.keys(previous.details), ...Object.keys(next.details)])]
+          .filter(field => JSON.stringify(previous.details[field]) !== JSON.stringify(next.details[field]))
+          .sort();
+        return [{ before: previous, after: next, changedFields: fields }];
+      }),
+      orderChanged,
+      before,
+      after,
+    };
+  }).filter(change => change.status !== "CHANGED" || change.addedModules.length || change.removedModules.length || change.modifiedModules.length || change.orderChanged);
+
+  const affectedPathwayIds = pathwayIds;
+  const existingEnrollments = (affectedPathwayIds.length
+    ? await executor.select({
+      id: enrollmentsTable.id, pathwayId: enrollmentsTable.pathwayId, cohortId: enrollmentsTable.cohortId,
+      baselineVersionId: enrollmentsTable.baselineVersionId, status: enrollmentsTable.status,
+    }).from(enrollmentsTable).where(inArray(enrollmentsTable.pathwayId, affectedPathwayIds))
+    : []).sort((a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id));
+  const programIds: string[] = [...new Set<string>(
+    pathwayRows
+      .filter((row: { id: string }) => affectedPathwayIds.includes(row.id))
+      .map((row: { programId: string }) => row.programId),
+  )];
+  const eligibleCohorts = (programIds.length
+    ? await executor.select({ id: cohortsTable.id, name: cohortsTable.name, programId: cohortsTable.programId, status: cohortsTable.status })
+      .from(cohortsTable).where(and(inArray(cohortsTable.programId, programIds), eq(cohortsTable.status, "active")))
+    : []).sort((a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id));
+  const preservedByVersion = new Map<string, number>();
+  for (const enrollment of existingEnrollments) {
+    const key = enrollment.baselineVersionId ?? "legacy-unpinned";
+    preservedByVersion.set(key, (preservedByVersion.get(key) ?? 0) + 1);
+  }
+  const preview = {
+    baselineId,
+    activeVersion: { versionId: active.id, version: active.version },
+    draftVersion: { versionId: draft.id, version: draft.version },
+    baselineChanged,
+    baselineBefore: activeBaseline,
+    baselineAfter: draftBaseline,
+    changes,
+    impact: {
+      affectedPathways: affectedPathwayIds.map(pathwayId => ({
+        pathwayId,
+        pathwayName: pathwayNames.get(pathwayId) ?? pathwayId,
+        publicationOutcome: draftByPathway.has(pathwayId) ? "NEW_ENROLLMENTS_USE_DRAFT" : "REMOVED_FROM_DRAFT",
+      })),
+      eligibleCohorts,
+      futureEnrollmentRule: "New enrollments in pathways retained by the draft will pin the published draft version; removed pathways receive no new baseline coverage.",
+      preservedEnrollmentCount: existingEnrollments.length,
+      preservedEnrollmentsByVersion: [...preservedByVersion.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([baselineVersionId, count]) => ({ baselineVersionId, count })),
+      historyRule: "Existing enrollments and pathway history remain pinned to their previous baseline version.",
+    },
+  };
+  return { ...preview, previewFingerprint: digest(preview) };
+}
+
+export async function baselinePublicationPreview(baselineId: string, versionId: string) {
+  return baselinePublicationPreviewWithExecutor(baselineId, versionId, db);
+}
+
 /** Resolve the active published version without ever selecting a draft. */
 async function publishedBaselineForPathwayWithExecutor(pathwayId: string, executor: any) {
   const versions = await executor.select({
@@ -171,8 +311,13 @@ export async function createBaselineDraft(baselineId: string, actorId: string) {
   });
 }
 
-export async function publishBaseline(baselineId: string, versionId: string, actorId: string) {
-  return db.transaction(async tx => {
+export async function publishBaseline(
+  baselineId: string,
+  versionId: string,
+  manager: { id: string; global: boolean },
+  expectedPreviewFingerprint: string,
+) {
+  const attempt = () => db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('teras-baseline-publish-pin', 0))`);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${baselineId}, 0))`);
     const [draft] = await tx.select().from(learningBaselineVersionsTable).where(and(
@@ -181,20 +326,46 @@ export async function publishBaseline(baselineId: string, versionId: string, act
     )).limit(1);
     if (!draft) return { error: "Baseline draft not found" as const };
     if (draft.status !== "DRAFT") return { error: "Baseline version is already published" as const };
+    const preview = await baselinePublicationPreviewWithExecutor(baselineId, versionId, tx);
+    if ("error" in preview) return preview;
+    if (!manager.global) {
+      const pathwayIds = [...await baselinePathwayIdsWithExecutor(baselineId, tx)];
+      const assignments = pathwayIds.length ? await tx.select({ pathwayId: enrollmentsTable.pathwayId }).from(enrollmentsTable).where(and(
+        eq(enrollmentsTable.trainerId, manager.id),
+        eq(enrollmentsTable.status, "active"),
+        inArray(enrollmentsTable.pathwayId, pathwayIds),
+      )) : [];
+      const assigned = new Set(assignments.map((row: { pathwayId: string }) => row.pathwayId));
+      if (!pathwayIds.length || pathwayIds.some(pathwayId => !assigned.has(pathwayId))) {
+        return { error: "Baseline manager scope changed; publication is no longer authorized" as const, forbidden: true as const };
+      }
+    }
+    if (preview.previewFingerprint !== expectedPreviewFingerprint) {
+      return { error: "Publication preview is stale; review the latest baseline and cohort impact before publishing" as const };
+    }
     const report = await validateSnapshotReferences(draft.snapshot, baselineId, tx);
     if (!report.valid) return { error: "Baseline snapshot is invalid" as const, report };
     const [published] = await tx.update(learningBaselineVersionsTable).set({
-      status: "PUBLISHED", publishedAt: new Date(), publishedBy: actorId,
+      status: "PUBLISHED", publishedAt: new Date(), publishedBy: manager.id,
     }).where(and(eq(learningBaselineVersionsTable.id, versionId), eq(learningBaselineVersionsTable.status, "DRAFT"))).returning();
     if (!published) return { error: "Baseline version is already published" as const };
     await tx.update(learningBaselinesTable).set({ publishedVersionId: published.id, status: "active" })
       .where(eq(learningBaselinesTable.id, baselineId));
     await tx.insert(learningBaselineAuditTable).values({
       id: id("baseline-audit"), baselineId, versionId: published.id, action: "PUBLISH",
-      actorId, details: { version: published.version },
+      actorId: manager.id, details: { version: published.version },
     });
     return { baselineId, versionId: published.id, version: published.version, status: published.status, publishedAt: published.publishedAt };
-  });
+  }, { isolationLevel: "serializable" });
+  for (let retries = 0; ; retries += 1) {
+    try {
+      return await attempt();
+    } catch (error) {
+      const code = (error as { code?: string; cause?: { code?: string } }).code
+        ?? (error as { cause?: { code?: string } }).cause?.code;
+      if (code !== "40001" || retries >= 2) throw error;
+    }
+  }
 }
 
 export async function updateBaselineDraft(baselineId: string, versionId: string, snapshot: Record<string, unknown>, actorId: string) {
@@ -224,7 +395,12 @@ export async function listBaselineVersions(baselineId: string) {
 }
 
 export async function baselinePathwayIds(baselineId: string) {
-  const versions = await listBaselineVersions(baselineId);
+  return baselinePathwayIdsWithExecutor(baselineId, db);
+}
+
+async function baselinePathwayIdsWithExecutor(baselineId: string, executor: any) {
+  const versions = await executor.select().from(learningBaselineVersionsTable)
+    .where(eq(learningBaselineVersionsTable.baselineId, baselineId));
   const pathways = new Set<string>();
   for (const version of versions) {
     const snapshot = snapshotOf(version);

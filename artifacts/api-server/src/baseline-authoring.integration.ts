@@ -15,6 +15,7 @@ import {
 } from "@workspace/db";
 import {
   createBaselineDraft,
+  baselinePublicationPreview,
   publishBaseline,
   updateBaselineDraft,
 } from "./lib/baseline-authoring";
@@ -86,7 +87,22 @@ async function main() {
   assert.equal(updateResponse.status, 200);
   const unauthorizedResponse = await request(`/trainer/authoring/baselines/${baseline.id}/versions/${draft.id}`, "PATCH", "x");
   assert.equal(unauthorizedResponse.status, 400);
-  const publishedResponse = await request(`/trainer/authoring/baselines/${baseline.id}/versions/${draft.id}/publish`, "POST");
+  const previewResponse = await request(`/trainer/authoring/baselines/${baseline.id}/versions/${draft.id}/publication-preview`);
+  assert.equal(previewResponse.status, 200);
+  const preview = await previewResponse.json() as { previewFingerprint: string; impact: { preservedEnrollmentCount: number }; changes: unknown[] };
+  assert.equal(preview.impact.preservedEnrollmentCount, 1, "preview marks the existing learner as preserved");
+  assert(preview.changes.length > 0, "preview compares immutable active and draft snapshots");
+  const missingPreviewResponse = await request(`/trainer/authoring/baselines/${baseline.id}/versions/${draft.id}/publish`, "POST");
+  assert.equal(missingPreviewResponse.status, 400, "publication is gated by a reviewed preview");
+  const lateEnrollmentId = id("baseline-late-enrollment");
+  await db.insert(enrollmentsTable).values({
+    id: lateEnrollmentId, learnerId: person.id, programId: program.id, pathwayId: pathway.id,
+    status: "inactive", trainerId: person.id, baselineVersionId: active.id, createdBy: "baseline-integration",
+  });
+  const stalePreviewResponse = await request(`/trainer/authoring/baselines/${baseline.id}/versions/${draft.id}/publish`, "POST", { previewFingerprint: preview.previewFingerprint });
+  assert.equal(stalePreviewResponse.status, 409, "publication rejects a preview whose enrollment impact changed");
+  const refreshedPreview = await request(`/trainer/authoring/baselines/${baseline.id}/versions/${draft.id}/publication-preview`).then(response => response.json()) as { previewFingerprint: string };
+  const publishedResponse = await request(`/trainer/authoring/baselines/${baseline.id}/versions/${draft.id}/publish`, "POST", { previewFingerprint: refreshedPreview.previewFingerprint });
   assert.equal(publishedResponse.status, 201);
   const publishedResult = await publishedResponse.json() as { version: number };
   const published = (await db.select().from(learningBaselineVersionsTable)
@@ -154,19 +170,84 @@ async function main() {
   assert.equal(adminEnrollmentResponse.status, 201, adminEnrollmentText);
   assert.equal((await db.select().from(enrollmentsTable).where(eq(enrollmentsTable.id, id("baseline-admin-enrollment"))))[0]!.baselineVersionId, draft.id, "admin route pins current published version");
 
+  const contentDraft = await createBaselineDraft(baseline.id, "trainer-content-change");
+  assert(!("error" in contentDraft));
+  if (!("error" in contentDraft)) {
+    const contentVersion = (await db.select().from(learningBaselineVersionsTable).where(eq(learningBaselineVersionsTable.id, contentDraft.versionId)))[0]!;
+    const contentSnapshot = structuredClone(contentVersion.snapshot as any);
+    const selectedSnapshotModuleId = contentSnapshot.selections[0].baselineModuleId ?? contentSnapshot.selections[0].baseline_module_id;
+    const selectedSnapshotModule = contentSnapshot.modules.find((module: { id: string }) => module.id === selectedSnapshotModuleId);
+    assert(selectedSnapshotModule, "content-change fixture needs a selected snapshot module");
+    selectedSnapshotModule.learningOutcome = `${selectedSnapshotModule.learningOutcome} updated`;
+    contentSnapshot.baseline.description = `${contentSnapshot.baseline.description ?? ""} updated`;
+    const contentUpdate = await updateBaselineDraft(baseline.id, contentDraft.versionId, contentSnapshot, "trainer-content-change");
+    assert(!("error" in contentUpdate));
+    const contentPreview = await baselinePublicationPreview(baseline.id, contentDraft.versionId);
+    assert(!("error" in contentPreview));
+    if (!("error" in contentPreview)) {
+      assert.equal(contentPreview.changes.length, 1, "same-ID module content changes remain visible");
+      assert.equal(contentPreview.changes[0]!.modifiedModules.length, 1, "content edit is classified as modified");
+      assert(contentPreview.changes[0]!.modifiedModules[0]!.changedFields.includes("learningOutcome"), "all module curriculum fields are compared");
+      assert.equal(contentPreview.changes[0]!.addedModules.length, 0, "content edit is not classified as added");
+      assert.equal(contentPreview.changes[0]!.removedModules.length, 0, "content edit is not classified as removed");
+      assert.equal(contentPreview.changes[0]!.orderChanged, false, "content edit is not classified as reorder");
+      assert.equal(contentPreview.baselineChanged, true, "baseline metadata changes remain visible");
+    }
+  }
+
+  const removalDraft = await createBaselineDraft(baseline.id, "trainer-removal-change");
+  assert(!("error" in removalDraft));
+  if (!("error" in removalDraft)) {
+    const removalVersion = (await db.select().from(learningBaselineVersionsTable).where(eq(learningBaselineVersionsTable.id, removalDraft.versionId)))[0]!;
+    const removalSnapshot = structuredClone(removalVersion.snapshot as any);
+    removalSnapshot.selections = removalSnapshot.selections.filter((item: Record<string, unknown>) => (item.pathwayId ?? item.pathway_id) !== pathway.id);
+    const removalUpdate = await updateBaselineDraft(baseline.id, removalDraft.versionId, removalSnapshot, "trainer-removal-change");
+    assert(!("error" in removalUpdate));
+    const removalPreview = await baselinePublicationPreview(baseline.id, removalDraft.versionId);
+    assert(!("error" in removalPreview));
+    if (!("error" in removalPreview)) {
+      assert(removalPreview.impact.affectedPathways.some(item => item.pathwayId === pathway.id && item.publicationOutcome === "REMOVED_FROM_DRAFT"), "removed pathway remains in impact");
+      assert(removalPreview.impact.preservedEnrollmentCount > 0, "removed pathway enrollments remain counted as preserved history");
+    }
+  }
+
   const clones = await Promise.all([
     createBaselineDraft(baseline.id, "trainer-a"),
     createBaselineDraft(baseline.id, "trainer-b"),
   ]);
   assert(clones.every(result => !("error" in result)));
   const cloneVersions = clones.map(result => ("error" in result ? -1 : result.version)).sort((a, b) => a - b);
-  assert.deepEqual(cloneVersions, [published.version + 1, published.version + 2], "parallel clone versions are sequential");
+  assert.equal(cloneVersions[1]! - cloneVersions[0]!, 1, "parallel clone versions are sequential");
+  const stalePointerDraft = clones[0];
+  const interveningDraft = clones[1];
+  if (!("error" in stalePointerDraft) && !("error" in interveningDraft)) {
+    const stalePointerPreview = await baselinePublicationPreview(baseline.id, stalePointerDraft.versionId);
+    const interveningPreview = await baselinePublicationPreview(baseline.id, interveningDraft.versionId);
+    assert(!("error" in stalePointerPreview) && !("error" in interveningPreview));
+    if (!("error" in stalePointerPreview) && !("error" in interveningPreview)) {
+      const interveningPublish = await publishBaseline(baseline.id, interveningDraft.versionId, { id: "trainer-intervening", global: true }, interveningPreview.previewFingerprint);
+      assert(!("error" in interveningPublish), "identical intervening draft publishes");
+      const stalePointerPublish = await publishBaseline(baseline.id, stalePointerDraft.versionId, { id: "trainer-stale", global: true }, stalePointerPreview.previewFingerprint);
+      assert("error" in stalePointerPublish, "review against a previous active version is rejected even when snapshots are identical");
+      const pointerAfterStaleAttempt = (await db.select().from(learningBaselinesTable).where(eq(learningBaselinesTable.id, baseline.id)))[0]!.publishedVersionId;
+      assert.equal(pointerAfterStaleAttempt, interveningDraft.versionId, "stale publication cannot move the active pointer backward");
+    }
+  }
+  const unauthorizedPublishDraft = clones[0];
+  if (!("error" in unauthorizedPublishDraft)) {
+    const unauthorizedPreview = await baselinePublicationPreview(baseline.id, unauthorizedPublishDraft.versionId);
+    assert(!("error" in unauthorizedPreview));
+    if (!("error" in unauthorizedPreview)) {
+      const denied = await publishBaseline(baseline.id, unauthorizedPublishDraft.versionId, { id: "trainer-without-assignment", global: false }, unauthorizedPreview.previewFingerprint);
+      assert("forbidden" in denied, "publish revalidates manager scope inside the serialized transaction");
+    }
+  }
   const concurrentDraft = await createBaselineDraft(baseline.id, "trainer-concurrent");
   assert(!("error" in concurrentDraft));
   if ("error" in concurrentDraft) return;
   const publishes = await Promise.all([
-    publishBaseline(baseline.id, concurrentDraft.versionId, "trainer-a"),
-    publishBaseline(baseline.id, concurrentDraft.versionId, "trainer-b"),
+    baselinePublicationPreview(baseline.id, concurrentDraft.versionId).then(result => publishBaseline(baseline.id, concurrentDraft.versionId, { id: "trainer-a", global: true }, "error" in result ? "" : result.previewFingerprint)),
+    baselinePublicationPreview(baseline.id, concurrentDraft.versionId).then(result => publishBaseline(baseline.id, concurrentDraft.versionId, { id: "trainer-b", global: true }, "error" in result ? "" : result.previewFingerprint)),
   ]);
   assert.equal(publishes.filter(result => !("error" in result)).length, 1);
   assert.equal(publishes.filter(result => "error" in result).length, 1);
@@ -177,7 +258,7 @@ async function main() {
     activeRole = "learner";
     activeLearner = newPerson.id;
     const [racePublish, raceSelection] = await Promise.all([
-      publishBaseline(baseline.id, pinRaceDraft.versionId, "trainer-pin-race"),
+      baselinePublicationPreview(baseline.id, pinRaceDraft.versionId).then(result => publishBaseline(baseline.id, pinRaceDraft.versionId, { id: "trainer-pin-race", global: true }, "error" in result ? "" : result.previewFingerprint)),
       request("/learner/pathway", "POST", { pathwayId: pathway.id }),
     ]);
     assert(!("error" in racePublish));

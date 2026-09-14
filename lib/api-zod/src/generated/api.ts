@@ -2960,12 +2960,128 @@ export const PublishBaselineVersionParams = zod.object({
   "versionId": zod.coerce.string().min(1)
 })
 
+export const publishBaselineVersionBodyPreviewFingerprintRegExp = new RegExp('^[a-f0-9]{64}$');
+
+
+export const PublishBaselineVersionBody = zod.object({
+  "previewFingerprint": zod.string().regex(publishBaselineVersionBodyPreviewFingerprintRegExp)
+})
+
 export const PublishBaselineVersionResponse = zod.object({
   "baselineId": zod.string(),
   "versionId": zod.string(),
   "version": zod.int(),
   "status": zod.enum(['PUBLISHED']),
   "publishedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Compare an immutable active snapshot with a draft and show publication impact
+ */
+
+
+
+
+export const PreviewBaselinePublicationParams = zod.object({
+  "baselineId": zod.coerce.string().min(1),
+  "versionId": zod.coerce.string().min(1)
+})
+
+export const previewBaselinePublicationResponsePreviewFingerprintRegExp = new RegExp('^[a-f0-9]{64}$');
+
+
+export const PreviewBaselinePublicationResponse = zod.object({
+  "baselineId": zod.string(),
+  "activeVersion": zod.object({
+  "versionId": zod.string(),
+  "version": zod.int()
+}),
+  "draftVersion": zod.object({
+  "versionId": zod.string(),
+  "version": zod.int()
+}),
+  "previewFingerprint": zod.string().regex(previewBaselinePublicationResponsePreviewFingerprintRegExp),
+  "baselineChanged": zod.boolean(),
+  "baselineBefore": zod.record(zod.string(), zod.unknown()),
+  "baselineAfter": zod.record(zod.string(), zod.unknown()),
+  "changes": zod.array(zod.object({
+  "pathwayId": zod.string(),
+  "pathwayName": zod.string(),
+  "status": zod.enum(['ADDED', 'REMOVED', 'CHANGED']),
+  "addedModules": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "sequence": zod.int(),
+  "details": zod.record(zod.string(), zod.unknown())
+})),
+  "removedModules": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "sequence": zod.int(),
+  "details": zod.record(zod.string(), zod.unknown())
+})),
+  "modifiedModules": zod.array(zod.object({
+  "before": zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "sequence": zod.int(),
+  "details": zod.record(zod.string(), zod.unknown())
+}),
+  "after": zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "sequence": zod.int(),
+  "details": zod.record(zod.string(), zod.unknown())
+}),
+  "changedFields": zod.array(zod.string())
+})),
+  "orderChanged": zod.boolean(),
+  "before": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "sequence": zod.int(),
+  "details": zod.record(zod.string(), zod.unknown())
+})),
+  "after": zod.array(zod.object({
+  "id": zod.string(),
+  "moduleId": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "sequence": zod.int(),
+  "details": zod.record(zod.string(), zod.unknown())
+}))
+})),
+  "impact": zod.object({
+  "affectedPathways": zod.array(zod.object({
+  "pathwayId": zod.string(),
+  "pathwayName": zod.string(),
+  "publicationOutcome": zod.enum(['NEW_ENROLLMENTS_USE_DRAFT', 'REMOVED_FROM_DRAFT'])
+})),
+  "eligibleCohorts": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "programId": zod.string(),
+  "status": zod.string()
+})),
+  "futureEnrollmentRule": zod.string(),
+  "preservedEnrollmentCount": zod.int(),
+  "preservedEnrollmentsByVersion": zod.array(zod.object({
+  "baselineVersionId": zod.string(),
+  "count": zod.int()
+})),
+  "historyRule": zod.string()
+})
 })
 
 

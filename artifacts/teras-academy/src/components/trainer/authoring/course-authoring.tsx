@@ -7,6 +7,7 @@ import { ValidationPanel } from "./validation-panel";
 import { AuthoringSelection } from "./types";
 import { Activity } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { BaselinePublicationGate } from "./baseline-publication-gate";
 
 export function CourseAuthoring() {
   const [selectedCourseId, setSelectedCourseId] = useState<string | undefined>();
@@ -19,6 +20,7 @@ export function CourseAuthoring() {
 
   return (
     <div className="flex flex-col h-full gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <BaselinePublicationGate />
       
       <div className="flex items-center justify-between border border-primary/30 bg-black/60 px-5 py-4 rounded-lg shadow-[0_0_20px_rgba(0,195,255,0.15)] shrink-0 backdrop-blur-md">
         <div className="flex items-center gap-4">

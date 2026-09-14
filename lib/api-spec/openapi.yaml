@@ -854,8 +854,25 @@ paths:
       parameters:
         - $ref: "#/components/parameters/BaselineId"
         - $ref: "#/components/parameters/BaselineVersionId"
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/BaselinePublicationConfirmation" } } }
       responses:
         "201": { description: Immutable baseline version published, content: { application/json: { schema: { $ref: "#/components/schemas/BaselinePublishedVersion" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /trainer/authoring/baselines/{baselineId}/versions/{versionId}/publication-preview:
+    get:
+      operationId: previewBaselinePublication
+      tags: [trainer]
+      summary: Compare an immutable active snapshot with a draft and show publication impact
+      parameters:
+        - $ref: "#/components/parameters/BaselineId"
+        - $ref: "#/components/parameters/BaselineVersionId"
+      responses:
+        "200": { description: Baseline changes and cohort impact, content: { application/json: { schema: { $ref: "#/components/schemas/BaselinePublicationPreview" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -3197,6 +3214,93 @@ components:
         publishedAt: { type: ["string", "null"], format: date-time }
         publishedBy: { type: ["string", "null"] }
       required: [id, baselineId, version, status, snapshot, createdAt, createdBy, publishedAt, publishedBy]
+    BaselinePublicationConfirmation:
+      type: object
+      additionalProperties: false
+      properties:
+        previewFingerprint: { type: string, pattern: "^[a-f0-9]{64}$" }
+      required: [previewFingerprint]
+    BaselinePublicationModule:
+      type: object
+      properties:
+        id: { type: string }
+        moduleId: { type: string }
+        code: { type: string }
+        name: { type: string }
+        sequence: { type: integer }
+        details: { type: object, additionalProperties: true }
+      required: [id, moduleId, code, name, sequence, details]
+    BaselinePublicationPathwayChange:
+      type: object
+      properties:
+        pathwayId: { type: string }
+        pathwayName: { type: string }
+        status: { type: string, enum: [ADDED, REMOVED, CHANGED] }
+        addedModules: { type: array, items: { $ref: "#/components/schemas/BaselinePublicationModule" } }
+        removedModules: { type: array, items: { $ref: "#/components/schemas/BaselinePublicationModule" } }
+        modifiedModules:
+          type: array
+          items:
+            type: object
+            properties:
+              before: { $ref: "#/components/schemas/BaselinePublicationModule" }
+              after: { $ref: "#/components/schemas/BaselinePublicationModule" }
+              changedFields: { type: array, items: { type: string } }
+            required: [before, after, changedFields]
+        orderChanged: { type: boolean }
+        before: { type: array, items: { $ref: "#/components/schemas/BaselinePublicationModule" } }
+        after: { type: array, items: { $ref: "#/components/schemas/BaselinePublicationModule" } }
+      required: [pathwayId, pathwayName, status, addedModules, removedModules, modifiedModules, orderChanged, before, after]
+    BaselinePublicationPreview:
+      type: object
+      properties:
+        baselineId: { type: string }
+        activeVersion:
+          type: object
+          properties: { versionId: { type: string }, version: { type: integer } }
+          required: [versionId, version]
+        draftVersion:
+          type: object
+          properties: { versionId: { type: string }, version: { type: integer } }
+          required: [versionId, version]
+        previewFingerprint: { type: string, pattern: "^[a-f0-9]{64}$" }
+        baselineChanged: { type: boolean }
+        baselineBefore: { type: object, additionalProperties: true }
+        baselineAfter: { type: object, additionalProperties: true }
+        changes: { type: array, items: { $ref: "#/components/schemas/BaselinePublicationPathwayChange" } }
+        impact:
+          type: object
+          properties:
+            affectedPathways:
+              type: array
+              items:
+                type: object
+                properties:
+                  pathwayId: { type: string }
+                  pathwayName: { type: string }
+                  publicationOutcome: { type: string, enum: [NEW_ENROLLMENTS_USE_DRAFT, REMOVED_FROM_DRAFT] }
+                required: [pathwayId, pathwayName, publicationOutcome]
+            eligibleCohorts:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  programId: { type: string }
+                  status: { type: string }
+                required: [id, name, programId, status]
+            futureEnrollmentRule: { type: string }
+            preservedEnrollmentCount: { type: integer }
+            preservedEnrollmentsByVersion:
+              type: array
+              items:
+                type: object
+                properties: { baselineVersionId: { type: string }, count: { type: integer } }
+                required: [baselineVersionId, count]
+            historyRule: { type: string }
+          required: [affectedPathways, eligibleCohorts, futureEnrollmentRule, preservedEnrollmentCount, preservedEnrollmentsByVersion, historyRule]
+      required: [baselineId, activeVersion, draftVersion, previewFingerprint, baselineChanged, baselineBefore, baselineAfter, changes, impact]
     BaselineAuditEvent:
       type: object
       properties:

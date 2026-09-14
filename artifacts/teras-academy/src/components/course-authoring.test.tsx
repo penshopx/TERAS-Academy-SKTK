@@ -19,6 +19,7 @@ import {
   publishAuthoredCourseAndRefresh,
   refreshAuthoringHistory,
 } from "./trainer/authoring/validation-panel";
+import { isBaselinePreviewConfirmed } from "./trainer/authoring/baseline-publication-gate";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,6 +30,7 @@ const sources = [
   "trainer/authoring/authoring-tree.tsx",
   "trainer/authoring/authoring-editor.tsx",
   "trainer/authoring/validation-panel.tsx",
+  "trainer/authoring/baseline-publication-gate.tsx",
 ];
 
 test("Course authoring uses authored course endpoints, NOT learning endpoints", async () => {
@@ -56,6 +58,11 @@ test("Course authoring uses authored course endpoints, NOT learning endpoints", 
   // Must have history/audit logic
   assert.match(allContent, /useListAuthoredCourseVersions/);
   assert.match(allContent, /useListCourseAuthoringAudit/);
+  assert.match(allContent, /usePreviewBaselinePublication/);
+  assert.match(allContent, /previewFingerprint/);
+  assert.match(allContent, /enrollment lama tidak berubah/);
+  assert.match(allContent, /Cohort aktif yang eligible/);
+  assert.match(allContent, /Konfirmasi pratinjau publikasi/);
   
   // Accessibility and test IDs
   assert.match(allContent, /data-testid="tab-history"/);
@@ -67,6 +74,12 @@ test("Course authoring uses authored course endpoints, NOT learning endpoints", 
 test("trainer desk avoids learner-only condition requests", async () => {
   const trainerCode = await readFile(path.join(__dirname, "../pages/trainer.tsx"), "utf8");
   assert.doesNotMatch(trainerCode, /LearnerCondition/);
+});
+
+test("baseline publication confirmation is bound to the exact preview fingerprint", () => {
+  assert.equal(isBaselinePreviewConfirmed(null, "preview-a"), false);
+  assert.equal(isBaselinePreviewConfirmed("preview-a", "preview-a"), true);
+  assert.equal(isBaselinePreviewConfirmed("preview-a", "preview-b"), false, "a refreshed preview requires explicit confirmation again");
 });
 
 test("Adding COURSE_MODULE requires canonical moduleId payload", async () => {

@@ -60,6 +60,8 @@ import type {
   BaselineDraft,
   BaselineDraftInput,
   BaselineDraftUpdated,
+  BaselinePublicationConfirmation,
+  BaselinePublicationPreview,
   BaselinePublishedVersion,
   BaselineVersion,
   CapabilityPassport,
@@ -3693,14 +3695,15 @@ export const getPublishBaselineVersionUrl = (baselineId: string,
  * @summary Publish an immutable baseline snapshot
  */
 export const publishBaselineVersion = async (baselineId: string,
-    versionId: string, options?: Parameters<typeof customFetch>[1]): Promise<BaselinePublishedVersion> => {
+    versionId: string,
+    baselinePublicationConfirmation: BaselinePublicationConfirmation, options?: Parameters<typeof customFetch>[1]): Promise<BaselinePublishedVersion> => {
 
   return customFetch<BaselinePublishedVersion>(getPublishBaselineVersionUrl(baselineId,versionId),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(baselinePublicationConfirmation)
   }
 );}
 
@@ -3709,8 +3712,8 @@ export const publishBaselineVersion = async (baselineId: string,
 
 
 export const getPublishBaselineVersionMutationOptions = <TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishBaselineVersion>>, TError,{baselineId: string;versionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof publishBaselineVersion>>, TError,{baselineId: string;versionId: string}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishBaselineVersion>>, TError,{baselineId: string;versionId: string;data: BodyType<BaselinePublicationConfirmation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof publishBaselineVersion>>, TError,{baselineId: string;versionId: string;data: BodyType<BaselinePublicationConfirmation>}, TContext> => {
 
 const mutationKey = ['publishBaselineVersion'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -3722,10 +3725,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof publishBaselineVersion>>, {baselineId: string;versionId: string}> = (props) => {
-          const {baselineId,versionId} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof publishBaselineVersion>>, {baselineId: string;versionId: string;data: BodyType<BaselinePublicationConfirmation>}> = (props) => {
+          const {baselineId,versionId,data} = props ?? {};
 
-          return  publishBaselineVersion(baselineId,versionId,requestOptions)
+          return  publishBaselineVersion(baselineId,versionId,data,requestOptions)
         }
 
 
@@ -3736,22 +3739,104 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type PublishBaselineVersionMutationResult = NonNullable<Awaited<ReturnType<typeof publishBaselineVersion>>>
-
+    export type PublishBaselineVersionMutationBody = BodyType<BaselinePublicationConfirmation>
     export type PublishBaselineVersionMutationError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>
 
     /**
  * @summary Publish an immutable baseline snapshot
  */
 export const usePublishBaselineVersion = <TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishBaselineVersion>>, TError,{baselineId: string;versionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishBaselineVersion>>, TError,{baselineId: string;versionId: string;data: BodyType<BaselinePublicationConfirmation>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof publishBaselineVersion>>,
         TError,
-        {baselineId: string;versionId: string},
+        {baselineId: string;versionId: string;data: BodyType<BaselinePublicationConfirmation>},
         TContext
       > => {
       return useMutation(getPublishBaselineVersionMutationOptions(options));
     }
+
+export const getPreviewBaselinePublicationUrl = (baselineId: string,
+    versionId: string,) => {
+
+
+
+
+  return `/api/trainer/authoring/baselines/${baselineId}/versions/${versionId}/publication-preview`
+}
+
+/**
+ * @summary Compare an immutable active snapshot with a draft and show publication impact
+ */
+export const previewBaselinePublication = async (baselineId: string,
+    versionId: string, options?: Parameters<typeof customFetch>[1]): Promise<BaselinePublicationPreview> => {
+
+  return customFetch<BaselinePublicationPreview>(getPreviewBaselinePublicationUrl(baselineId,versionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getPreviewBaselinePublicationQueryKey = (baselineId: string,
+    versionId: string,) => {
+    return [
+    `/api/trainer/authoring/baselines/${baselineId}/versions/${versionId}/publication-preview`
+    ] as const;
+    }
+
+
+export const getPreviewBaselinePublicationQueryOptions = <TData = Awaited<ReturnType<typeof previewBaselinePublication>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>>(baselineId: string,
+    versionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof previewBaselinePublication>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPreviewBaselinePublicationQueryKey(baselineId,versionId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof previewBaselinePublication>>> = ({ signal }) => previewBaselinePublication(baselineId,versionId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: baselineId !== null && baselineId !== undefined && versionId !== null && versionId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof previewBaselinePublication>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type PreviewBaselinePublicationQueryResult = NonNullable<Awaited<ReturnType<typeof previewBaselinePublication>>>
+export type PreviewBaselinePublicationQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>
+
+
+/**
+ * @summary Compare an immutable active snapshot with a draft and show publication impact
+ */
+
+export function usePreviewBaselinePublication<TData = Awaited<ReturnType<typeof previewBaselinePublication>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>>(
+ baselineId: string,
+    versionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof previewBaselinePublication>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getPreviewBaselinePublicationQueryOptions(baselineId,versionId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getUpdateBaselineDraftUrl = (baselineId: string,
     versionId: string,) => {
