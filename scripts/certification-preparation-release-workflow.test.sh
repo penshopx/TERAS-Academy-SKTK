@@ -136,6 +136,10 @@ grep -Fq 'pnpm --filter @workspace/scripts run test:super-admin-provisioning-pol
 grep -Fq 'pnpm --filter @workspace/api-server run test:admin-module-catalogue' "$gate" &&
   grep -Fq 'reproduce locally with: pnpm --filter @workspace/api-server run test:admin-module-catalogue' "$gate" ||
   fail "release gate must block on legacy module catalogue integrity with an actionable reproduction command"
+grep -Fq 'pnpm --filter @workspace/api-server run test:capability-timeline-query' "$gate" &&
+  grep -Fq 'reproduce locally with: DATABASE_URL=<test-database-url> pnpm --filter @workspace/api-server run test:capability-timeline-query' "$gate" &&
+  grep -Fq 'env DATABASE_URL="$test_database_url"' "$gate" ||
+  fail "release gate must block on capability timeline query-plan regressions with an actionable reproduction command"
 
 mock_dir="$(mktemp -d)"
 trap 'rm -rf "$mock_dir"' EXIT

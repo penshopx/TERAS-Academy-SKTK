@@ -26,3 +26,12 @@ test("capability timeline scopes causal child queries to learner-owned parents",
   assert.match(timeline, /learningTransitionEventsTable\.enrollmentId, context\.enrollment\.id/, "learning transitions must be enrollment-scoped");
   assert.doesNotMatch(timeline, /\.select\(\)\.from\((diagnosticGapsTable|diagnosticRecommendationsTable|evidenceReviewsTable|remediationPlansTable|remediationActivitiesTable|remediationEventsTable)\)(?![\s\S]{0,120}\.where)/, "causal child tables must not be read without a database predicate");
 });
+
+test("capability timeline query-plan regression check is part of the release contract", () => {
+  const packageJson = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+  assert.match(
+    packageJson,
+    /"test:capability-timeline-query"[^]*capability-timeline-query\.integration-runner\.ts/,
+    "the timeline contract command must exercise PostgreSQL query plans",
+  );
+});

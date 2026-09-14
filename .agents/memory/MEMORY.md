@@ -43,3 +43,4 @@
 - [Hanging Node fixtures](hanging-node-fixtures.md) — keep an active event-loop handle; an unresolved top-level promise alone may exit instead of simulating a hang.
 - [Orphan schema cleanup isolation](orphan-schema-cleanup-isolation.md) — stale-schema cleanup is best-effort and reported; one orphan must not block the current integration run.
 - [Anonymous operational aggregates](anonymous-operational-aggregates.md) — central trends keep only coarse outcomes and counts; periods and alert thresholds are server-owned.
+- [Selective query-plan fixtures](selective-query-plan-fixtures.md) — plan regression fixtures need substantial non-target data so parent index scans are genuinely advantageous.
