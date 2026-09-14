@@ -551,7 +551,7 @@ router.get("/passport", async (req, res): Promise<void> => {
 router.get("/passport/export", async (req, res): Promise<void> => {
   const learnerId = await authorizeLearner(req, res);
   if (!learnerId) return;
-  const portfolio = await capabilityPassport(learnerId);
+  const portfolio = await capabilityPassport(learnerId, TIMELINE_PAGE_SIZE);
   const exported = ExportLearnerPortfolioResponse.parse(createLearnerPortfolioExport(portfolio));
   const slug = portfolio.terminalPortfolio === "Capability Portfolio" ? "capability-portfolio" : "certification-readiness-portfolio";
   res.setHeader("Content-Disposition", `attachment; filename="${slug}-${new Date(exported.exportedAt).toISOString().slice(0, 10)}.json"`);
