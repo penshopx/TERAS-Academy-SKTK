@@ -75,6 +75,8 @@ BEGIN
   END IF;
 
   IF to_regclass('public.teras_diagnostic_provenance_exceptions') IS NULL
+    OR to_regclass('public.teras_diagnostic_provenance_check_runs') IS NULL
+    OR to_regclass('public.teras_diagnostic_provenance_check_counts') IS NULL
     OR EXISTS (
       SELECT 1
       FROM pg_constraint
@@ -340,6 +342,68 @@ BEGIN
     ) THEN
     RAISE EXCEPTION 'Seeded Phase 1 LMS hierarchy is missing a pathway';
   END IF;
+END $$;
+
+DO $$
+DECLARE
+  current_run_id bigint;
+  previous_run_id bigint;
+  exception_group record;
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtext('teras_diagnostic_provenance_schema_check'));
+
+  SELECT max(id)
+  INTO previous_run_id
+  FROM teras_diagnostic_provenance_check_runs;
+
+  INSERT INTO teras_diagnostic_provenance_check_runs DEFAULT VALUES
+  RETURNING id INTO current_run_id;
+
+  INSERT INTO teras_diagnostic_provenance_check_counts
+    (check_run_id, entity_type, reason, exception_count)
+  SELECT current_run_id, entity_type, reason, count(*)::integer
+  FROM teras_diagnostic_provenance_exceptions
+  GROUP BY entity_type, reason;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM teras_diagnostic_provenance_check_counts
+    WHERE check_run_id = current_run_id
+  ) THEN
+    RAISE NOTICE 'TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS total=0';
+  END IF;
+
+  FOR exception_group IN
+    SELECT
+      current.entity_type,
+      current.reason,
+      current.exception_count,
+      current.exception_count - COALESCE(previous.exception_count, 0) AS delta
+    FROM teras_diagnostic_provenance_check_counts current
+    LEFT JOIN teras_diagnostic_provenance_check_counts previous
+      ON previous.check_run_id = previous_run_id
+      AND previous.entity_type = current.entity_type
+      AND previous.reason = current.reason
+    WHERE current.check_run_id = current_run_id
+    ORDER BY current.entity_type, current.reason
+  LOOP
+    RAISE NOTICE
+      'TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS entity_type=% reason=% count=% delta=%',
+      exception_group.entity_type,
+      exception_group.reason,
+      exception_group.exception_count,
+      exception_group.delta;
+
+    IF previous_run_id IS NOT NULL AND exception_group.delta > 0 THEN
+      RAISE WARNING
+        'TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS_INCREASE entity_type=% reason=% previous_count=% current_count=% delta=%',
+        exception_group.entity_type,
+        exception_group.reason,
+        exception_group.exception_count - exception_group.delta,
+        exception_group.exception_count,
+        exception_group.delta;
+    END IF;
+  END LOOP;
 END $$;
 
 SELECT 'TERAS schema regression checks passed' AS result;

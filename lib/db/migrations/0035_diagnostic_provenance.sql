@@ -40,7 +40,44 @@ CREATE TABLE IF NOT EXISTS "teras_diagnostic_provenance_exceptions" (
   CONSTRAINT "teras_diagnostic_provenance_exceptions_pk"
     PRIMARY KEY ("entity_type", "entity_id"),
   CONSTRAINT "teras_diagnostic_provenance_exceptions_entity_type_check"
-    CHECK ("entity_type" IN ('profile', 'profile_item', 'gap'))
+    CHECK ("entity_type" IN ('profile', 'profile_item', 'gap')),
+  CONSTRAINT "teras_diagnostic_provenance_exceptions_reason_check"
+    CHECK ("reason" IN ('NO_VALID_RESPONSE_CHAIN', 'NO_VALID_UNIT_RESPONSE_CHAIN'))
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'teras_diagnostic_provenance_exceptions'::regclass
+      AND conname = 'teras_diagnostic_provenance_exceptions_reason_check'
+  ) THEN
+    ALTER TABLE teras_diagnostic_provenance_exceptions
+      ADD CONSTRAINT teras_diagnostic_provenance_exceptions_reason_check
+      CHECK (reason IN ('NO_VALID_RESPONSE_CHAIN', 'NO_VALID_UNIT_RESPONSE_CHAIN'));
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS "teras_diagnostic_provenance_check_runs" (
+  "id" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  "checked_at" timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS "teras_diagnostic_provenance_check_counts" (
+  "check_run_id" bigint NOT NULL
+    REFERENCES "teras_diagnostic_provenance_check_runs" ("id") ON DELETE CASCADE,
+  "entity_type" text NOT NULL,
+  "reason" text NOT NULL,
+  "exception_count" integer NOT NULL,
+  CONSTRAINT "teras_diagnostic_provenance_check_counts_pk"
+    PRIMARY KEY ("check_run_id", "entity_type", "reason"),
+  CONSTRAINT "teras_diagnostic_provenance_check_counts_entity_type_check"
+    CHECK ("entity_type" IN ('profile', 'profile_item', 'gap')),
+  CONSTRAINT "teras_diagnostic_provenance_check_counts_reason_check"
+    CHECK ("reason" IN ('NO_VALID_RESPONSE_CHAIN', 'NO_VALID_UNIT_RESPONSE_CHAIN')),
+  CONSTRAINT "teras_diagnostic_provenance_check_counts_nonnegative_check"
+    CHECK ("exception_count" >= 0)
 );
 
 -- Reconstruct profile provenance only from responses whose question and option

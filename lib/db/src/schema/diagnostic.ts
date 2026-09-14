@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { boolean, check, foreignKey, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, index, primaryKey } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, foreignKey, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, index, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { peopleTable, pathwaysTable, enrollmentsTable, modulesTable, practiceTasksTable, evidenceRequirementsTable } from "./teras";
@@ -120,6 +120,22 @@ export const diagnosticProvenanceExceptionsTable = pgTable("teras_diagnostic_pro
 }, table => [
   primaryKey({ columns: [table.entityType, table.entityId], name: "teras_diagnostic_provenance_exceptions_pk" }),
   check("teras_diagnostic_provenance_exceptions_entity_type_check", sql`${table.entityType} IN ('profile', 'profile_item', 'gap')`),
+  check("teras_diagnostic_provenance_exceptions_reason_check", sql`${table.reason} IN ('NO_VALID_RESPONSE_CHAIN', 'NO_VALID_UNIT_RESPONSE_CHAIN')`),
+]);
+export const diagnosticProvenanceCheckRunsTable = pgTable("teras_diagnostic_provenance_check_runs", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  checkedAt: timestamp("checked_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export const diagnosticProvenanceCheckCountsTable = pgTable("teras_diagnostic_provenance_check_counts", {
+  checkRunId: bigint("check_run_id", { mode: "number" }).notNull().references(() => diagnosticProvenanceCheckRunsTable.id, { onDelete: "cascade" }),
+  entityType: text("entity_type").notNull(),
+  reason: text("reason").notNull(),
+  exceptionCount: integer("exception_count").notNull(),
+}, table => [
+  primaryKey({ columns: [table.checkRunId, table.entityType, table.reason], name: "teras_diagnostic_provenance_check_counts_pk" }),
+  check("teras_diagnostic_provenance_check_counts_entity_type_check", sql`${table.entityType} IN ('profile', 'profile_item', 'gap')`),
+  check("teras_diagnostic_provenance_check_counts_reason_check", sql`${table.reason} IN ('NO_VALID_RESPONSE_CHAIN', 'NO_VALID_UNIT_RESPONSE_CHAIN')`),
+  check("teras_diagnostic_provenance_check_counts_nonnegative_check", sql`${table.exceptionCount} >= 0`),
 ]);
 export const diagnosticRecommendationsTable = pgTable("teras_diagnostic_recommendations", {
   id: text("id").primaryKey(), profileId: text("profile_id").notNull().references(() => diagnosticProfilesTable.id, { onDelete: "cascade" }), competencyUnitId: text("competency_unit_id").references(() => competencyUnitsTable.id),

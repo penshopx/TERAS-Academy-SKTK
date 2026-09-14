@@ -210,6 +210,7 @@ if [ "$(pnpm --silent --filter @workspace/scripts run demo:fixtures-enabled)" = 
 else
   echo "Skipping TERAS demo fixture seed; explicit safe demo fixture mode is not enabled."
 fi
+echo "Checking diagnostic provenance exception counts for operational increases."
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/schema-check.sql
 # API tests consume declaration output from composite workspace libraries.
 # Refresh it after merged schema changes and before any API test starts.

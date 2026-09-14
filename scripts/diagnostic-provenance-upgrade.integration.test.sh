@@ -83,13 +83,15 @@ state="$(psql "$DATABASE_URL" -Atqc "
     (SELECT count(*) FROM teras_diagnostic_profiles WHERE id = 'profile-mixed' AND provenance IS NULL),
     (SELECT count(*) FROM teras_diagnostic_profile_items WHERE id = 'item-mixed' AND provenance IS NULL),
     (SELECT count(*) FROM teras_diagnostic_gaps WHERE id = 'gap-mixed' AND provenance IS NULL),
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_runs),
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_counts),
     (SELECT count(*) FROM pg_constraint
       WHERE connamespace = '$schema'::regnamespace
         AND conname LIKE 'teras_diagnostic_%_provenance_check'
         AND convalidated)
 ")"
 
-expected='["response-1", "response-2"]|["response-1", "response-2"]|["response-1", "response-2"]|3|1|1|1|3'
+expected='["response-1", "response-2"]|["response-1", "response-2"]|["response-1", "response-2"]|3|1|1|1|0|0|3'
 if [ "$state" != "$expected" ]; then
   echo "Diagnostic provenance migration produced unexpected state: $state" >&2
   exit 1
