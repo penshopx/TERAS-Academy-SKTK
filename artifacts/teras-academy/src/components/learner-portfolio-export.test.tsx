@@ -40,6 +40,7 @@ const exportFixture = (terminalPortfolio: LearnerPortfolioExport["portfolio"]["t
     },
     achievements: [],
     timeline: [],
+    timelineNextCursor: null,
   },
   integrity: {
     algorithm: "SHA-256",

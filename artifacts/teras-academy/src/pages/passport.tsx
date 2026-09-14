@@ -1,10 +1,10 @@
-import { useGetCapabilityPassport } from "@workspace/api-client-react";
+import { getLearnerJourneyPage, useGetCapabilityPassport, type JourneyStep } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity, Award, ShieldCheck, FileText, Download } from "lucide-react";
 import { LearnerCondition } from "@/components/learner-condition";
 import { PassportRecord } from "@/components/passport-record";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 type DownloadDependencies = {
@@ -34,6 +34,32 @@ export function downloadPortfolioExport(
 export default function Passport() {
   const { data: passport, isLoading, error } = useGetCapabilityPassport();
   const [isExporting, setIsExporting] = useState(false);
+  const [timeline, setTimeline] = useState<JourneyStep[]>([]);
+  const [timelineNextCursor, setTimelineNextCursor] = useState<string | null>(null);
+  const [isLoadingTimeline, setIsLoadingTimeline] = useState(false);
+
+  useEffect(() => {
+    if (!passport) return;
+    setTimeline(passport.timeline);
+    setTimelineNextCursor(passport.timelineNextCursor);
+  }, [passport]);
+
+  const loadMoreTimeline = async () => {
+    if (!timelineNextCursor) return;
+    setIsLoadingTimeline(true);
+    try {
+      const page = await getLearnerJourneyPage({ cursor: timelineNextCursor, limit: 50 });
+      setTimeline(current => {
+        const known = new Set(current.map(item => item.id));
+        return [...current, ...page.items.filter(item => !known.has(item.id))];
+      });
+      setTimelineNextCursor(page.nextCursor);
+    } catch {
+      toast.error("Riwayat berikutnya tidak dapat dimuat. Coba lagi.");
+    } finally {
+      setIsLoadingTimeline(false);
+    }
+  };
 
   const exportPortfolio = async () => {
     setIsExporting(true);
@@ -139,7 +165,14 @@ export default function Passport() {
       </Card>
 
       <div className="mt-8">
-        <PassportRecord timeline={passport.timeline} achievements={passport.achievements} />
+        <PassportRecord timeline={timeline} achievements={passport.achievements} />
+        {timelineNextCursor && (
+          <div className="mt-6 flex justify-center">
+            <Button type="button" variant="outline" onClick={loadMoreTimeline} disabled={isLoadingTimeline}>
+              {isLoadingTimeline ? "Memuat riwayat…" : "Muat riwayat Passport berikutnya"}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

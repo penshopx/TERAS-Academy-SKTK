@@ -1,18 +1,44 @@
-import { useGetLearnerJourney } from "@workspace/api-client-react";
+import { getLearnerJourneyPage, useGetLearnerJourneyPage, type JourneyStep } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Activity, CheckCircle2, Circle, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { journeyVisualState } from "@/lib/journey-status";
+import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
 
 export default function Journey() {
-  const { data: journey, isLoading, error } = useGetLearnerJourney();
+  const { data: firstPage, isLoading, error } = useGetLearnerJourneyPage({ limit: 50 });
+  const [journey, setJourney] = useState<JourneyStep[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  useEffect(() => {
+    if (!firstPage) return;
+    setJourney(firstPage.items);
+    setNextCursor(firstPage.nextCursor);
+  }, [firstPage]);
+
+  const loadMore = async () => {
+    if (!nextCursor) return;
+    setIsLoadingMore(true);
+    try {
+      const page = await getLearnerJourneyPage({ cursor: nextCursor, limit: 50 });
+      setJourney(current => {
+        const known = new Set(current.map(item => item.id));
+        return [...current, ...page.items.filter(item => !known.has(item.id))];
+      });
+      setNextCursor(page.nextCursor);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   if (isLoading) {
     return <div className="h-full flex items-center justify-center"><Activity className="w-8 h-8 text-primary animate-pulse" /></div>;
   }
 
-  if (error || !journey) {
+   if (error || !firstPage) {
     return <div className="text-destructive">Failed to load journey.</div>;
   }
 
@@ -80,6 +106,13 @@ export default function Journey() {
               );
             })}
           </div>
+          {nextCursor && (
+            <div className="mt-8 flex justify-center border-t border-border/50 pt-6">
+              <Button type="button" variant="outline" onClick={loadMore} disabled={isLoadingMore}>
+                {isLoadingMore ? "Memuat riwayat…" : "Muat riwayat berikutnya"}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

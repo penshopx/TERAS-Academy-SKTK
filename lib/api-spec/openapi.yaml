@@ -140,13 +140,29 @@ paths:
       summary: Get the learner capability journey
       responses:
         "200":
-          description: Journey timeline
+          description: Complete journey timeline retained for backwards compatibility
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: "#/components/schemas/JourneyStep"
+  /learner/journey-page:
+    get:
+      operationId: getLearnerJourneyPage
+      tags: [learner]
+      summary: Get a chronologically stable page of the learner capability journey
+      parameters:
+        - { name: cursor, in: query, schema: { type: string, minLength: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        "200":
+          description: Chronologically stable journey timeline page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JourneyPage"
+        "400": { $ref: "#/components/responses/BadRequest" }
   /learner/learning-plan:
     get:
       operationId: getLearnerLearningPlan
@@ -2028,7 +2044,8 @@ x-pathway-selection-components:
           type: array
           items:
             $ref: "#/components/schemas/JourneyStep"
-      required: [learner, headline, subtitle, readinessDisclaimer, achievements, timeline]
+        timelineNextCursor: { type: ["string", "null"] }
+      required: [learner, headline, subtitle, readinessDisclaimer, achievements, timeline, timelineNextCursor]
     CapabilityAchievement:
       type: object
       properties:
@@ -4126,6 +4143,15 @@ components:
             type: array
             items: { type: string }
       required: [id, pathwayId, pathwayName, label, description, status, date, href]
+    JourneyPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/JourneyStep"
+        nextCursor: { type: ["string", "null"] }
     LearningPlanItem:
       type: object
       properties:
@@ -4682,7 +4708,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/JourneyStep"
-      required: [learner, pathway, headline, subtitle, terminalPortfolio, readinessDisclaimer, readiness, achievements, timeline]
+        timelineNextCursor: { type: ["string", "null"] }
+      required: [learner, pathway, headline, subtitle, terminalPortfolio, readinessDisclaimer, readiness, achievements, timeline, timelineNextCursor]
     LearnerPortfolioExport:
       type: object
       required: [schemaVersion, documentId, exportedAt, portfolio, integrity]

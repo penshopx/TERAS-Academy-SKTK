@@ -23,4 +23,6 @@ export interface CapabilityPassport {
   readiness: ReadinessSummary;
   achievements: CapabilityAchievement[];
   timeline: JourneyStep[];
+  /** @nullable */
+  timelineNextCursor: string | null;
 }

@@ -77,5 +77,6 @@ test("passport keeps the canonical safety panel beside the longitudinal record",
   assert.match(source, /INTERNAL TERAS CAPABILITY RECORD/);
   assert.doesNotMatch(source, /Official Capability Record|VERIFIED ENGINE RECORD/);
   assert.match(source, /<LearnerCondition owner="Learner"\s*\/>/);
-  assert.match(source, /<PassportRecord timeline=\{passport\.timeline\} achievements=\{passport\.achievements\}\s*\/>/);
+  assert.match(source, /<PassportRecord timeline=\{timeline\} achievements=\{passport\.achievements\}\s*\/>/);
+  assert.match(source, /Muat riwayat Passport berikutnya/);
 });

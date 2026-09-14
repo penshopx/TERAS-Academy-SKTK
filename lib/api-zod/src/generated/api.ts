@@ -480,6 +480,36 @@ export const GetLearnerJourneyResponse = zod.array(GetLearnerJourneyResponseItem
 
 
 /**
+ * @summary Get a chronologically stable page of the learner capability journey
+ */
+
+export const getLearnerJourneyPageQueryLimitDefault = 50;
+export const getLearnerJourneyPageQueryLimitMax = 100;
+
+
+
+export const GetLearnerJourneyPageQueryParams = zod.object({
+  "cursor": zod.coerce.string().min(1).optional(),
+  "limit": zod.coerce.number().int().min(1).max(getLearnerJourneyPageQueryLimitMax).default(getLearnerJourneyPageQueryLimitDefault)
+})
+
+export const GetLearnerJourneyPageResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "pathwayId": zod.string().nullable(),
+  "pathwayName": zod.string().nullable(),
+  "label": zod.string(),
+  "description": zod.string(),
+  "status": zod.string(),
+  "date": zod.coerce.date().nullable(),
+  "href": zod.string().nullable(),
+  "causalReferences": zod.record(zod.string(), zod.array(zod.string())).optional()
+})),
+  "nextCursor": zod.string().nullable()
+})
+
+
+/**
  * @summary Get the individual learning plan
  */
 export const getLearnerLearningPlanResponseModuleProgressMin = 0;
@@ -1881,7 +1911,8 @@ export const GetCapabilityPassportResponse = zod.object({
   "date": zod.coerce.date().nullable(),
   "href": zod.string().nullable(),
   "causalReferences": zod.record(zod.string(), zod.array(zod.string())).optional()
-}))
+})),
+  "timelineNextCursor": zod.string().nullable()
 })
 
 
@@ -2118,7 +2149,8 @@ export const ExportLearnerPortfolioResponse = zod.object({
   "date": zod.coerce.date().nullable(),
   "href": zod.string().nullable(),
   "causalReferences": zod.record(zod.string(), zod.array(zod.string())).optional()
-}))
+})),
+  "timelineNextCursor": zod.string().nullable()
 }),
   "integrity": zod.object({
   "algorithm": zod.enum(['SHA-256']),

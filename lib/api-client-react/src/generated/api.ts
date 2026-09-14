@@ -95,7 +95,9 @@ import type {
   ForbiddenResponse,
   Gap,
   GetAssessmentParams,
+  GetLearnerJourneyPageParams,
   HealthStatus,
+  JourneyPage,
   JourneyStep,
   KnowledgeArticle,
   KnowledgeArticleInput,
@@ -695,6 +697,90 @@ export function useGetLearnerJourney<TData = Awaited<ReturnType<typeof getLearne
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetLearnerJourneyQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetLearnerJourneyPageUrl = (params?: GetLearnerJourneyPageParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/learner/journey-page?${stringifiedParams}` : `/api/learner/journey-page`
+}
+
+/**
+ * @summary Get a chronologically stable page of the learner capability journey
+ */
+export const getLearnerJourneyPage = async (params?: GetLearnerJourneyPageParams, options?: Parameters<typeof customFetch>[1]): Promise<JourneyPage> => {
+
+  return customFetch<JourneyPage>(getGetLearnerJourneyPageUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLearnerJourneyPageQueryKey = (params?: GetLearnerJourneyPageParams,) => {
+    return [
+    `/api/learner/journey-page`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetLearnerJourneyPageQueryOptions = <TData = Awaited<ReturnType<typeof getLearnerJourneyPage>>, TError = ErrorType<BadRequestResponse>>(params?: GetLearnerJourneyPageParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLearnerJourneyPage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLearnerJourneyPageQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLearnerJourneyPage>>> = ({ signal }) => getLearnerJourneyPage(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLearnerJourneyPage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLearnerJourneyPageQueryResult = NonNullable<Awaited<ReturnType<typeof getLearnerJourneyPage>>>
+export type GetLearnerJourneyPageQueryError = ErrorType<BadRequestResponse>
+
+
+/**
+ * @summary Get a chronologically stable page of the learner capability journey
+ */
+
+export function useGetLearnerJourneyPage<TData = Awaited<ReturnType<typeof getLearnerJourneyPage>>, TError = ErrorType<BadRequestResponse>>(
+ params?: GetLearnerJourneyPageParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLearnerJourneyPage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLearnerJourneyPageQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

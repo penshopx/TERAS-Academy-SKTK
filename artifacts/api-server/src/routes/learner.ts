@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
-import { CompleteRemediationActivityBody, CompleteRemediationActivityParams, CompleteRemediationActivityResponse, CompleteRemediationParams, CompleteRemediationResponse, CreateEvidenceBody, CreateEvidenceResponse, CreatePracticeAttemptBody, CreatePracticeAttemptParams, CreatePracticeAttemptResponse, ExportLearnerPortfolioResponse, GetCapabilityPassportResponse, GetLearnerDashboardResponse, GetLearnerJourneyResponse, GetLearnerLearningPlanResponse, GetLearnerReadinessResponse, ListEvidenceResponse, ListGapsResponse, ListRemediationResponse, SelectLearnerPathwayBody, SelectLearnerPathwayResponse } from "@workspace/api-zod";
+import { CompleteRemediationActivityBody, CompleteRemediationActivityParams, CompleteRemediationActivityResponse, CompleteRemediationParams, CompleteRemediationResponse, CreateEvidenceBody, CreateEvidenceResponse, CreatePracticeAttemptBody, CreatePracticeAttemptParams, CreatePracticeAttemptResponse, ExportLearnerPortfolioResponse, GetCapabilityPassportResponse, GetLearnerDashboardResponse, GetLearnerJourneyPageQueryParams, GetLearnerJourneyPageResponse, GetLearnerJourneyResponse, GetLearnerLearningPlanResponse, GetLearnerReadinessResponse, ListEvidenceResponse, ListGapsResponse, ListRemediationResponse, SelectLearnerPathwayBody, SelectLearnerPathwayResponse } from "@workspace/api-zod";
 import { db, assessmentAttemptsTable, assessmentsTable, enrollmentPathwayEventsTable, enrollmentsTable, evidenceReviewsTable, evidenceTable, learningTransitionEventsTable, learningRecordLinksTable, learningActivitiesTable, lessonsTable, courseModulesTable, modulesTable, pathwaysTable, practiceAttemptsTable, practiceTasksTable, reassessmentLinksTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, diagnosticSessionsTable, diagnosticProfilesTable, diagnosticGapsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, gapsTable, readinessEventsTable } from "@workspace/db";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { baselineForModule, catalogue, evidenceRecords, gapRecords, learnerContext, moduleSummary, pathwayHasModule, pathwaySummary, progressByModule, readiness, remediationRecords, selectedBaselineModuleIds, terminalPortfolioForPathway } from "../lib/teras";
@@ -9,6 +9,33 @@ import { pinPublishedBaseline } from "../lib/baseline-authoring";
 import { learningNextAction, transitionLearningState, type LearningState, type LearningTransitionResult } from "../lib/learning-transition";
 import { createLearnerPortfolioExport } from "../lib/learner-portfolio-export";
 const router: IRouter = Router(); const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
+const TIMELINE_PAGE_SIZE = 50;
+type TimelineCursor = { date: string; id: string };
+export function encodeTimelineCursor(cursor: TimelineCursor) {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+export function decodeTimelineCursor(value: string): TimelineCursor | null {
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Partial<TimelineCursor>;
+    if (typeof parsed.date !== "string" || Number.isNaN(Date.parse(parsed.date)) || typeof parsed.id !== "string" || !parsed.id) return null;
+    return { date: new Date(parsed.date).toISOString(), id: parsed.id };
+  } catch {
+    return null;
+  }
+}
+const compareTimelineIds = (left: string, right: string) => left < right ? -1 : left > right ? 1 : 0;
+export function timelinePage<T extends { id: string; date: Date }>(records: T[], limit: number, cursor?: TimelineCursor) {
+  const start = cursor
+    ? records.findIndex(record => record.date.toISOString() > cursor.date || (record.date.toISOString() === cursor.date && compareTimelineIds(record.id, cursor.id) > 0))
+    : 0;
+  const remaining = start < 0 ? [] : records.slice(start, start + limit + 1);
+  const items = remaining.slice(0, limit);
+  const last = items.at(-1);
+  return {
+    items,
+    nextCursor: remaining.length > limit && last ? encodeTimelineCursor({ date: last.date.toISOString(), id: last.id }) : null,
+  };
+}
 function bad(req: any, res: any, error: string) { req.log.warn({ error }, "Invalid request"); res.status(400).json({ error }); }
 const digest = (value: unknown) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const scopedIdempotencyKey = (operation: string, learnerId: string, key: string) => `${operation}:${digest({ learnerId, key })}`;
@@ -49,7 +76,7 @@ async function currentLearningState(
     .limit(1);
   return (latest?.toState ?? "NOT_STARTED") as LearningState;
 }
-async function pathwayTimeline(learnerId: string) {
+async function pathwayTimeline(learnerId: string, options?: { cursor?: TimelineCursor; limit?: number }) {
   const context = await learnerContext(learnerId);
   const pathwayEvents = await db.select().from(enrollmentPathwayEventsTable)
     .where(eq(enrollmentPathwayEventsTable.enrollmentId, context.enrollment.id))
@@ -224,8 +251,13 @@ async function pathwayTimeline(learnerId: string) {
       },
     });
   }
-  records.sort((left, right) => left.date.getTime() - right.date.getTime() || left.id.localeCompare(right.id));
-  return { context, steps: records.map(record => ({ ...record, pathwayName: map.get(record.pathwayId)?.name ?? "Unknown pathway", causalReferences: record.refs ?? {} })) };
+  records.sort((left, right) => left.date.getTime() - right.date.getTime() || compareTimelineIds(left.id, right.id));
+  const page = options?.limit ? timelinePage(records, options.limit, options.cursor) : { items: records, nextCursor: null };
+  return {
+    context,
+    steps: page.items.map(record => ({ ...record, pathwayName: map.get(record.pathwayId)?.name ?? "Unknown pathway", causalReferences: record.refs ?? {} })),
+    nextCursor: page.nextCursor,
+  };
 }
 async function diagnosticView(learnerId: string) {
   const context = await learnerContext(learnerId);
@@ -394,6 +426,16 @@ router.get("/learner/journey", async (req, res): Promise<void> => {
   const timeline = await pathwayTimeline(learnerId);
   res.json(GetLearnerJourneyResponse.parse(timeline.steps));
 });
+router.get("/learner/journey-page", async (req, res): Promise<void> => {
+  const query = GetLearnerJourneyPageQueryParams.safeParse(req.query);
+  if (!query.success) { bad(req, res, query.error.message); return; }
+  const decodedCursor = query.data.cursor ? decodeTimelineCursor(query.data.cursor) : undefined;
+  if (query.data.cursor && !decodedCursor) { bad(req, res, "Invalid timeline cursor"); return; }
+  const cursor = decodedCursor ?? undefined;
+  const learnerId = await authorizeLearner(req, res); if (!learnerId) return;
+  const timeline = await pathwayTimeline(learnerId, { cursor, limit: query.data.limit ?? TIMELINE_PAGE_SIZE });
+  res.json(GetLearnerJourneyPageResponse.parse({ items: timeline.steps, nextCursor: timeline.nextCursor }));
+});
 router.get("/learner/learning-plan", async (req, res): Promise<void> => {
   const learnerId = await authorizeLearner(req, res); if (!learnerId) return;
   const [context, source] = await Promise.all([learnerContext(learnerId), catalogue()]);
@@ -452,12 +494,12 @@ router.get("/learner/learning-plan", async (req, res): Promise<void> => {
     })));
 });
 router.get("/learner/dashboard", async (req, res): Promise<void> => { const learnerId = await authorizeLearner(req, res); if (!learnerId) return; const [context, source] = await Promise.all([learnerContext(learnerId), catalogue()]); const { modules, tasks, enrollments } = source; const selected = await selectedBaselineModuleIds(context.pathway.id, context.baselineVersionId); const [view, gaps, evidence, progress, diagnostic] = await Promise.all([readiness(context), gapRecords(learnerId, context.pathway.id), evidenceRecords(learnerId, context.pathway.id, context.baselineVersionId), progressByModule(learnerId, context.pathway.id), diagnosticView(learnerId)]); const pathwayModules = modules.filter((module) => selected.has(module.id)).sort((a, b) => a.sequence - b.sequence); const current = pathwayModules.find((module) => progress(module.id).progress < 100) ?? pathwayModules[0]; const task = tasks.find((item) => item.moduleId === current.id); if (!current || !task) throw new Error(`Incomplete curriculum for ${context.pathway.name}`); const currentBaseline = baselineForModule(current.id, source); const currentContract = source.pathwayContracts.find(item => item.pathwayId === context.pathway.id && item.moduleId === (currentBaseline?.moduleId ?? current.id)); const result = diagnostic.attempt?.result as { baselineScore?: number; gaps?: string[]; safetyBlockers?: string[]; blocked?: boolean } | null; const diagnosticDone = diagnostic.attempt?.status === "completed"; res.json(GetLearnerDashboardResponse.parse({ learner: context.learner, program: { ...context.program, moduleCount: pathwayModules.length, learnerCount: new Set(enrollments.filter((item) => item.programId === context.program.id).map((item) => item.learnerId)).size }, pathway: view.pathway, capabilityProgress: Math.round(pathwayModules.reduce((sum, module) => sum + progress(module.id).progress, 0) / pathwayModules.length), readiness: view, currentLearning: moduleSummary(current, progress(current.id).progress, progress(current.id).status, context.pathway.id, currentBaseline, currentContract), currentPractice: { ...task, status: "Available" }, mainGap: gaps.find((gap) => gap.status !== "Resolved") ?? null, evidenceCounts: { total: evidence.length, valid: evidence.filter((item) => item.status === "Valid").length, underReview: evidence.filter((item) => item.status === "Under review").length, needsRevision: evidence.filter((item) => item.status === "Needs revision").length }, diagnostic: { status: diagnostic.attempt?.status ?? "not_started", score: diagnosticDone ? result?.baselineScore ?? 0 : null, topGaps: diagnosticDone ? result?.gaps?.slice(0, 3) ?? [] : [], safetyBlockers: diagnosticDone ? result?.safetyBlockers ?? [] : [], blocked: diagnosticDone ? Boolean(result?.blocked) : false }, nextAction: !diagnosticDone ? { title: diagnostic.attempt ? "Resume your diagnostic" : "Start your diagnostic", description: "Set your personal baseline before continuing pathway learning.", href: "/diagnostic", priority: "High" } : { title: `Continue ${current.code}`, description: result?.blocked ? "Resolve the critical safety blocker before practice." : "Continue your active pathway learning.", href: result?.blocked ? "/diagnostic/result" : `/modules/${current.id}`, priority: "High" } })); });
-async function capabilityPassport(learnerId: string) {
+async function capabilityPassport(learnerId: string, timelineLimit?: number) {
   const context = await learnerContext(learnerId);
   // Readiness persists the decision snapshot. Build the timeline afterwards so
   // a first passport request includes the exact decision it returns.
   const view = await readiness(context);
-  const timeline = await pathwayTimeline(learnerId);
+  const timeline = await pathwayTimeline(learnerId, timelineLimit ? { limit: timelineLimit } : undefined);
   const [attempts, assessments, modules, evidence, selected] = await Promise.all([
     db.select().from(assessmentAttemptsTable).where(and(
       eq(assessmentAttemptsTable.learnerId, learnerId),
@@ -498,12 +540,13 @@ async function capabilityPassport(learnerId: string) {
     readiness: view,
     achievements,
     timeline: timeline.steps,
+    timelineNextCursor: timeline.nextCursor,
   });
 }
 router.get("/passport", async (req, res): Promise<void> => {
   const learnerId = await authorizeLearner(req, res);
   if (!learnerId) return;
-  res.json(await capabilityPassport(learnerId));
+  res.json(await capabilityPassport(learnerId, TIMELINE_PAGE_SIZE));
 });
 router.get("/passport/export", async (req, res): Promise<void> => {
   const learnerId = await authorizeLearner(req, res);

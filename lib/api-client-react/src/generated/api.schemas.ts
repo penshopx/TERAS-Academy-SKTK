@@ -2358,6 +2358,12 @@ export interface JourneyStep {
   causalReferences?: JourneyStepCausalReferences;
 }
 
+export interface JourneyPage {
+  items: JourneyStep[];
+  /** @nullable */
+  nextCursor: string | null;
+}
+
 export interface LearningPlanItem {
   id: string;
   module: ModuleSummary;
@@ -3000,6 +3006,8 @@ export interface CapabilityPassport {
   readiness: ReadinessSummary;
   achievements: CapabilityAchievement[];
   timeline: JourneyStep[];
+  /** @nullable */
+  timelineNextCursor: string | null;
 }
 
 export type LearnerPortfolioExportSchemaVersion = typeof LearnerPortfolioExportSchemaVersion[keyof typeof LearnerPortfolioExportSchemaVersion];
@@ -3170,6 +3178,18 @@ export type ForbiddenResponse = ErrorResponse;
  * Resource not found
  */
 export type NotFoundResponse = ErrorResponse;
+
+export type GetLearnerJourneyPageParams = {
+/**
+ * @minLength 1
+ */
+cursor?: string;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
 
 export type GetAssessmentParams = {
 /**
