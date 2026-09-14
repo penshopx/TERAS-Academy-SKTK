@@ -9,6 +9,9 @@ const learningRoute = readFileSync(new URL("../../artifacts/api-server/src/route
 const transition = readFileSync(new URL("../../artifacts/api-server/src/lib/learning-transition.ts", import.meta.url), "utf8");
 const lmsSchema = readFileSync(new URL("../../lib/db/src/schema/lms.ts", import.meta.url), "utf8");
 const postMerge = readFileSync(new URL("../post-merge.sh", import.meta.url), "utf8");
+const baselineSchema = readFileSync(new URL("../../lib/db/src/schema/baseline.ts", import.meta.url), "utf8");
+const singleTargetMigration = readFileSync(new URL("../../lib/db/migrations/0045_legacy_module_single_baseline.sql", import.meta.url), "utf8");
+const schemaCheck = readFileSync(new URL("../schema-check.sql", import.meta.url), "utf8");
 
 const modules = [
   ["M01", "Fundamentals", "E01"],
@@ -73,4 +76,14 @@ test("pathway contracts remain explicitly differentiated", () => {
   assert.doesNotMatch(lmsSchema, /name: "teras_outcome_verification_activity_pathway_fk"/);
   assert.match(postMerge, /run seed\n/);
   assert.match(postMerge, /run test:solar-pv-baseline-integration/);
+});
+
+test("each legacy module has exactly one database-enforced baseline target", () => {
+  assert.match(baselineSchema, /teras_legacy_module_mappings_legacy_unique"\)\.on\(table\.legacyModuleId\)/);
+  assert.match(singleTargetMigration, /HAVING count\(DISTINCT baseline_module_id\) > 1/);
+  assert.match(singleTargetMigration, /duplicate mappings: %/);
+  assert.match(singleTargetMigration, /ON teras_legacy_module_mappings \(legacy_module_id\)/);
+  assert.match(schemaCheck, /HAVING count\(DISTINCT baseline_module_id\) > 1/);
+  assert.match(seed, /target: legacyModuleMappingsTable\.legacyModuleId/);
+  assert.match(postMerge, /0045_legacy_module_single_baseline\.sql/);
 });

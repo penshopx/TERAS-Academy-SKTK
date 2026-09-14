@@ -112,7 +112,7 @@ export const legacyModuleMappingsTable = pgTable("teras_legacy_module_mappings",
   note: text("note").notNull(),
   ...audit,
 }, table => [
-  uniqueIndex("teras_legacy_module_mappings_legacy_baseline_unique").on(table.legacyModuleId, table.baselineModuleId),
+  uniqueIndex("teras_legacy_module_mappings_legacy_unique").on(table.legacyModuleId),
 ]);
 
 const tables = {

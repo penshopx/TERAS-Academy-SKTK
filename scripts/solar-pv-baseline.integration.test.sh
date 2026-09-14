@@ -68,10 +68,21 @@ SQL
 
 export PGOPTIONS="-c search_path=$schema"
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f lib/db/migrations/0034_solar_pv_shared_learning_baseline.sql >/dev/null
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f lib/db/migrations/0045_legacy_module_single_baseline.sql >/dev/null
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -c "ALTER TABLE teras_learning_baselines ADD COLUMN IF NOT EXISTS published_version_id text" >/dev/null
 pnpm --filter @workspace/scripts run seed -- --baseline-only >/dev/null
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f lib/db/migrations/0034_solar_pv_shared_learning_baseline.sql >/dev/null
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f lib/db/migrations/0045_legacy_module_single_baseline.sql >/dev/null
+
+if psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+  "INSERT INTO teras_legacy_module_mappings
+     (id, legacy_module_id, baseline_module_id, pathway_id, status, note, created_by)
+   VALUES ('duplicate-b01', 'b01', 'baseline-module-m01', 'path-b', 'retired', 'must fail', 'integration-test')" \
+  >/dev/null 2>&1; then
+  echo "Legacy module accepted more than one baseline target" >&2
+  exit 1
+fi
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
 DO $$
@@ -118,4 +129,32 @@ BEGIN
   END IF;
 END $$;
 SQL
+
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+DROP INDEX teras_legacy_module_mappings_legacy_unique;
+DROP INDEX IF EXISTS teras_legacy_module_mappings_legacy_baseline_unique;
+INSERT INTO teras_legacy_module_mappings
+  (id, legacy_module_id, baseline_module_id, pathway_id, status, note, created_by)
+VALUES
+  ('ambiguous-b01', 'b01', 'baseline-module-m01', 'path-b', 'retired',
+   'Legacy ambiguity fixture', 'integration-test');
+SQL
+
+migration_error="$(mktemp)"
+if psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0045_legacy_module_single_baseline.sql \
+  >/dev/null 2>"$migration_error"; then
+  echo "Single-target migration accepted ambiguous legacy data" >&2
+  rm -f "$migration_error"
+  exit 1
+fi
+if ! grep -Fq \
+  'duplicate mappings: b01 -> [baseline-module-m01, baseline-module-m05]' \
+  "$migration_error"; then
+  echo "Single-target migration did not report the ambiguous legacy module and targets" >&2
+  cat "$migration_error" >&2
+  rm -f "$migration_error"
+  exit 1
+fi
+rm -f "$migration_error"
 echo "Solar PV baseline migration/helper integration passed"

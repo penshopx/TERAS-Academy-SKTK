@@ -105,6 +105,9 @@ if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_people') IS
   # evaluates the additive pathway and legacy compatibility mappings.
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0034_solar_pv_shared_learning_baseline.sql
+  # Reject ambiguous legacy-module targets before enforcing one baseline target.
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0045_legacy_module_single_baseline.sql
   # Preserve diagnostic source provenance before application code starts
   # requiring it for causal learning transitions.
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
@@ -185,6 +188,8 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0033_enrollment_event_context.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0034_solar_pv_shared_learning_baseline.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0045_legacy_module_single_baseline.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0035_diagnostic_provenance.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \

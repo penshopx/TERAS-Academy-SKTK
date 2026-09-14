@@ -81,10 +81,16 @@ async function seed(): Promise<void> {
         evidence: `${baselineEvidence[index]} — baseline evidence requirement`, output: pathwayId === "path-a" ? "Capability Portfolio entry" : "Certification Readiness Portfolio entry",
         kpi: pathwayId === "path-a" ? "capability achievement" : "readiness", portfolio: pathwayId === "path-a" ? "Capability Portfolio" : "Certification Readiness Portfolio",
       }))));
-      await upsert(legacyModuleMappingsTable, Object.entries({ b01: "m05", b02: "m02", b03: "m04", b04: "m07", b05: "m06", b06: "m08", b07: "m09", b08: "m10" }).map(([legacyModuleId, moduleId]) => ({
+      const legacyMappings = Object.entries({ b01: "m05", b02: "m02", b03: "m04", b04: "m07", b05: "m06", b06: "m08", b07: "m09", b08: "m10" }).map(([legacyModuleId, moduleId]) => ({
         id: `legacy-map-${legacyModuleId}`, legacyModuleId, baselineModuleId: `baseline-module-${moduleId}`, pathwayId: "path-b", status: "retired",
         note: "Legacy Path B catalogue record retained for historical learner references.",
-      })));
+      }));
+      for (const mapping of legacyMappings) {
+        await tx.insert(legacyModuleMappingsTable).values(mapping).onConflictDoUpdate({
+          target: legacyModuleMappingsTable.legacyModuleId,
+          set: { baselineModuleId: mapping.baselineModuleId, pathwayId: mapping.pathwayId, status: mapping.status, note: mapping.note },
+        });
+      }
     });
     return;
   }
@@ -136,10 +142,15 @@ async function seed(): Promise<void> {
     portfolio:pathwayId === "path-a" ? "Capability Portfolio" : "Certification Readiness Portfolio",
   }))));
   const legacyMappings: Record<string, string> = { b01:"m05", b02:"m02", b03:"m04", b04:"m07", b05:"m06", b06:"m08", b07:"m09", b08:"m10" };
-  await upsert(legacyModuleMappingsTable, Object.entries(legacyMappings).map(([legacyModuleId, moduleId]) => ({
+  for (const mapping of Object.entries(legacyMappings).map(([legacyModuleId, moduleId]) => ({
     id:`legacy-map-${legacyModuleId}`, legacyModuleId, baselineModuleId:`baseline-module-${moduleId}`,
     pathwayId:"path-b", status:"retired", note:"Legacy Path B catalogue record retained for historical learner references.",
-  })));
+  }))) {
+    await tx.insert(legacyModuleMappingsTable).values(mapping).onConflictDoUpdate({
+      target: legacyModuleMappingsTable.legacyModuleId,
+      set: { baselineModuleId: mapping.baselineModuleId, pathwayId: mapping.pathwayId, status: mapping.status, note: mapping.note, updatedAt: now },
+    });
+  }
   await insert(coursesTable, [
     {id:"course-solar-installation",programId:"solar-pv-tech",pathwayId:"path-a",code:"SPV-INSTALL",title:"Solar PV Installation Learning Core",description:"Learning preparation linked to the existing installation capability pathway.",status:"PUBLISHED",sequence:1},
     {id:"course-solar-design",programId:"solar-pv-tech",pathwayId:"path-b",code:"SPV-DESIGN",title:"Solar PV Design Learning Core",description:"Learning preparation linked to the existing design capability pathway.",status:"PUBLISHED",sequence:1},

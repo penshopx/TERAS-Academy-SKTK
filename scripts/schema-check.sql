@@ -273,7 +273,13 @@ BEGIN
     RAISE EXCEPTION 'Shared baseline pathway mappings or differentiated pathway contracts are incomplete';
   END IF;
 
-  IF (SELECT count(*) FROM teras_legacy_module_mappings WHERE pathway_id = 'path-b' AND status = 'retired') <> 8
+  IF EXISTS (
+      SELECT 1
+      FROM teras_legacy_module_mappings
+      GROUP BY legacy_module_id
+      HAVING count(DISTINCT baseline_module_id) > 1
+    )
+    OR (SELECT count(*) FROM teras_legacy_module_mappings WHERE pathway_id = 'path-b' AND status = 'retired') <> 8
     OR EXISTS (
       SELECT 1 FROM (VALUES
         ('b01','M05'),('b02','M02'),('b03','M04'),('b04','M07'),
@@ -288,7 +294,7 @@ BEGIN
           AND lm.status = 'retired'
       )
     ) THEN
-    RAISE EXCEPTION 'Legacy B01-B08 compatibility mappings are incomplete';
+    RAISE EXCEPTION 'Legacy B01-B08 compatibility mappings are incomplete or ambiguous';
   END IF;
 
   IF EXISTS (
