@@ -133,6 +133,9 @@ grep -Fq 'pnpm --filter @workspace/scripts run test:super-admin-provisioning-pol
   grep -Fq 'pnpm --filter @workspace/scripts run test:super-admin-provisioning' "$gate" &&
   grep -Fq 'env DATABASE_URL="$test_database_url"' "$gate" ||
   fail "release gate must block on Super Admin policy and ready/legacy provisioning checks"
+grep -Fq 'pnpm --filter @workspace/api-server run test:admin-module-catalogue' "$gate" &&
+  grep -Fq 'reproduce locally with: pnpm --filter @workspace/api-server run test:admin-module-catalogue' "$gate" ||
+  fail "release gate must block on legacy module catalogue integrity with an actionable reproduction command"
 
 mock_dir="$(mktemp -d)"
 trap 'rm -rf "$mock_dir"' EXIT
@@ -323,12 +326,15 @@ grep -Fq 'test:browser-admin-access' "$mock_dir/pnpm-calls.log" ||
 grep -Fq 'test:super-admin-provisioning-policy' "$mock_dir/pnpm-calls.log" &&
   grep -Fq 'test:super-admin-provisioning' "$mock_dir/pnpm-calls.log" ||
   fail "release gate did not execute both Super Admin checks before later checks"
+grep -Fq 'test:admin-module-catalogue' "$mock_dir/pnpm-calls.log" ||
+  fail "release gate did not execute the legacy module catalogue integrity check"
 node - "$gate_json_report" <<'EOF' ||
 const fs = require("fs");
 const report = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 const expected = [
   "Super Admin provisioning policy",
   "Super Admin ready and legacy provisioning",
+  "legacy module catalogue integrity",
 ];
 for (const name of expected) {
   const check = report.checks.find((candidate) => candidate.name === name);

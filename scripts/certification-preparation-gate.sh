@@ -193,6 +193,7 @@ run_check "schema provisioning" "command failed" env DATABASE_URL="$test_databas
 run_check "Super Admin provisioning policy" "reproduce locally with: pnpm --filter @workspace/scripts run test:super-admin-provisioning-policy" pnpm --filter @workspace/scripts run test:super-admin-provisioning-policy || exit 1
 run_check "Super Admin ready and legacy provisioning" "reproduce locally with: DATABASE_URL=<maintenance-database-url> pnpm --filter @workspace/scripts run test:super-admin-provisioning" env DATABASE_URL="$test_database_url" pnpm --filter @workspace/scripts run test:super-admin-provisioning || exit 1
 run_check "authoring and safe-media input contract" "command failed" env DATABASE_URL="$test_database_url" NODE_ENV=test pnpm --filter @workspace/api-server exec tsx ./src/course-authoring.contract.test.ts || exit 1
+run_check "legacy module catalogue integrity" "reproduce locally with: pnpm --filter @workspace/api-server run test:admin-module-catalogue" env DATABASE_URL="$test_database_url" pnpm --filter @workspace/api-server run test:admin-module-catalogue || exit 1
 run_check "shared certification preparation journey" "command failed" env DATABASE_URL="$test_database_url" NODE_ENV=test TERAS_GATE_STORAGE_NAMESPACE="$storage_namespace" pnpm --filter @workspace/api-server exec tsx ./src/certification-preparation-journey.integration.ts || exit 1
 run_check "admin browser access gate" "reproduce locally with: pnpm --filter @workspace/api-server run test:browser-admin-access" pnpm --filter @workspace/api-server run test:browser-admin-access || exit 1
 

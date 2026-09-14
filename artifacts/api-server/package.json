@@ -28,6 +28,7 @@
     "test:readiness-dashboard-isolation": "NODE_ENV=test tsx ./src/readiness-dashboard-isolation.integration.ts",
     "test:diagnostic": "NODE_ENV=test tsx ./src/diagnostic.integration-runner.ts",
     "test:admin-authorization": "NODE_ENV=test tsx ./src/admin-authorization.integration.ts",
+    "test:admin-module-catalogue": "NODE_ENV=test tsx --test ./src/admin-module-catalogue.contract.test.ts && bash ../../scripts/admin-module-catalogue.integration.test.sh",
     "test:competency": "NODE_ENV=test tsx ./src/competency.integration-runner.ts",
     "test:super-admin-mfa-policy": "tsx --test ./src/lib/super-admin-mfa-policy.test.ts",
     "test:admin-membership-write-guard": "tsx ./src/admin-membership-write-guard.test.ts",
