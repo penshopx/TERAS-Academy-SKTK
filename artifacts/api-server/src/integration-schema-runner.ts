@@ -10,17 +10,22 @@ type IsolatedIntegrationOptions = {
   setupCommand?: readonly string[];
   setupTimeoutMs?: number;
   testTimeoutMs?: number;
+  connectionTimeoutMs?: number;
+  cleanupTimeoutMs?: number;
   setupEnvironment?: Readonly<Record<string, string>>;
   testEnvironment?: Readonly<Record<string, string>>;
   useEmptyDatabase?: boolean;
   excludeTables?: readonly string[];
   staleSchemaAgeMs?: number;
   cleanupStaleSchemas?: typeof cleanupStaleIntegrationSchemas;
+  createAdminClient?: (connectionString: string, connectionTimeoutMs: number) => InstanceType<typeof Client>;
 };
 
 const DEFAULT_STALE_SCHEMA_AGE_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_SETUP_TIMEOUT_MS = 2 * 60 * 1000;
 const DEFAULT_TEST_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_CONNECTION_TIMEOUT_MS = 15 * 1000;
+const DEFAULT_CLEANUP_TIMEOUT_MS = 30 * 1000;
 const SCHEMA_METADATA_KIND = "teras-integration-test";
 const SCHEMA_METADATA_VERSION = 1;
 const ADVISORY_LOCK_SEED = 847_201;
@@ -342,27 +347,89 @@ async function runTestFile(
   );
 }
 
+function assertPositiveTimeout(name: string, timeoutMs: number) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error(`${name} must be a positive number, received ${timeoutMs}`);
+  }
+}
+
+async function withTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string,
+  onTimeout?: () => void,
+) {
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          onTimeout?.();
+          reject(new Error(timeoutMessage));
+        }, timeoutMs);
+        timeout.unref();
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+function terminateAdminConnection(admin: InstanceType<typeof Client>) {
+  const connection = (
+    admin as InstanceType<typeof Client> & {
+      connection?: { stream?: { destroy?: (error?: Error) => void } };
+    }
+  ).connection;
+  connection?.stream?.destroy?.();
+}
+
+function combineRunAndCleanupErrors(runError: unknown, cleanupError: unknown) {
+  if (runError === undefined) return cleanupError;
+  if (cleanupError === undefined) return runError;
+  return new AggregateError(
+    [runError, cleanupError],
+    "Integration command failed and database cleanup also failed",
+    { cause: runError },
+  );
+}
+
 export async function runIsolatedIntegrationTest({
   schemaPrefix,
   testFile,
   setupCommand,
   setupTimeoutMs = DEFAULT_SETUP_TIMEOUT_MS,
   testTimeoutMs = DEFAULT_TEST_TIMEOUT_MS,
+  connectionTimeoutMs = DEFAULT_CONNECTION_TIMEOUT_MS,
+  cleanupTimeoutMs = DEFAULT_CLEANUP_TIMEOUT_MS,
   setupEnvironment,
   testEnvironment,
   useEmptyDatabase = false,
   excludeTables = [],
   staleSchemaAgeMs = DEFAULT_STALE_SCHEMA_AGE_MS,
   cleanupStaleSchemas = cleanupStaleIntegrationSchemas,
+  createAdminClient = (connectionString, timeoutMs) => new Client({
+    connectionString,
+    connectionTimeoutMillis: timeoutMs,
+  }),
 }: IsolatedIntegrationOptions) {
   assertTestEnvironment();
+  assertPositiveTimeout("Integration database connection timeout", connectionTimeoutMs);
+  assertPositiveTimeout("Integration database cleanup timeout", cleanupTimeoutMs);
   const prefix = safeSchemaPrefix(schemaPrefix);
   const schemaName = `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
-  const admin = new Client({ connectionString: process.env.DATABASE_URL });
+  const admin = createAdminClient(process.env.DATABASE_URL!, connectionTimeoutMs);
   let connected = false;
+  let runError: unknown;
 
   try {
-    await admin.connect();
+    await withTimeout(
+      admin.connect(),
+      connectionTimeoutMs,
+      `Integration database connection timed out after ${connectionTimeoutMs}ms`,
+      () => terminateAdminConnection(admin),
+    );
     connected = true;
     if (useEmptyDatabase) {
       await assertCanCreateDisposableDatabase(admin);
@@ -412,28 +479,45 @@ export async function runIsolatedIntegrationTest({
       testTimeoutMs,
       testEnvironment,
     );
+  } catch (error) {
+    runError = error;
   } finally {
+    let cleanupError: unknown;
     if (connected) {
-      if (useEmptyDatabase) {
-        try {
-          await admin.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(schemaName)} WITH (FORCE)`);
-        } finally {
-          await admin.end();
-        }
-      } else {
-        try {
-          await admin.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
-        } finally {
+      const cleanup = async () => {
+        if (useEmptyDatabase) {
           try {
-            await admin.query(
-              "SELECT pg_advisory_unlock(hashtextextended($1, $2))",
-              [schemaName, ADVISORY_LOCK_SEED],
-            );
+            await admin.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(schemaName)} WITH (FORCE)`);
           } finally {
             await admin.end();
           }
+        } else {
+          try {
+            await admin.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
+          } finally {
+            try {
+              await admin.query(
+                "SELECT pg_advisory_unlock(hashtextextended($1, $2))",
+                [schemaName, ADVISORY_LOCK_SEED],
+              );
+            } finally {
+              await admin.end();
+            }
+          }
         }
+      };
+      try {
+        await withTimeout(
+          cleanup(),
+          cleanupTimeoutMs,
+          `Integration database cleanup timed out after ${cleanupTimeoutMs}ms`,
+          () => terminateAdminConnection(admin),
+        );
+      } catch (error) {
+        cleanupError = error;
       }
     }
+    const finalError = combineRunAndCleanupErrors(runError, cleanupError);
+    if (finalError !== undefined) throw finalError;
   }
 }

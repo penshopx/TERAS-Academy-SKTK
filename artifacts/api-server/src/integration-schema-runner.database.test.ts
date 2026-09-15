@@ -524,3 +524,46 @@ test("a timed out setup is killed and removes its empty disposable database", {
     await client.end();
   }
 });
+
+test("cleanup timeout stops the runner without hiding the command failure", async () => {
+  let connectionDestroyed = false;
+  const never = new Promise<never>(() => {});
+  const fakeAdmin = {
+    connection: {
+      stream: {
+        destroy: () => {
+          connectionDestroyed = true;
+        },
+      },
+    },
+    connect: async () => undefined,
+    query: async (query: string) => {
+      if (query.includes("SELECT tablename")) return { rows: [] };
+      if (query.startsWith("DROP SCHEMA")) return never;
+      return { rows: [] };
+    },
+    end: async () => undefined,
+  } as unknown as InstanceType<typeof Client>;
+
+  const startedAt = Date.now();
+  await assert.rejects(
+    runIsolatedIntegrationTest({
+      schemaPrefix: "cleanup_timeout_test",
+      testFile: "./src/fixtures/integration-schema-runner-failure.fixture.ts",
+      cleanupTimeoutMs: 100,
+      createAdminClient: () => fakeAdmin,
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof AggregateError);
+      assert.match(error.message, /command failed and database cleanup also failed/i);
+      assert.match(String(error.errors[0]), /failed with exit code 1/);
+      assert.match(
+        String(error.errors[1]),
+        /Integration database cleanup timed out after 100ms/,
+      );
+      return true;
+    },
+  );
+  assert.ok(Date.now() - startedAt < 5_000);
+  assert.equal(connectionDestroyed, true);
+});
