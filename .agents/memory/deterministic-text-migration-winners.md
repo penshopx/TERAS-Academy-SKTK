@@ -7,4 +7,4 @@ When a data migration uses a text identifier as the final tie-breaker for a winn
 
 **Why:** PostgreSQL databases can use different libc or ICU collations, so identical tied records can otherwise produce different upgrade results.
 
-**How to apply:** Audit winner-producing `ORDER BY`, `DISTINCT ON`, ranking, and text min/max expressions. Use `COLLATE "C"` on the text tie-breaker and rehearse tied mixed-case IDs; exclude presentation ordering and non-text keys.
+**How to apply:** Audit winner-producing `ORDER BY`, `DISTINCT ON`, ranking, and text min/max expressions. Use `COLLATE "C"` on the text tie-breaker and rehearse tied mixed-case IDs; exclude presentation ordering and non-text keys. Static audits must analyze each SQL statement independently because unrelated ordering and reused aliases can otherwise mask unsafe winners.
