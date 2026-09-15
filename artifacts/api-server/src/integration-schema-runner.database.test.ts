@@ -20,6 +20,7 @@ const setupFixture = "./src/fixtures/integration-schema-runner-setup.fixture.ts"
 const afterSetupFixture = "./src/fixtures/integration-schema-runner-after-setup.fixture.ts";
 const forcedTerminationRunnerFixture =
   "./src/fixtures/integration-schema-runner-forced-termination-runner.fixture.ts";
+const hangFixture = "./src/fixtures/integration-schema-runner-hang.fixture.ts";
 const successFixture = "./src/fixtures/integration-schema-runner-success.fixture.ts";
 
 async function withMarkerFile(run: (markerFile: string) => Promise<void>) {
@@ -49,6 +50,22 @@ async function schemaExists(client: InstanceType<typeof Client>, name: string) {
     [name],
   );
   return result.rows[0]?.exists ?? false;
+}
+
+async function databasesWithPrefix(
+  client: InstanceType<typeof Client>,
+  prefix: string,
+) {
+  const result = await client.query<{ database_name: string }>(
+    `
+      SELECT datname AS database_name
+      FROM pg_database
+      WHERE datname LIKE $1 ESCAPE '\\'
+      ORDER BY datname
+    `,
+    [`${prefix.replaceAll("_", "\\_")}_%`],
+  );
+  return result.rows.map(({ database_name: databaseName }) => databaseName);
 }
 
 async function waitForFile(file: string, timeoutMs = 15_000) {
@@ -463,6 +480,47 @@ test("a timed out setup is killed, prevents the test file, and cleans up its sch
       assert.deepEqual(remainingSchemas.rows, []);
     });
   } finally {
+    await client.end();
+  }
+});
+
+test("a timed out setup is killed and removes its empty disposable database", {
+  skip: !databaseUrl,
+}, async () => {
+  const client = new Client({ connectionString: databaseUrl });
+  const contractPrefix =
+    `database_runner_t_${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`;
+  await client.connect();
+  try {
+    await withMarkerFile(async (markerFile) => {
+      const command = [
+        "pnpm",
+        "--filter",
+        "@workspace/api-server",
+        "exec",
+        "tsx",
+        hangFixture,
+      ] as const;
+      await assert.rejects(
+        runIsolatedIntegrationTest({
+          schemaPrefix: contractPrefix,
+          testFile: afterSetupFixture,
+          setupCommand: command,
+          setupTimeoutMs: 2_000,
+          useEmptyDatabase: true,
+        }),
+        new RegExp(
+          `Integration command ${command.join(" ")} timed out after 2000ms`,
+        ),
+      );
+
+      assert.equal(await readFile(markerFile, "utf8"), "setup\n");
+      assert.deepEqual(await databasesWithPrefix(client, contractPrefix), []);
+    });
+  } finally {
+    for (const remainingDatabase of await databasesWithPrefix(client, contractPrefix)) {
+      await client.query(`DROP DATABASE IF EXISTS "${remainingDatabase}" WITH (FORCE)`);
+    }
     await client.end();
   }
 });
