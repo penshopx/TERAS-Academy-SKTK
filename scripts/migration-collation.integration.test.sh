@@ -7,6 +7,28 @@ cd "$repo_root"
 : "${DATABASE_URL:?DATABASE_URL must be set}"
 
 schema="teras_migration_collation_test_$$"
+collation_context="$(psql "$DATABASE_URL" -Atv ON_ERROR_STOP=1 <<'SQL'
+SELECT format(
+  'database=%s provider=%s locale=%s',
+  datname,
+  CASE datlocprovider
+    WHEN 'b' THEN 'builtin'
+    WHEN 'c' THEN 'libc'
+    WHEN 'i' THEN 'icu'
+    ELSE datlocprovider::text
+  END,
+  CASE datlocprovider
+    WHEN 'i' THEN COALESCE(
+      to_jsonb(pg_database)->>'datlocale',
+      to_jsonb(pg_database)->>'daticulocale'
+    )
+    ELSE datcollate
+  END
+)
+FROM pg_database
+WHERE datname = current_database();
+SQL
+)"
 cleanup() {
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -c "DROP SCHEMA IF EXISTS \"$schema\" CASCADE" >/dev/null
@@ -84,8 +106,10 @@ SQL
 )"
 
 if [ "$state" != "id-Z|id-Z|path-a|path-a" ]; then
-  echo "Migration winner selection was not bytewise deterministic: $state" >&2
+  echo "Migration winner selection differed for $collation_context" >&2
+  echo "Expected canonical_session=id-Z audit_winner=id-Z effective_pathway=path-a current_pathway=path-a" >&2
+  echo "Observed winners: $state" >&2
   exit 1
 fi
 
-echo "Migration collation upgrade rehearsal passed"
+echo "Migration collation upgrade rehearsal passed: $collation_context winners=$state"

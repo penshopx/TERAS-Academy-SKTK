@@ -34,6 +34,60 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  resolve-release-candidate:
+    name: Lock release candidate SHA
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.candidate.outputs.sha }}
+    steps:
+      - name: Resolve release candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_ref }}
+
+      - name: Lock release candidate SHA
+        id: candidate
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  migration-collation-upgrade:
+    name: Verify migration winners (${{ matrix.collation.name }})
+    needs: resolve-release-candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        collation:
+          - name: libc-C
+            initdb_args: --locale-provider=libc --locale=C
+          - name: icu-en-US
+            initdb_args: --locale-provider=icu --icu-locale=en-US
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_INITDB_ARGS: ${{ matrix.collation.initdb_args }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+    steps:
+      - name: Check out release candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-release-candidate.outputs.sha }}
+
+      - name: Run deterministic migration upgrade fixture
+        run: bash scripts/migration-collation.integration.test.sh
+
   verify-approval-control:
     name: Verify required human reviewers
     runs-on: ubuntu-latest
@@ -62,11 +116,13 @@ jobs:
 
   certification-preparation-evidence:
     name: Produce certification-preparation evidence
-    needs: verify-approval-control
+    needs:
+      - resolve-release-candidate
+      - verify-approval-control
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
-      candidate_sha: ${{ steps.candidate.outputs.sha }}
+      candidate_sha: ${{ needs.resolve-release-candidate.outputs.sha }}
     services:
       postgres:
         image: postgres:17-alpine
@@ -91,11 +147,7 @@ jobs:
       - name: Check out release candidate
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.target_ref }}
-
-      - name: Lock release candidate SHA
-        id: candidate
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          ref: ${{ needs.resolve-release-candidate.outputs.sha }}
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -121,11 +173,11 @@ jobs:
 
       - name: Run certification-preparation release gate
         env:
-          TERAS_GATE_CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          TERAS_GATE_CANDIDATE_SHA: ${{ needs.resolve-release-candidate.outputs.sha }}
         run: pnpm run gate:certification-preparation
 
       - name: Attest release-gate evidence
-        if: always() && steps.candidate.outputs.sha != ''
+        if: always() && needs.resolve-release-candidate.outputs.sha != ''
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
@@ -190,6 +242,7 @@ jobs:
     name: Gate Review GO/NO-GO
     needs:
       - certification-preparation-evidence
+      - migration-collation-upgrade
       - verify-release-evidence
     runs-on: ubuntu-latest
     environment: release-gate-review

@@ -38,6 +38,8 @@ job_block() {
 }
 
 verify_block="$(job_block verify-approval-control)"
+candidate_block="$(job_block resolve-release-candidate)"
+collation_block="$(job_block migration-collation-upgrade)"
 evidence_block="$(job_block certification-preparation-evidence)"
 release_evidence_block="$(job_block verify-release-evidence)"
 review_block="$(job_block gate-review)"
@@ -67,15 +69,24 @@ grep -Fq "run: pnpm run setup:browser-admin-access" <<<"$evidence_block" ||
   fail "release evidence job must install Chromium for the admin access gate"
 grep -Fq "run: pnpm run gate:certification-preparation" "$workflow" ||
   fail "workflow does not run the certification-preparation gate"
+grep -Fq 'sha: ${{ steps.candidate.outputs.sha }}' <<<"$candidate_block" &&
+  grep -Fq 'ref: ${{ inputs.target_ref }}' <<<"$candidate_block" ||
+  fail "release candidate SHA must be resolved exactly once from the requested ref"
+grep -Fq "needs: resolve-release-candidate" <<<"$collation_block" &&
+  grep -Fq 'ref: ${{ needs.resolve-release-candidate.outputs.sha }}' <<<"$collation_block" ||
+  fail "collation rehearsal must check out the locked release candidate SHA"
 grep -Fq "if: always()" "$workflow" &&
   grep -Fq "actions/upload-artifact@v4" "$workflow" ||
   fail "reports must be uploaded even when the gate fails"
-grep -Fq "needs: verify-approval-control" <<<"$evidence_block" ||
-  fail "evidence must require a verified approval control"
+grep -Fq -- "- resolve-release-candidate" <<<"$evidence_block" &&
+  grep -Fq -- "- verify-approval-control" <<<"$evidence_block" &&
+  grep -Fq 'ref: ${{ needs.resolve-release-candidate.outputs.sha }}' <<<"$evidence_block" ||
+  fail "evidence must require approval control and check out the locked release candidate SHA"
 grep -Fq -- "- certification-preparation-evidence" <<<"$review_block" &&
+  grep -Fq -- "- migration-collation-upgrade" <<<"$review_block" &&
   grep -Fq -- "- verify-release-evidence" <<<"$review_block" &&
   grep -Fq "environment: release-gate-review" <<<"$review_block" ||
-  fail "Gate Review must wait for verified evidence and human approval"
+  fail "Gate Review must wait for verified evidence, collation rehearsal, and human approval"
 grep -Fq "needs: certification-preparation-evidence" <<<"$release_evidence_block" &&
   grep -Fq "actions/download-artifact@v4" <<<"$release_evidence_block" &&
   grep -Fq "gh attestation verify" <<<"$release_evidence_block" &&
@@ -88,8 +99,8 @@ grep -Fq -- "- gate-review" <<<"$publish_block" &&
 if grep -Fq "publish-approved-release.sh" <<<"$evidence_block$review_block"; then
   fail "evidence or review jobs must not publish a release"
 fi
-grep -Fq 'candidate_sha: ${{ steps.candidate.outputs.sha }}' <<<"$evidence_block" &&
-  grep -Fq 'TERAS_GATE_CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}' <<<"$evidence_block" &&
+grep -Fq 'candidate_sha: ${{ needs.resolve-release-candidate.outputs.sha }}' <<<"$evidence_block" &&
+  grep -Fq 'TERAS_GATE_CANDIDATE_SHA: ${{ needs.resolve-release-candidate.outputs.sha }}' <<<"$evidence_block" &&
   grep -Fq 'TARGET_SHA: ${{ needs.certification-preparation-evidence.outputs.candidate_sha }}' <<<"$publish_block" ||
   fail "publication must use the exact SHA tested before approval"
 grep -Fq "actions/attest-build-provenance@v2" <<<"$evidence_block" &&
