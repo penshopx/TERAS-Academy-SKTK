@@ -1,6 +1,50 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isWithinQuietHours, reminderDeliveryAvailability } from "./lib/trainer-follow-up-notifications";
+import app from "./app";
+import { isValidIanaTimeZone, isWithinQuietHours, reminderDeliveryAvailability } from "./lib/trainer-follow-up-notifications";
+
+test("reminder preferences accept recognized IANA time zones", () => {
+  assert.equal(isValidIanaTimeZone("Asia/Jakarta"), true);
+  assert.equal(isValidIanaTimeZone("America/New_York"), true);
+});
+
+test("reminder preferences reject unrecognized IANA time zones", () => {
+  assert.equal(isValidIanaTimeZone("Invalid/Time_Zone"), false);
+  assert.equal(isValidIanaTimeZone(""), false);
+  assert.equal(isValidIanaTimeZone("+01:00"), false);
+  assert.equal(isValidIanaTimeZone("-2359"), false);
+});
+
+test("saving an invalid reminder time zone returns a clear validation response before persistence", async () => {
+  const server = app.listen(0);
+  try {
+    const address = server.address();
+    assert(address && typeof address === "object");
+
+    for (const timeZone of ["Invalid/Time_Zone", "+01:00"]) {
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/trainer/reminder-preferences`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          emailEnabled: true,
+          timeZone,
+          quietHoursStart: null,
+          quietHoursEnd: null,
+          confirmFullDayQuietHours: false,
+        }),
+      });
+
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), {
+        error: "Time zone must be a valid IANA time zone",
+      });
+    }
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close(error => error ? reject(error) : resolve());
+    });
+  }
+});
 
 test("quiet hours use the trainer time zone and can cross midnight", () => {
   const preferences = {

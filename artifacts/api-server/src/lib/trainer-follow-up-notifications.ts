@@ -76,6 +76,16 @@ export type ReminderDeliveryAvailability = {
   nextDeliveryAt: Date | null;
 };
 
+export function isValidIanaTimeZone(timeZone: string) {
+  if (/^[+-]\d{2}(?::?\d{2})?$/.test(timeZone)) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function isWithinQuietHours(now: Date, preferences: Pick<ReminderPreferences, "timeZone" | "quietHoursStart" | "quietHoursEnd">) {
   if (!preferences.quietHoursStart || !preferences.quietHoursEnd) return false;
   const parts = new Intl.DateTimeFormat("en-GB", {

@@ -7,7 +7,7 @@ import { evidenceRecords, gapRecords, pathwayHasModule, remediationRecords, sele
 import { authorizeWorkspaceRole } from "../lib/authorization";
 import { learningNextAction } from "../lib/learning-transition";
 import { latestPracticeReviews, practiceQueueState, trainerBottlenecks } from "../lib/trainer-bottlenecks";
-import { reminderDeliveryAvailability } from "../lib/trainer-follow-up-notifications";
+import { isValidIanaTimeZone, reminderDeliveryAvailability } from "../lib/trainer-follow-up-notifications";
 
 const router: IRouter = Router();
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
@@ -37,15 +37,6 @@ function reminderPreferencesResponse(preferences: ReminderPreferencesResponseSou
     ...preferences,
     ...reminderDeliveryAvailability(new Date(), preferences),
   };
-}
-
-function isTimeZone(value: string) {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export function followUpReminder(followUps: { status: string; targetAt: Date | null }[], now = new Date()) {
@@ -224,7 +215,7 @@ router.get("/trainer/reminder-preferences/history", async (req, res): Promise<vo
 router.put("/trainer/reminder-preferences", async (req, res): Promise<void> => {
   const body = UpdateTrainerReminderPreferencesBody.safeParse(req.body);
   if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
-  if (!isTimeZone(body.data.timeZone)) { res.status(400).json({ error: "Time zone must be a valid IANA time zone" }); return; }
+  if (!isValidIanaTimeZone(body.data.timeZone)) { res.status(400).json({ error: "Time zone must be a valid IANA time zone" }); return; }
   if ((body.data.quietHoursStart === null) !== (body.data.quietHoursEnd === null)) {
     res.status(400).json({ error: "Quiet hours start and end must both be set or both be empty" });
     return;

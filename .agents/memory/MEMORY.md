@@ -44,3 +44,4 @@
 - [Orphan schema cleanup isolation](orphan-schema-cleanup-isolation.md) — stale-schema cleanup is best-effort and reported; one orphan must not block the current integration run.
 - [Anonymous operational aggregates](anonymous-operational-aggregates.md) — central trends keep only coarse outcomes and counts; periods and alert thresholds are server-owned.
 - [Selective query-plan fixtures](selective-query-plan-fixtures.md) — plan regression fixtures need substantial non-target data so parent index scans are genuinely advantageous.
+- [Strict IANA time-zone validation](strict-iana-time-zone-validation.md) — Intl accepts fixed UTC offsets, so successful formatting alone does not prove an IANA identifier.
