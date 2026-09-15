@@ -240,6 +240,109 @@ test("cleanup reports one failed schema after checking the others and releases e
   }
 });
 
+test("cleanup reports a failed lock release and continues cleaning later schemas", {
+  skip: !databaseUrl,
+}, async () => {
+  const cleaner = new Client({ connectionString: databaseUrl });
+  const inspector = new Client({ connectionString: databaseUrl });
+  const contractPrefix =
+    `schema_unlock_${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`;
+  const schemaNames = [
+    `${contractPrefix}_first`,
+    `${contractPrefix}_second`,
+  ];
+  let failedUnlockName = "";
+  let dropAfterFailedUnlock = false;
+  await cleaner.connect();
+  await inspector.connect();
+  const originalQuery = cleaner.query.bind(cleaner);
+  try {
+    for (const name of schemaNames) {
+      await cleaner.query(`CREATE SCHEMA "${name}"`);
+      await cleaner.query(
+        `COMMENT ON SCHEMA "${name}" IS '${JSON.stringify({
+          kind: "teras-integration-test",
+          version: 1,
+          schemaPrefix: contractPrefix,
+          createdAt: "2000-01-01T00:00:00.000Z",
+        })}'`,
+      );
+    }
+
+    let simulatedFailurePending = true;
+    const failingCleaner = Object.create(cleaner) as InstanceType<typeof Client>;
+    failingCleaner.query = (async (query: unknown, values?: unknown[]) => {
+      if (
+        simulatedFailurePending &&
+        typeof query === "string" &&
+        query.includes("pg_advisory_unlock")
+      ) {
+        simulatedFailurePending = false;
+        failedUnlockName = String(values?.[0] ?? "");
+        throw new Error("simulated cleanup advisory unlock failure");
+      }
+      if (
+        failedUnlockName &&
+        typeof query === "string" &&
+        query.startsWith("DROP SCHEMA")
+      ) {
+        dropAfterFailedUnlock = true;
+      }
+      return originalQuery(query as never, values as never);
+    }) as InstanceType<typeof Client>["query"];
+
+    let reportedError: unknown;
+    try {
+      await cleanupStaleIntegrationSchemas(
+        failingCleaner,
+        contractPrefix,
+        staleSchemaAgeMs,
+      );
+    } catch (error) {
+      reportedError = error;
+    }
+
+    assert.ok(failedUnlockName);
+    assert.equal(dropAfterFailedUnlock, true);
+    assert.ok(reportedError instanceof AggregateError);
+    assert.match(
+      reportedError.message,
+      /Failed to clean up 1 stale integration schema operation/,
+    );
+    assert.equal(reportedError.errors.length, 1);
+    assert.match(
+      reportedError.errors[0].message,
+      /Failed to release cleanup advisory lock/,
+    );
+    assert.match(reportedError.errors[0].message, new RegExp(failedUnlockName));
+    assert.match(
+      String(reportedError.errors[0].cause),
+      /simulated cleanup advisory unlock failure/,
+    );
+    for (const name of schemaNames) {
+      assert.equal(await schemaExists(inspector, name), false);
+    }
+
+    const lock = await inspector.query<{ acquired: boolean }>(
+      "SELECT pg_try_advisory_lock(hashtextextended($1, $2)) AS acquired",
+      [failedUnlockName, 847_201],
+    );
+    assert.equal(lock.rows[0]?.acquired, false);
+  } finally {
+    if (failedUnlockName) {
+      await originalQuery(
+        "SELECT pg_advisory_unlock(hashtextextended($1, $2))",
+        [failedUnlockName, 847_201],
+      );
+    }
+    for (const name of schemaNames) {
+      await cleaner.query(`DROP SCHEMA IF EXISTS "${name}" CASCADE`);
+    }
+    await cleaner.end();
+    await inspector.end();
+  }
+});
+
 test("the next harness run reaps a schema orphaned by forced termination without touching active or unknown schemas", {
   skip: !databaseUrl,
 }, async () => {
