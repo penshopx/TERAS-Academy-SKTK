@@ -15,8 +15,8 @@ const trainerASubject = "trainer-history-a-subject";
 const trainerBSubject = "trainer-history-b-subject";
 const preferenceIds = [
   "trainer-history-a-oldest",
-  "trainer-history-a-middle",
-  "trainer-history-a-latest",
+  "trainer-history-a-tie-01",
+  "trainer-history-a-tie-02",
   "trainer-history-b-oldest",
   "trainer-history-b-latest",
 ] as const;
@@ -108,7 +108,7 @@ async function run() {
         trainerId: trainerA,
         emailEnabled: false,
         timeZone: "Asia/Makassar",
-        createdAt: new Date("2026-09-11T08:00:00.000Z"),
+        createdAt: new Date("2026-09-12T08:00:00.000Z"),
         createdBy: trainerA,
       },
       {
@@ -146,6 +146,19 @@ async function run() {
         preferenceIds[2], preferenceIds[1], preferenceIds[0],
       ]),
       `Trainer A received another account's revisions or incorrect ordering: ${JSON.stringify(historyA)}`,
+    );
+    assert(
+      historyA[0]?.recordedAt === historyA[1]?.recordedAt,
+      "Trainer A fixture must exercise the ID tie-break with equal recordedAt values",
+    );
+
+    const repeatedHistoryA = await requestHistory({ userId: trainerASubject, role: "trainer" });
+    assert(Array.isArray(repeatedHistoryA), "Repeated Trainer A history must be an array");
+    assert(
+      JSON.stringify(repeatedHistoryA.map(({ id }) => id)) === JSON.stringify([
+        preferenceIds[2], preferenceIds[1], preferenceIds[0],
+      ]),
+      `Trainer A history ordering changed between requests: ${JSON.stringify(repeatedHistoryA)}`,
     );
 
     const historyB = await requestHistory({ userId: trainerBSubject, role: "trainer" });
