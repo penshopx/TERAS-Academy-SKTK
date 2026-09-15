@@ -4,6 +4,7 @@ import {
   assertCanCreateDisposableDatabase,
   canDropStaleIntegrationSchema,
   isStaleOwnedIntegrationSchema,
+  safeSchemaPrefix,
 } from "./integration-schema-runner";
 
 const schemaPrefix = "diagnostic_integration";
@@ -18,6 +19,24 @@ function metadata(createdAt: string) {
     createdAt,
   });
 }
+
+test("accepts an integration schema prefix at the PostgreSQL identifier limit", () => {
+  const prefixAtLimit = `a${"b".repeat(29)}`;
+  assert.equal(safeSchemaPrefix(prefixAtLimit), prefixAtLimit);
+});
+
+test("rejects an integration schema prefix that leaves no room for the random suffix", () => {
+  const prefixOverLimit = `a${"b".repeat(30)}`;
+  assert.throws(
+    () => safeSchemaPrefix(prefixOverLimit),
+    (error: Error) => {
+      assert.match(error.message, /maximum length is 30 bytes/);
+      assert.match(error.message, /separator and 32-character random suffix/);
+      assert.match(error.message, /received 31 bytes/);
+      return true;
+    },
+  );
+});
 
 test("keeps an old integration schema while its advisory lock is active", () => {
   assert.equal(canDropStaleIntegrationSchema({

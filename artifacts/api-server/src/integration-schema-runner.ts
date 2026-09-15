@@ -24,6 +24,10 @@ const DEFAULT_TEST_TIMEOUT_MS = 10 * 60 * 1000;
 const SCHEMA_METADATA_KIND = "teras-integration-test";
 const SCHEMA_METADATA_VERSION = 1;
 const ADVISORY_LOCK_SEED = 847_201;
+const POSTGRES_IDENTIFIER_MAX_BYTES = 63;
+const RANDOM_SCHEMA_SUFFIX_LENGTH = 32;
+const MAX_SCHEMA_PREFIX_BYTES =
+  POSTGRES_IDENTIFIER_MAX_BYTES - 1 - RANDOM_SCHEMA_SUFFIX_LENGTH;
 const EMPTY_DATABASE_PRIVILEGE_ERROR =
   "Clean-bootstrap integration tests require the PostgreSQL test role to have the CREATEDB attribute (or be a superuser). " +
   "Grant CREATEDB only to the dedicated CI/test role. The runner creates and removes a separate disposable test database; it does not modify the application database.";
@@ -44,9 +48,17 @@ function assertTestEnvironment() {
   }
 }
 
-function safeSchemaPrefix(prefix: string) {
+export function safeSchemaPrefix(prefix: string) {
   if (!/^[a-z][a-z0-9_]*$/.test(prefix)) {
     throw new Error(`Invalid integration schema prefix: ${prefix}`);
+  }
+  const prefixBytes = Buffer.byteLength(prefix, "utf8");
+  if (prefixBytes > MAX_SCHEMA_PREFIX_BYTES) {
+    throw new Error(
+      `Invalid integration schema prefix: maximum length is ${MAX_SCHEMA_PREFIX_BYTES} bytes ` +
+      `to leave room for the separator and ${RANDOM_SCHEMA_SUFFIX_LENGTH}-character random suffix; ` +
+      `received ${prefixBytes} bytes`,
+    );
   }
   return prefix;
 }
