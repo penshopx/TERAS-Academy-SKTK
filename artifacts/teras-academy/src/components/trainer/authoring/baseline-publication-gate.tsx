@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import {
   getListBaselineVersionsQueryKey,
   getListBaselineAuditQueryKey,
@@ -10,6 +10,8 @@ import {
   useListManagedBaselines,
   usePreviewBaselinePublication,
   usePublishBaselineVersion,
+  type BaselineAuditEvent,
+  type BaselineVersion,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, GitCompareArrows, Loader2, XCircle } from "lucide-react";
@@ -22,6 +24,98 @@ import { useToast } from "@/hooks/use-toast";
 
 export function isBaselinePreviewConfirmed(confirmedFingerprint: string | null, currentFingerprint: string | undefined) {
   return Boolean(currentFingerprint && confirmedFingerprint === currentFingerprint);
+}
+
+export function BaselineVersionHistory({
+  versions,
+  audit,
+  activeVersion,
+}: {
+  versions: BaselineVersion[];
+  audit: BaselineAuditEvent[];
+  activeVersion: number | null;
+}) {
+  if (!versions.length) return <p className="text-xs text-muted-foreground">Belum ada versi baseline yang tercatat.</p>;
+
+  return <div className="space-y-2">
+    {versions.map(version => {
+      const publishEvent = audit.find(event => event.versionId === version.id && event.action === "PUBLISH");
+      const cancelEvent = audit.find(event => event.versionId === version.id && event.action === "CANCEL_DRAFT");
+      const event = version.status === "CANCELLED" ? cancelEvent : publishEvent;
+      const isActive = version.status === "PUBLISHED" && version.version === activeVersion;
+      const reason = cancelEvent && typeof cancelEvent.details.reason === "string" ? cancelEvent.details.reason : null;
+      const occurredAt = event?.createdAt
+        ?? (version.status === "CANCELLED" ? version.cancelledAt : version.publishedAt)
+        ?? version.createdAt;
+      const actor = event?.actorId
+        ?? (version.status === "CANCELLED" ? version.cancelledBy : version.publishedBy)
+        ?? version.createdBy;
+      const snapshot = version.snapshot as {
+        baseline?: Record<string, unknown>;
+        modules?: Array<Record<string, unknown>>;
+        selections?: Array<Record<string, unknown>>;
+      };
+
+      return <article
+        key={version.id}
+        className={`rounded border p-3 text-xs ${
+          isActive
+            ? "border-emerald-500/40 bg-emerald-500/5"
+            : version.status === "CANCELLED"
+              ? "border-border/50 bg-black/20 opacity-80"
+              : "border-border/50 bg-black/30"
+        }`}
+        data-testid={`baseline-version-${version.status.toLowerCase()}`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">Versi {version.version}</span>
+            <Badge variant={isActive ? "default" : "outline"}>
+              {isActive ? "AKTIF" : version.status === "DRAFT" ? "DRAFT — dapat ditindaklanjuti" : version.status}
+            </Badge>
+            {version.status === "CANCELLED" && <Badge variant="outline">Hanya baca</Badge>}
+          </div>
+          <time className="text-muted-foreground">{new Date(occurredAt).toLocaleString("id-ID")}</time>
+        </div>
+        <p className="mt-2 text-muted-foreground">Actor: <span className="break-all text-foreground">{actor}</span></p>
+        {version.status === "CANCELLED" && (
+          <>
+            <p className="mt-1 text-muted-foreground">
+              Alasan pembatalan: <span className="text-foreground">{reason ?? "Tidak tersedia pada audit lama."}</span>
+            </p>
+            <details className="mt-3 rounded border border-border/50 bg-black/20 p-2">
+              <summary className="cursor-pointer font-medium text-foreground">Tinjau isi snapshot yang ditutup</summary>
+              <div className="mt-3 grid gap-3" data-testid="cancelled-baseline-snapshot">
+                <section>
+                  <h5 className="font-medium text-foreground">Metadata baseline</h5>
+                  <pre className="mt-1 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2 text-muted-foreground">
+                    {JSON.stringify(snapshot.baseline ?? {}, null, 2)}
+                  </pre>
+                </section>
+                <section>
+                  <h5 className="font-medium text-foreground">Modul ({snapshot.modules?.length ?? 0})</h5>
+                  <pre className="mt-1 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2 text-muted-foreground">
+                    {JSON.stringify(snapshot.modules ?? [], null, 2)}
+                  </pre>
+                </section>
+                <section>
+                  <h5 className="font-medium text-foreground">Pilihan pathway ({snapshot.selections?.length ?? 0})</h5>
+                  <pre className="mt-1 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2 text-muted-foreground">
+                    {JSON.stringify(snapshot.selections ?? [], null, 2)}
+                  </pre>
+                </section>
+              </div>
+            </details>
+          </>
+        )}
+        {publishEvent && typeof publishEvent.details.changedPathwayCount === "number" && (
+          <p className="mt-1 text-muted-foreground">
+            {publishEvent.details.changedPathwayCount} pathway berubah · {publishEvent.details.eligibleCohortCount ?? 0} cohort eligible · {publishEvent.details.preservedEnrollmentCount ?? 0} enrollment lama dipertahankan
+          </p>
+        )}
+      </article>;
+    })}
+  </div>;
 }
 
 export function BaselinePublicationGate() {
@@ -49,6 +143,7 @@ export function BaselinePublicationGate() {
   const publish = usePublishBaselineVersion();
   const cancel = useCancelBaselineDraft();
   const drafts = versions.data?.filter(version => version.status === "DRAFT") ?? [];
+  const selectedBaseline = baselines.data?.find(baseline => baseline.baselineId === baselineId);
 
   const selectBaseline = (next: string) => {
     setBaselineId(next);
@@ -134,33 +229,13 @@ export function BaselinePublicationGate() {
       {versions.isLoading && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat versi baseline…</p>}
       {versions.error && <p className="text-sm text-destructive" role="alert">Baseline tidak dapat dimuat atau berada di luar scope Anda.</p>}
       {baselineId && <section className="space-y-2 rounded-md border border-border/60 bg-black/20 p-3" data-testid="baseline-publication-history">
-        <strong className="text-sm">Riwayat publikasi</strong>
-        {audit.isLoading && <p className="text-xs text-muted-foreground">Memuat audit publikasi…</p>}
-        {audit.error && <p className="text-xs text-destructive" role="alert">Audit publikasi tidak dapat dimuat.</p>}
-        {!audit.isLoading && !audit.error && !audit.data?.some(event => event.action === "PUBLISH") && (
-          <p className="text-xs text-muted-foreground">Belum ada publikasi yang tercatat.</p>
+        <strong className="text-sm">Riwayat versi baseline</strong>
+        <p className="text-xs text-muted-foreground">Draft aktif dapat ditindaklanjuti di bawah. Versi published dan cancelled di riwayat ini hanya untuk ditinjau.</p>
+        {audit.isLoading && <p className="text-xs text-muted-foreground">Memuat audit versi…</p>}
+        {audit.error && <p className="text-xs text-destructive" role="alert">Audit versi tidak dapat dimuat.</p>}
+        {versions.data && (
+          <BaselineVersionHistory versions={versions.data} audit={audit.data ?? []} activeVersion={selectedBaseline?.activeVersion ?? null} />
         )}
-        {audit.data?.filter(event => event.action === "PUBLISH").map(event => {
-          const details = event.details;
-          const hasReviewSummary = typeof details.previewFingerprint === "string"
-            && typeof details.changedPathwayCount === "number"
-            && typeof details.eligibleCohortCount === "number"
-            && typeof details.preservedEnrollmentCount === "number";
-          return <article key={event.id} className="rounded border border-border/50 bg-black/30 p-2 text-xs">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-medium">Versi {typeof details.version === "number" ? details.version : event.versionId ?? "lama"}</span>
-              <time className="text-muted-foreground">{new Date(event.createdAt).toLocaleString("id-ID")}</time>
-            </div>
-            {hasReviewSummary ? <div className="mt-2 grid gap-1 text-muted-foreground sm:grid-cols-3">
-              <span>{details.changedPathwayCount} pathway berubah</span>
-              <span>{details.eligibleCohortCount} cohort eligible</span>
-              <span>{details.preservedEnrollmentCount} enrollment lama dipertahankan</span>
-              <code className="break-all text-[10px] sm:col-span-3" title={details.previewFingerprint}>
-                Fingerprint: {details.previewFingerprint}
-              </code>
-            </div> : <p className="mt-1 text-muted-foreground">Ringkasan review tidak tersedia untuk audit lama.</p>}
-          </article>;
-        })}
       </section>}
       {baselineId && !versions.isLoading && !versions.error && <label className="grid gap-2 text-sm">
         <span className="font-medium">Draft yang akan ditinjau</span>

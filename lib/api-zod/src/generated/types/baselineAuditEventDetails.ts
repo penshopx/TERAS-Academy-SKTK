@@ -19,4 +19,10 @@ export type BaselineAuditEventDetails = { [key: string]: unknown } & {
   eligibleCohortCount?: number;
   /** @minimum 0 */
   preservedEnrollmentCount?: number;
+  /**
+     * Alasan audit untuk event CANCEL_DRAFT.
+     * @minLength 1
+     * @maxLength 500
+     */
+  reason?: string;
 };

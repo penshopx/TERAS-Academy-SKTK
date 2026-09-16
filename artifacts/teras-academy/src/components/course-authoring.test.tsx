@@ -19,7 +19,7 @@ import {
   publishAuthoredCourseAndRefresh,
   refreshAuthoringHistory,
 } from "./trainer/authoring/validation-panel";
-import { isBaselinePreviewConfirmed } from "./trainer/authoring/baseline-publication-gate";
+import { BaselineVersionHistory, isBaselinePreviewConfirmed } from "./trainer/authoring/baseline-publication-gate";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,6 +83,57 @@ test("baseline publication confirmation is bound to the exact preview fingerprin
   assert.equal(isBaselinePreviewConfirmed(null, "preview-a"), false);
   assert.equal(isBaselinePreviewConfirmed("preview-a", "preview-a"), true);
   assert.equal(isBaselinePreviewConfirmed("preview-a", "preview-b"), false, "a refreshed preview requires explicit confirmation again");
+});
+
+test("baseline history shows cancelled versions as read-only with audit details", () => {
+  const html = renderToStaticMarkup(<BaselineVersionHistory
+    activeVersion={2}
+    versions={[
+      {
+        id: "v3", baselineId: "baseline-1", version: 3, status: "CANCELLED",
+        snapshot: {
+          baseline: { code: "CANCELLED-CORE", name: "Snapshot yang ditutup" },
+          modules: [{ id: "baseline-module-closed", code: "MOD-CLOSED", name: "Modul cancelled" }],
+          selections: [{ pathwayId: "pathway-closed", baselineModuleId: "baseline-module-closed", sequence: 1 }],
+        },
+        createdAt: "2026-09-16T08:00:00.000Z", createdBy: "author-1", publishedAt: null, publishedBy: null,
+        cancelledAt: "2026-09-16T09:00:00.000Z", cancelledBy: "manager-fallback",
+      },
+      { id: "v2", baselineId: "baseline-1", version: 2, status: "PUBLISHED", snapshot: {}, createdAt: "2026-09-15T08:00:00.000Z", createdBy: "author-1", publishedAt: "2026-09-15T09:00:00.000Z", publishedBy: "manager-1", cancelledAt: null, cancelledBy: null },
+      { id: "v4", baselineId: "baseline-1", version: 4, status: "DRAFT", snapshot: {}, createdAt: "2026-09-16T10:00:00.000Z", createdBy: "author-2", publishedAt: null, publishedBy: null, cancelledAt: null, cancelledBy: null },
+    ]}
+    audit={[{
+      id: "audit-cancel", baselineId: "baseline-1", versionId: "v3", action: "CANCEL_DRAFT", actorId: "manager-2",
+      details: { version: 3, reason: "Diganti oleh draft koreksi" }, createdAt: "2026-09-16T09:00:00.000Z",
+    }]}
+  />);
+  assert.match(html, /CANCELLED/);
+  assert.match(html, /Hanya baca/);
+  assert.match(html, /Actor:.*manager-2/);
+  assert.match(html, /Alasan pembatalan:.*Diganti oleh draft koreksi/);
+  assert.match(html, /Tinjau isi snapshot yang ditutup/);
+  assert.match(html, /CANCELLED-CORE/);
+  assert.match(html, /MOD-CLOSED/);
+  assert.match(html, /pathway-closed/);
+  assert.match(html, /AKTIF/);
+  assert.match(html, /DRAFT — dapat ditindaklanjuti/);
+  assert.doesNotMatch(html, /Tutup draft|Publikasikan baseline/);
+});
+
+test("baseline version history remains reviewable without audit enrichment", () => {
+  const html = renderToStaticMarkup(<BaselineVersionHistory
+    activeVersion={null}
+    versions={[{
+      id: "v5", baselineId: "baseline-1", version: 5, status: "CANCELLED",
+      snapshot: { baseline: { name: "Persisted cancelled snapshot" }, modules: [], selections: [] },
+      createdAt: "2026-09-16T08:00:00.000Z", createdBy: "author-1", publishedAt: null, publishedBy: null,
+      cancelledAt: "2026-09-16T09:00:00.000Z", cancelledBy: "manager-fallback",
+    }]}
+    audit={[]}
+  />);
+  assert.match(html, /Persisted cancelled snapshot/);
+  assert.match(html, /manager-fallback/);
+  assert.match(html, /Tidak tersedia pada audit lama/);
 });
 
 test("Adding COURSE_MODULE requires canonical moduleId payload", async () => {

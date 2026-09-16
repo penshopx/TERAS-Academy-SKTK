@@ -3227,6 +3227,8 @@ export const listBaselineAuditResponseDetailsTwoEligibleCohortCountMin = 0;
 
 export const listBaselineAuditResponseDetailsTwoPreservedEnrollmentCountMin = 0;
 
+export const listBaselineAuditResponseDetailsTwoReasonMax = 500;
+
 
 
 export const ListBaselineAuditResponseItem = zod.object({
@@ -3240,7 +3242,8 @@ export const ListBaselineAuditResponseItem = zod.object({
   "previewFingerprint": zod.string().regex(listBaselineAuditResponseDetailsTwoPreviewFingerprintRegExp).optional(),
   "changedPathwayCount": zod.int().min(listBaselineAuditResponseDetailsTwoChangedPathwayCountMin).optional(),
   "eligibleCohortCount": zod.int().min(listBaselineAuditResponseDetailsTwoEligibleCohortCountMin).optional(),
-  "preservedEnrollmentCount": zod.int().min(listBaselineAuditResponseDetailsTwoPreservedEnrollmentCountMin).optional()
+  "preservedEnrollmentCount": zod.int().min(listBaselineAuditResponseDetailsTwoPreservedEnrollmentCountMin).optional(),
+  "reason": zod.string().min(1).max(listBaselineAuditResponseDetailsTwoReasonMax).optional().describe('Alasan audit untuk event CANCEL_DRAFT.')
 })).describe('Audit metadata. PUBLISH events expose only aggregate review evidence and never learner or cohort identities.'),
   "createdAt": zod.coerce.date()
 })

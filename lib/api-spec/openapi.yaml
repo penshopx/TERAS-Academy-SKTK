@@ -3408,6 +3408,11 @@ components:
                 changedPathwayCount: { type: integer, minimum: 0 }
                 eligibleCohortCount: { type: integer, minimum: 0 }
                 preservedEnrollmentCount: { type: integer, minimum: 0 }
+                reason:
+                  type: string
+                  description: Alasan audit untuk event CANCEL_DRAFT.
+                  minLength: 1
+                  maxLength: 500
         createdAt: { type: string, format: date-time }
       required: [id, baselineId, versionId, action, actorId, details, createdAt]
     LearningActivityType:
