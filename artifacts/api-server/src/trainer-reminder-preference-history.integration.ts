@@ -30,8 +30,37 @@ type HistoryRevision = {
   recordedAt: string;
 };
 
+type ActivePreferences = {
+  emailEnabled: boolean;
+  timeZone: string;
+  quietHoursStart: string | null;
+  quietHoursEnd: string | null;
+  updatedAt: string;
+};
+
 function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
+}
+
+async function requestActivePreferences(identity: TestAuthorizationIdentity) {
+  const app = createIntegrationTestApp(() => identity);
+  const server = app.listen(0);
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const address = server.address() as AddressInfo;
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/trainer/reminder-preferences`,
+    );
+    const responseText = await response.text();
+    assert(
+      response.status === 200,
+      `Expected active preferences status 200, received ${response.status}: ${responseText}`,
+    );
+    return JSON.parse(responseText) as ActivePreferences;
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => error ? reject(error) : resolve()));
+  }
 }
 
 async function requestHistory(identity: TestAuthorizationIdentity, expectedStatus = 200) {
@@ -152,6 +181,14 @@ async function run() {
       "Trainer A fixture must exercise the ID tie-break with equal recordedAt values",
     );
 
+    const activeA = await requestActivePreferences({ userId: trainerASubject, role: "trainer" });
+    assert(
+      activeA.emailEnabled === true
+        && activeA.timeZone === "Asia/Jayapura"
+        && activeA.updatedAt === historyA[0]?.recordedAt,
+      `Trainer A active preferences did not select the highest ID at the tied timestamp: ${JSON.stringify(activeA)}`,
+    );
+
     const repeatedHistoryA = await requestHistory({ userId: trainerASubject, role: "trainer" });
     assert(Array.isArray(repeatedHistoryA), "Repeated Trainer A history must be an array");
     assert(
@@ -168,6 +205,15 @@ async function run() {
         preferenceIds[4], preferenceIds[3],
       ]),
       `Trainer B received another account's revisions or incorrect ordering: ${JSON.stringify(historyB)}`,
+    );
+    const activeB = await requestActivePreferences({ userId: trainerBSubject, role: "trainer" });
+    assert(
+      activeB.emailEnabled === true
+        && activeB.timeZone === "Asia/Jakarta"
+        && activeB.quietHoursStart === "22:00"
+        && activeB.quietHoursEnd === "05:00"
+        && activeB.updatedAt === historyB[0]?.recordedAt,
+      `Trainer B active preferences were affected by another trainer's revisions: ${JSON.stringify(activeB)}`,
     );
 
     const learnerResponse = await requestHistory(
