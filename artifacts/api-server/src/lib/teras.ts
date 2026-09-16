@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { isDeepStrictEqual } from "node:util";
 import { db, assessmentAttemptsTable, assessmentCriteriaTable, assessmentsTable, baselineModulesTable, courseModulesTable, criterionObservationsTable, enrollmentPathwayEventsTable, enrollmentsTable, evidenceRequirementsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningActivitiesTable, learningBaselinesTable, legacyModuleMappingsTable, learningRecordLinksTable, lessonsTable, modulesTable, pathwayBaselineModulesTable, pathwayModuleContractsTable, pathwaysTable, peopleTable, practiceAttemptsTable, practiceTasksTable, programsTable, readinessEventsTable, readinessGatesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, reassessmentLinksTable } from "@workspace/db";
 import type { BaselineModule, PathwayModuleContract } from "@workspace/db";
@@ -354,24 +354,27 @@ export async function readiness(context?: Awaited<ReturnType<typeof learnerConte
       : allRulesPassed
         ? "All active readiness rules, thresholds, evidence requirements, and safety gates are satisfied."
         : "Evidence or assessment thresholds are still developing.";
-  const [latestDecision] = await db.select().from(readinessEventsTable)
-    .where(and(
-      eq(readinessEventsTable.enrollmentId, activeContext.enrollment.id),
-      eq(readinessEventsTable.pathwayId, activeContext.pathway.id),
-      eq(readinessEventsTable.gateId, activeGate.id),
-    ))
-    .orderBy(desc(readinessEventsTable.evaluatedAt), desc(readinessEventsTable.id))
-    .limit(1);
-  const unchangedDecision = latestDecision &&
-    latestDecision.status === status &&
-    latestDecision.score === score &&
-    latestDecision.ruleVersion === ruleVersion &&
-    latestDecision.decisionReason === decisionReason &&
-    isDeepStrictEqual(latestDecision.blockers, blockers) &&
-    isDeepStrictEqual(latestDecision.inputEvidence, inputEvidence);
-  const evaluatedAt = unchangedDecision ? latestDecision.evaluatedAt : new Date();
-  if (!unchangedDecision) {
-    await db.insert(readinessEventsTable).values({
+  const evaluatedAt = await db.transaction(async tx => {
+    const lockKey = `readiness-snapshot:${activeContext.enrollment.id}:${activeContext.pathway.id}`;
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+    const [latestDecision] = await tx.select().from(readinessEventsTable)
+      .where(and(
+        eq(readinessEventsTable.enrollmentId, activeContext.enrollment.id),
+        eq(readinessEventsTable.pathwayId, activeContext.pathway.id),
+        eq(readinessEventsTable.gateId, activeGate.id),
+      ))
+      .orderBy(desc(readinessEventsTable.evaluatedAt), desc(readinessEventsTable.id))
+      .limit(1);
+    const unchangedDecision = latestDecision &&
+      latestDecision.status === status &&
+      latestDecision.score === score &&
+      latestDecision.ruleVersion === ruleVersion &&
+      latestDecision.decisionReason === decisionReason &&
+      isDeepStrictEqual(latestDecision.blockers, blockers) &&
+      isDeepStrictEqual(latestDecision.inputEvidence, inputEvidence);
+    if (unchangedDecision) return latestDecision.evaluatedAt;
+    const nextEvaluatedAt = new Date();
+    await tx.insert(readinessEventsTable).values({
       id: crypto.randomUUID(),
       enrollmentId: activeContext.enrollment.id,
       pathwayId: activeContext.pathway.id,
@@ -382,10 +385,11 @@ export async function readiness(context?: Awaited<ReturnType<typeof learnerConte
       ruleVersion,
       inputEvidence,
       decisionReason,
-      evaluatedAt,
+      evaluatedAt: nextEvaluatedAt,
       createdBy: activeContext.learner.id,
     });
-  }
+    return nextEvaluatedAt;
+  });
   const publicGate = (gate: typeof gateViews[number]) => ({
     id: gate.id, code: gate.code, name: gate.name, requirement: gate.requirement,
     status: gate.status, score: gate.score, threshold: gate.threshold,

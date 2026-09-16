@@ -6,8 +6,9 @@ import {
   evidenceReviewsTable,
   evidenceTable,
   peopleTable,
+  readinessEventsTable,
 } from "@workspace/db";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { createIntegrationTestApp } from "./integration-test-app";
 
 type Identity = "path-a" | "path-b";
@@ -29,6 +30,7 @@ const evidenceA = `passport-evidence-a-${suffix}`;
 const evidenceB = `passport-evidence-b-${suffix}`;
 
 async function cleanup() {
+  await db.delete(readinessEventsTable).where(inArray(readinessEventsTable.enrollmentId, [enrollmentA, enrollmentB]));
   await db.delete(evidenceReviewsTable).where(inArray(evidenceReviewsTable.evidenceId, [evidenceA, evidenceB]));
   await db.delete(evidenceTable).where(inArray(evidenceTable.id, [evidenceA, evidenceB]));
   await db.delete(enrollmentsTable).where(inArray(enrollmentsTable.id, [enrollmentA, enrollmentB]));
@@ -88,8 +90,19 @@ async function run() {
 
   try {
     for (const identity of ["path-a", "path-b"] as const) {
-      const passport = await request<Passport>("/passport", identity);
-      const exported = await request<ExportPayload>("/passport/export", identity);
+      const eventsBefore = await db.select().from(readinessEventsTable)
+        .where(eq(readinessEventsTable.enrollmentId, identity === "path-a" ? enrollmentA : enrollmentB));
+      const [passport, exported] = await Promise.all([
+        request<Passport>("/passport", identity),
+        request<ExportPayload>("/passport/export", identity),
+      ]);
+      const eventsAfterParallelRequests = await db.select().from(readinessEventsTable)
+        .where(eq(readinessEventsTable.enrollmentId, identity === "path-a" ? enrollmentA : enrollmentB));
+      assert.equal(
+        eventsAfterParallelRequests.length,
+        eventsBefore.length + 1,
+        `${identity} parallel Passport requests with identical inputs must append one readiness event`,
+      );
       assert.deepEqual(exported.portfolio, passport, `${identity} exported portfolio must equal the complete Passport response`);
       assert.deepEqual(
         parityProjection(exported.portfolio),
@@ -101,6 +114,20 @@ async function run() {
         `${identity} fixture must exercise causal evidence references`,
       );
     }
+
+    const pathAEventsBeforeChange = await db.select().from(readinessEventsTable)
+      .where(eq(readinessEventsTable.enrollmentId, enrollmentA));
+    await db.update(evidenceReviewsTable)
+      .set({ status: "Valid", quality: { valid: true, relevant: true, sufficient: true, traceable: true } })
+      .where(eq(evidenceReviewsTable.evidenceId, evidenceA));
+    await request<Passport>("/passport", "path-a");
+    const pathAEventsAfterChange = await db.select().from(readinessEventsTable)
+      .where(eq(readinessEventsTable.enrollmentId, enrollmentA));
+    assert.equal(
+      pathAEventsAfterChange.length,
+      pathAEventsBeforeChange.length + 1,
+      "changed readiness input must append a new immutable readiness event",
+    );
 
     const maliciousExport = await request<ExportPayload>(`/passport/export?learnerId=${encodeURIComponent(learnerB)}`, "path-a");
     assert.equal(maliciousExport.portfolio.learner.id, learnerA, "an authenticated learner must not export another learner's portfolio");
