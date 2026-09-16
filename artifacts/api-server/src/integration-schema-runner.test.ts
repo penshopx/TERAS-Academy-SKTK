@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   assertCanCreateDisposableDatabase,
   canDropStaleIntegrationSchema,
+  createIntegrationSchemaName,
   isStaleOwnedIntegrationSchema,
   safeSchemaPrefix,
 } from "./integration-schema-runner";
@@ -23,6 +24,8 @@ function metadata(createdAt: string) {
 test("accepts an integration schema prefix at the PostgreSQL identifier limit", () => {
   const prefixAtLimit = `a${"b".repeat(29)}`;
   assert.equal(safeSchemaPrefix(prefixAtLimit), prefixAtLimit);
+  const schemaName = createIntegrationSchemaName(prefixAtLimit, "c".repeat(32));
+  assert.equal(Buffer.byteLength(schemaName, "utf8"), 63);
 });
 
 test("rejects an integration schema prefix that leaves no room for the random suffix", () => {
@@ -31,8 +34,20 @@ test("rejects an integration schema prefix that leaves no room for the random su
     () => safeSchemaPrefix(prefixOverLimit),
     (error: Error) => {
       assert.match(error.message, /maximum length is 30 bytes/);
-      assert.match(error.message, /separator and 32-character random suffix/);
+      assert.match(error.message, /separator and 32-byte random suffix/);
       assert.match(error.message, /received 31 bytes/);
+      return true;
+    },
+  );
+});
+
+test("rejects a changed suffix format when the complete schema name exceeds 63 bytes", () => {
+  const prefixAtCurrentLimit = `a${"b".repeat(29)}`;
+  assert.throws(
+    () => createIntegrationSchemaName(prefixAtCurrentLimit, "c".repeat(33)),
+    (error: Error) => {
+      assert.match(error.message, /maximum length is 29 bytes/);
+      assert.match(error.message, /33-byte random suffix/);
       return true;
     },
   );

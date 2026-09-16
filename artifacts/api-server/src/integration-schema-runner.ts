@@ -30,9 +30,8 @@ const SCHEMA_METADATA_KIND = "teras-integration-test";
 const SCHEMA_METADATA_VERSION = 1;
 const ADVISORY_LOCK_SEED = 847_201;
 const POSTGRES_IDENTIFIER_MAX_BYTES = 63;
-const RANDOM_SCHEMA_SUFFIX_LENGTH = 32;
-const MAX_SCHEMA_PREFIX_BYTES =
-  POSTGRES_IDENTIFIER_MAX_BYTES - 1 - RANDOM_SCHEMA_SUFFIX_LENGTH;
+const SCHEMA_NAME_SEPARATOR = "_";
+const randomSchemaSuffix = () => crypto.randomUUID().replaceAll("-", "");
 const EMPTY_DATABASE_PRIVILEGE_ERROR =
   "Clean-bootstrap integration tests require the PostgreSQL test role to have the CREATEDB attribute (or be a superuser). " +
   "Grant CREATEDB only to the dedicated CI/test role. The runner creates and removes a separate disposable test database; it does not modify the application database.";
@@ -53,19 +52,41 @@ function assertTestEnvironment() {
   }
 }
 
-export function safeSchemaPrefix(prefix: string) {
+export function safeSchemaPrefix(
+  prefix: string,
+  suffix = randomSchemaSuffix(),
+) {
   if (!/^[a-z][a-z0-9_]*$/.test(prefix)) {
     throw new Error(`Invalid integration schema prefix: ${prefix}`);
   }
   const prefixBytes = Buffer.byteLength(prefix, "utf8");
-  if (prefixBytes > MAX_SCHEMA_PREFIX_BYTES) {
+  const suffixBytes = Buffer.byteLength(suffix, "utf8");
+  const separatorBytes = Buffer.byteLength(SCHEMA_NAME_SEPARATOR, "utf8");
+  const maxSchemaPrefixBytes =
+    POSTGRES_IDENTIFIER_MAX_BYTES - separatorBytes - suffixBytes;
+  if (prefixBytes > maxSchemaPrefixBytes) {
     throw new Error(
-      `Invalid integration schema prefix: maximum length is ${MAX_SCHEMA_PREFIX_BYTES} bytes ` +
-      `to leave room for the separator and ${RANDOM_SCHEMA_SUFFIX_LENGTH}-character random suffix; ` +
+      `Invalid integration schema prefix: maximum length is ${maxSchemaPrefixBytes} bytes ` +
+      `to leave room for the separator and ${suffixBytes}-byte random suffix; ` +
       `received ${prefixBytes} bytes`,
     );
   }
   return prefix;
+}
+
+export function createIntegrationSchemaName(
+  prefix: string,
+  suffix = randomSchemaSuffix(),
+) {
+  const schemaName = `${safeSchemaPrefix(prefix, suffix)}${SCHEMA_NAME_SEPARATOR}${suffix}`;
+  const schemaNameBytes = Buffer.byteLength(schemaName, "utf8");
+  if (schemaNameBytes > POSTGRES_IDENTIFIER_MAX_BYTES) {
+    throw new Error(
+      `Integration schema name exceeds PostgreSQL's ${POSTGRES_IDENTIFIER_MAX_BYTES}-byte identifier limit: ` +
+      `received ${schemaNameBytes} bytes`,
+    );
+  }
+  return schemaName;
 }
 
 function quoteIdentifier(identifier: string) {
@@ -417,8 +438,8 @@ export async function runIsolatedIntegrationTest({
   assertTestEnvironment();
   assertPositiveTimeout("Integration database connection timeout", connectionTimeoutMs);
   assertPositiveTimeout("Integration database cleanup timeout", cleanupTimeoutMs);
-  const prefix = safeSchemaPrefix(schemaPrefix);
-  const schemaName = `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
+  const schemaName = createIntegrationSchemaName(schemaPrefix);
+  const prefix = schemaPrefix;
   const admin = createAdminClient(process.env.DATABASE_URL!, connectionTimeoutMs);
   let connected = false;
   let runError: unknown;
