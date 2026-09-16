@@ -165,14 +165,22 @@ async function run() {
     assert(deliveryAfterSummary.status === "permanently_failed", "Operational summary must not change reminder or readiness-related status");
 
     const resolutionUrl = `http://127.0.0.1:${address.port}/api/admin/reminder-escalations/${ids.failedDelivery}/resolution`;
-    const [firstResolutionResponse, secondResolutionResponse] = await Promise.all([
+    const [firstResolutionResponse, secondResolutionResponse, concurrentSummaryResponse] = await Promise.all([
       fetch(`${resolutionUrl}?actor=second`, {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: "Handled through a verified manual call." }),
       }),
       fetch(resolutionUrl, {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: "Concurrent overwrite attempt." }),
       }),
+      fetch(`http://127.0.0.1:${address.port}/api/admin/summary`),
     ]);
+    assert(concurrentSummaryResponse.status === 200, "Summary request concurrent with resolution failed");
+    const concurrentSummary = await concurrentSummaryResponse.json() as any;
+    assert(
+      concurrentSummary.reminderEscalationCounts.total
+        === concurrentSummary.reminderEscalationCounts.open + concurrentSummary.reminderEscalationCounts.resolved,
+      "Concurrent resolution must not duplicate or omit an escalation from summary counts",
+    );
     const resolutionResponses = [firstResolutionResponse, secondResolutionResponse];
     const statuses = resolutionResponses.map(response => response.status).sort((a, b) => a - b);
     assert(statuses[0] === 201 && statuses[1] === 409, "Concurrent resolution attempts must produce exactly one 201 and one 409");

@@ -34,7 +34,7 @@
     "test:super-admin-mfa-policy": "tsx --test ./src/lib/super-admin-mfa-policy.test.ts",
     "test:admin-membership-write-guard": "tsx ./src/admin-membership-write-guard.test.ts",
     "test:admin-management": "pnpm run test:admin-membership-write-guard && NODE_ENV=test tsx ./src/admin-management.integration.ts",
-    "test:admin-operational-summary": "NODE_ENV=test tsx ./src/admin-operational-summary.integration.ts",
+    "test:admin-operational-summary": "NODE_ENV=test tsx ./src/admin-operational-summary.integration-runner.ts && NODE_ENV=test tsx ./src/admin-operational-summary-query.integration-runner.ts",
     "test:admin-readiness-history": "NODE_ENV=test tsx ./src/admin-readiness-history.integration.ts",
     "test:admin-readiness-export-trends": "NODE_ENV=test tsx ./src/admin-readiness-export-trends.integration.ts",
     "test:admin-read-only-projections": "NODE_ENV=test tsx ./src/admin-read-only-projections.integration.ts",

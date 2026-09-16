@@ -3,7 +3,7 @@
 // @ts-nocheck
 import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
-import { and, count, desc, eq, gte, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import {
   CreateAdminCohortBody, CreateAdminCohortResponse, CreateAdminEnrollmentBody, CreateAdminEnrollmentResponse,
   CreateAdminPathwayBody, CreateAdminPathwayResponse, CreateAdminProgramBody, CreateAdminProgramResponse,
@@ -103,14 +103,7 @@ const latestAssessmentAttempts = <T extends { assessmentId: string; learnerId: s
 const REMINDER_ESCALATION_SUMMARY_LIMIT = 25;
 
 async function reminderEscalationCounts(executor: any = db) {
-  const [counts] = await executor.select({
-    open: sql<number>`count(*) filter (where ${diagnosticFollowUpReminderResolutionsTable.id} is null)`,
-    resolved: sql<number>`count(*) filter (where ${diagnosticFollowUpReminderResolutionsTable.id} is not null)`,
-    total: count(),
-  })
-    .from(diagnosticFollowUpReminderDeliveriesTable)
-    .leftJoin(diagnosticFollowUpReminderResolutionsTable, eq(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, diagnosticFollowUpReminderDeliveriesTable.id))
-    .where(eq(diagnosticFollowUpReminderDeliveriesTable.status, "permanently_failed"));
+  const [counts] = await buildReminderEscalationCountQuery(executor);
   return {
     open: Number(counts?.open ?? 0),
     resolved: Number(counts?.resolved ?? 0),
@@ -118,23 +111,67 @@ async function reminderEscalationCounts(executor: any = db) {
   };
 }
 
-async function reminderEscalationRows(options: { status?: "open" | "resolved"; limit: number; offset?: number }, executor: any = db) {
-  const resolutionCondition = options.status === "open"
-    ? isNull(diagnosticFollowUpReminderResolutionsTable.id)
-    : options.status === "resolved"
-      ? isNotNull(diagnosticFollowUpReminderResolutionsTable.id)
-      : undefined;
-  const ordering = options.status === "resolved"
-    ? [
-      desc(diagnosticFollowUpReminderResolutionsTable.resolvedAt),
-      desc(diagnosticFollowUpReminderDeliveriesTable.id),
-    ]
-    : [
-      sql`case when ${diagnosticFollowUpReminderResolutionsTable.id} is null then 0 else 1 end`,
+export function buildReminderEscalationCountQuery(executor: any = db) {
+  return executor.select({
+    open: sql<number>`count(*) filter (where ${diagnosticFollowUpReminderDeliveriesTable.escalationResolvedAt} is null)`,
+    resolved: sql<number>`count(*) filter (where ${diagnosticFollowUpReminderDeliveriesTable.escalationResolvedAt} is not null)`,
+    total: count(),
+  })
+    .from(diagnosticFollowUpReminderDeliveriesTable)
+    .where(eq(diagnosticFollowUpReminderDeliveriesTable.status, "permanently_failed"));
+}
+
+export function buildOpenReminderEscalationIdsQuery(options: { limit: number; offset?: number }, executor: any = db) {
+  return executor.select({ id: diagnosticFollowUpReminderDeliveriesTable.id })
+    .from(diagnosticFollowUpReminderDeliveriesTable)
+    .where(and(
+      eq(diagnosticFollowUpReminderDeliveriesTable.status, "permanently_failed"),
+      isNull(diagnosticFollowUpReminderDeliveriesTable.escalationResolvedAt),
+    ))
+    .orderBy(
       desc(diagnosticFollowUpReminderDeliveriesTable.lastAttemptAt),
       desc(diagnosticFollowUpReminderDeliveriesTable.id),
-    ];
-  return executor.select({
+    )
+    .limit(options.limit)
+    .offset(options.offset ?? 0);
+}
+
+export function buildResolvedReminderEscalationIdsQuery(options: { limit: number; offset?: number }, executor: any = db) {
+  return executor.select({ id: diagnosticFollowUpReminderDeliveriesTable.id })
+    .from(diagnosticFollowUpReminderDeliveriesTable)
+    .where(and(
+      eq(diagnosticFollowUpReminderDeliveriesTable.status, "permanently_failed"),
+      isNotNull(diagnosticFollowUpReminderDeliveriesTable.escalationResolvedAt),
+    ))
+    .orderBy(
+      desc(diagnosticFollowUpReminderDeliveriesTable.escalationResolvedAt),
+      desc(diagnosticFollowUpReminderDeliveriesTable.id),
+    )
+    .limit(options.limit)
+    .offset(options.offset ?? 0);
+}
+
+async function reminderEscalationRows(options: { status?: "open" | "resolved"; limit: number; offset?: number }, executor: any = db) {
+  const offset = options.offset ?? 0;
+  let pageIds: string[];
+  if (options.status === "open") {
+    pageIds = (await buildOpenReminderEscalationIdsQuery({ limit: options.limit, offset }, executor)).map((row: any) => row.id);
+  } else if (options.status === "resolved") {
+    pageIds = (await buildResolvedReminderEscalationIdsQuery({ limit: options.limit, offset }, executor)).map((row: any) => row.id);
+  } else {
+    const branchLimit = options.limit + offset;
+    const [openRows, resolvedRows] = await Promise.all([
+      buildOpenReminderEscalationIdsQuery({ limit: branchLimit }, executor),
+      buildResolvedReminderEscalationIdsQuery({ limit: branchLimit }, executor),
+    ]);
+    pageIds = [
+      ...openRows.map((row: any) => row.id),
+      ...resolvedRows.map((row: any) => row.id),
+    ].slice(offset, offset + options.limit);
+  }
+  if (pageIds.length === 0) return [];
+
+  const rows = await executor.select({
     id: diagnosticFollowUpReminderDeliveriesTable.id,
     trainerId: diagnosticFollowUpReminderDeliveriesTable.trainerId,
     trainerName: peopleTable.name,
@@ -192,13 +229,12 @@ async function reminderEscalationRows(options: { status?: "open" | "resolved"; l
     .innerJoin(diagnosticRecommendationsTable, eq(diagnosticRecommendationsTable.id, diagnosticRecommendationFollowUpsTable.recommendationId))
     .innerJoin(peopleTable, eq(peopleTable.id, diagnosticFollowUpReminderDeliveriesTable.trainerId))
     .leftJoin(diagnosticFollowUpReminderResolutionsTable, eq(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, diagnosticFollowUpReminderDeliveriesTable.id))
-    .where(and(
-      eq(diagnosticFollowUpReminderDeliveriesTable.status, "permanently_failed"),
-      resolutionCondition,
-    ))
-    .orderBy(...ordering)
-    .limit(options.limit)
-    .offset(options.offset ?? 0);
+    .where(inArray(diagnosticFollowUpReminderDeliveriesTable.id, pageIds));
+  const rowById = new Map(rows.map((row: any) => [row.id, row]));
+  return pageIds.flatMap(id => {
+    const row = rowById.get(id);
+    return row ? [row] : [];
+  });
 }
 
 function serializeReminderEscalations(rows: any[]) {
@@ -302,6 +338,9 @@ router.post("/admin/reminder-escalations/:reminderDeliveryId/resolution", async 
         resolvedAt: new Date(),
         createdBy: `supabase:${actor.authSubject}`,
       }).returning();
+      await tx.update(diagnosticFollowUpReminderDeliveriesTable)
+        .set({ escalationResolvedAt: resolution.resolvedAt })
+        .where(eq(diagnosticFollowUpReminderDeliveriesTable.id, delivery.id));
       await audit(tx, actor, "resolve", "trainer_reminder_escalation", delivery.id, null, resolution);
       return { kind: "created" as const, value: resolution };
     });
