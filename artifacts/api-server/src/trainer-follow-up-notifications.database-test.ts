@@ -42,6 +42,7 @@ async function main() {
   process.env.TERAS_NOTIFICATION_FROM = "TERAS <notifications@example.test>";
   process.env.TERAS_OPERATIONS_NOTIFICATION_EMAIL = "operations@example.test";
   process.env.TERAS_OPERATIONS_FALLBACK_WEBHOOK_URL = "https://operations.example.test/hooks/teras";
+  process.env.TERAS_OPERATIONS_FALLBACK_WEBHOOK_SECRET = "integration-test-webhook-secret";
   const now = new Date("2026-09-10T12:00:00.000Z");
   let sends = 0;
   const sendEmail = async () => { sends += 1; };

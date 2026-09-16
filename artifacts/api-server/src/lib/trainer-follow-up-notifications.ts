@@ -10,6 +10,7 @@ import {
 } from "@workspace/db";
 import { ReplitConnectors } from "@replit/connectors-sdk";
 import { and, asc, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
+import { createHmac } from "node:crypto";
 import { logger } from "./logger";
 import { workspaceAssignmentContexts } from "./teras";
 
@@ -64,6 +65,15 @@ export type PermanentFailureNotificationInput = {
   idempotencyKey: string;
 };
 export type PermanentFailureFallbackInput = Omit<PermanentFailureNotificationInput, "to"> & { url: string };
+export type SignedWebhookRequest = {
+  body: string;
+  headers: {
+    "Content-Type": "application/json";
+    "Idempotency-Key": string;
+    "X-Teras-Webhook-Timestamp": string;
+    "X-Teras-Webhook-Signature": string;
+  };
+};
 type ReminderPreferences = {
   emailEnabled: boolean;
   timeZone: string;
@@ -186,21 +196,46 @@ async function sendPermanentFailureNotification(input: PermanentFailureNotificat
   if (!response.ok) throw new Error(`Resend rejected the operations notification with status ${response.status}`);
 }
 
-async function sendPermanentFailureFallback(input: PermanentFailureFallbackInput) {
-  const response = await fetch(input.url, {
-    method: "POST",
+export function createSignedPermanentFailureWebhookRequest(
+  input: Omit<PermanentFailureFallbackInput, "url">,
+  secret: string,
+  timestamp: Date,
+): SignedWebhookRequest {
+  if (!secret) throw new Error("TERAS_OPERATIONS_FALLBACK_WEBHOOK_SECRET is not configured");
+  if (!Number.isFinite(timestamp.getTime())) throw new Error("Webhook timestamp is invalid");
+
+  const body = JSON.stringify({
+    event: "teras.trainer_reminder.permanent_failure",
+    trainerName: input.trainerName,
+    target: input.target,
+    lastAttemptAt: input.lastAttemptAt.toISOString(),
+    reason: input.reason,
+    idempotencyKey: input.idempotencyKey,
+  });
+  const timestampSeconds = Math.floor(timestamp.getTime() / 1_000).toString();
+  const signature = createHmac("sha256", secret)
+    .update(`${timestampSeconds}.${body}`, "utf8")
+    .digest("hex");
+
+  return {
+    body,
     headers: {
       "Content-Type": "application/json",
       "Idempotency-Key": input.idempotencyKey,
+      "X-Teras-Webhook-Timestamp": timestampSeconds,
+      "X-Teras-Webhook-Signature": `v1=${signature}`,
     },
-    body: JSON.stringify({
-      event: "teras.trainer_reminder.permanent_failure",
-      trainerName: input.trainerName,
-      target: input.target,
-      lastAttemptAt: input.lastAttemptAt.toISOString(),
-      reason: input.reason,
-      idempotencyKey: input.idempotencyKey,
-    }),
+  };
+}
+
+async function sendPermanentFailureFallback(input: PermanentFailureFallbackInput) {
+  const secret = process.env.TERAS_OPERATIONS_FALLBACK_WEBHOOK_SECRET;
+  if (!secret) throw new Error("TERAS_OPERATIONS_FALLBACK_WEBHOOK_SECRET is not configured");
+  const request = createSignedPermanentFailureWebhookRequest(input, secret, new Date());
+  const response = await fetch(input.url, {
+    method: "POST",
+    headers: request.headers,
+    body: request.body,
   });
   if (!response.ok) throw new Error(`Fallback webhook rejected the operations notification with status ${response.status}`);
 }
