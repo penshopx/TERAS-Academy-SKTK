@@ -50,13 +50,16 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   migration-collation-upgrade:
-    name: Verify migration winners (${{ matrix.collation.name }})
+    name: Rehearse migration winners (PostgreSQL ${{ matrix.postgres }}, ${{ matrix.collation.name }})
     needs: resolve-release-candidate
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
+        postgres:
+          - "17"
+          - "18"
         collation:
           - name: libc-C
             initdb_args: --locale-provider=libc --locale=C
@@ -64,7 +67,7 @@ jobs:
             initdb_args: --locale-provider=icu --icu-locale=en-US
     services:
       postgres:
-        image: postgres:17
+        image: postgres:${{ matrix.postgres }}
         env:
           POSTGRES_DB: postgres
           POSTGRES_USER: postgres
@@ -86,7 +89,45 @@ jobs:
           ref: ${{ needs.resolve-release-candidate.outputs.sha }}
 
       - name: Run deterministic migration upgrade fixture
+        env:
+          TERAS_COLLATION_RESULT_FILE: migration-collation-results/${{ matrix.postgres }}-${{ matrix.collation.name }}.tsv
         run: bash scripts/migration-collation.integration.test.sh
+
+      - name: Upload migration winner rehearsal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-collation-${{ matrix.postgres }}-${{ matrix.collation.name }}
+          path: migration-collation-results/${{ matrix.postgres }}-${{ matrix.collation.name }}.tsv
+          if-no-files-found: error
+
+  compare-migration-collation-upgrade:
+    name: Compare PostgreSQL 17 and 18 migration winners
+    needs: migration-collation-upgrade
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Download migration winner rehearsals
+        uses: actions/download-artifact@v4
+        with:
+          pattern: migration-collation-*
+          path: migration-collation-results
+          merge-multiple: true
+
+      - name: Require identical winners across PostgreSQL major versions
+        run: |
+          set -euo pipefail
+          for collation in libc-C icu-en-US; do
+            current_file="migration-collation-results/17-${collation}.tsv"
+            target_file="migration-collation-results/18-${collation}.tsv"
+            IFS=$'\t' read -r current_version current_provider current_locale current_winners < "$current_file"
+            IFS=$'\t' read -r target_version target_provider target_locale target_winners < "$target_file"
+            if [[ "$current_winners" != "$target_winners" ]]; then
+              echo "::error::Migration winners changed across PostgreSQL major versions: PostgreSQL ${current_version} provider=${current_provider} locale=${current_locale} winners=${current_winners}; PostgreSQL ${target_version} provider=${target_provider} locale=${target_locale} winners=${target_winners}."
+              exit 1
+            fi
+            echo "Migration winners match: PostgreSQL ${current_version} and ${target_version}, provider=${current_provider}/${target_provider}, locale=${current_locale}/${target_locale}, winners=${current_winners}"
+          done
 
   verify-approval-control:
     name: Verify required human reviewers
@@ -242,7 +283,7 @@ jobs:
     name: Gate Review GO/NO-GO
     needs:
       - certification-preparation-evidence
-      - migration-collation-upgrade
+      - compare-migration-collation-upgrade
       - verify-release-evidence
     runs-on: ubuntu-latest
     environment: release-gate-review

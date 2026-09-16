@@ -40,6 +40,7 @@ job_block() {
 verify_block="$(job_block verify-approval-control)"
 candidate_block="$(job_block resolve-release-candidate)"
 collation_block="$(job_block migration-collation-upgrade)"
+collation_comparison_block="$(job_block compare-migration-collation-upgrade)"
 evidence_block="$(job_block certification-preparation-evidence)"
 release_evidence_block="$(job_block verify-release-evidence)"
 review_block="$(job_block gate-review)"
@@ -75,6 +76,17 @@ grep -Fq 'sha: ${{ steps.candidate.outputs.sha }}' <<<"$candidate_block" &&
 grep -Fq "needs: resolve-release-candidate" <<<"$collation_block" &&
   grep -Fq 'ref: ${{ needs.resolve-release-candidate.outputs.sha }}' <<<"$collation_block" ||
   fail "collation rehearsal must check out the locked release candidate SHA"
+grep -Fq -- '- "17"' <<<"$collation_block" &&
+  grep -Fq -- '- "18"' <<<"$collation_block" &&
+  grep -Fq 'image: postgres:${{ matrix.postgres }}' <<<"$collation_block" &&
+  grep -Fq 'TERAS_COLLATION_RESULT_FILE:' <<<"$collation_block" ||
+  fail "collation rehearsal must run and record winners on current and target PostgreSQL major versions"
+grep -Fq "needs: migration-collation-upgrade" <<<"$collation_comparison_block" &&
+  grep -Fq 'current_winners' <<<"$collation_comparison_block" &&
+  grep -Fq 'target_winners' <<<"$collation_comparison_block" &&
+  grep -Fq 'PostgreSQL ${current_version} provider=${current_provider} locale=${current_locale} winners=${current_winners}' <<<"$collation_comparison_block" &&
+  grep -Fq 'PostgreSQL ${target_version} provider=${target_provider} locale=${target_locale} winners=${target_winners}' <<<"$collation_comparison_block" ||
+  fail "collation comparison must reject changed winners with both PostgreSQL versions, providers, locales, and winners"
 grep -Fq "if: always()" "$workflow" &&
   grep -Fq "actions/upload-artifact@v4" "$workflow" ||
   fail "reports must be uploaded even when the gate fails"
@@ -83,7 +95,7 @@ grep -Fq -- "- resolve-release-candidate" <<<"$evidence_block" &&
   grep -Fq 'ref: ${{ needs.resolve-release-candidate.outputs.sha }}' <<<"$evidence_block" ||
   fail "evidence must require approval control and check out the locked release candidate SHA"
 grep -Fq -- "- certification-preparation-evidence" <<<"$review_block" &&
-  grep -Fq -- "- migration-collation-upgrade" <<<"$review_block" &&
+  grep -Fq -- "- compare-migration-collation-upgrade" <<<"$review_block" &&
   grep -Fq -- "- verify-release-evidence" <<<"$review_block" &&
   grep -Fq "environment: release-gate-review" <<<"$review_block" ||
   fail "Gate Review must wait for verified evidence, collation rehearsal, and human approval"

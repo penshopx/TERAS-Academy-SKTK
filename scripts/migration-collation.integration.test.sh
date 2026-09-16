@@ -9,7 +9,8 @@ cd "$repo_root"
 schema="teras_migration_collation_test_$$"
 collation_context="$(psql "$DATABASE_URL" -Atv ON_ERROR_STOP=1 <<'SQL'
 SELECT format(
-  'database=%s provider=%s locale=%s',
+  'postgres=%s database=%s provider=%s locale=%s',
+  current_setting('server_version'),
   datname,
   CASE datlocprovider
     WHEN 'b' THEN 'builtin'
@@ -25,6 +26,30 @@ SELECT format(
     ELSE datcollate
   END
 )
+FROM pg_database
+WHERE datname = current_database();
+SQL
+)"
+postgres_version="$(psql "$DATABASE_URL" -Atv ON_ERROR_STOP=1 -c "SHOW server_version")"
+collation_provider="$(psql "$DATABASE_URL" -Atv ON_ERROR_STOP=1 <<'SQL'
+SELECT CASE datlocprovider
+  WHEN 'b' THEN 'builtin'
+  WHEN 'c' THEN 'libc'
+  WHEN 'i' THEN 'icu'
+  ELSE datlocprovider::text
+END
+FROM pg_database
+WHERE datname = current_database();
+SQL
+)"
+collation_locale="$(psql "$DATABASE_URL" -Atv ON_ERROR_STOP=1 <<'SQL'
+SELECT CASE datlocprovider
+  WHEN 'i' THEN COALESCE(
+    to_jsonb(pg_database)->>'datlocale',
+    to_jsonb(pg_database)->>'daticulocale'
+  )
+  ELSE datcollate
+END
 FROM pg_database
 WHERE datname = current_database();
 SQL
@@ -104,6 +129,13 @@ SELECT
    LIMIT 1);
 SQL
 )"
+
+if [ -n "${TERAS_COLLATION_RESULT_FILE:-}" ]; then
+  mkdir -p "$(dirname "$TERAS_COLLATION_RESULT_FILE")"
+  printf '%s\t%s\t%s\t%s\n' \
+    "$postgres_version" "$collation_provider" "$collation_locale" "$state" \
+    >"$TERAS_COLLATION_RESULT_FILE"
+fi
 
 if [ "$state" != "id-Z|id-Z|path-a|path-a" ]; then
   echo "Migration winner selection differed for $collation_context" >&2
