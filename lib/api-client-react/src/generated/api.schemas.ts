@@ -437,6 +437,16 @@ export interface ReadinessEvidenceSnapshot {
   gates?: ReadinessEvidenceSnapshotGatesItem[];
 }
 
+export type GateProgressStatus = typeof GateProgressStatus[keyof typeof GateProgressStatus];
+
+
+export const GateProgressStatus = {
+  PASSED: 'PASSED',
+  ACTIVE: 'ACTIVE',
+  BLOCKED: 'BLOCKED',
+  LOCKED: 'LOCKED',
+} as const;
+
 export interface ReadinessContractRequirement {
   id: string;
   moduleId: string;
@@ -454,7 +464,7 @@ export interface GateProgress {
   id: string;
   code: string;
   name: string;
-  status: string;
+  status: GateProgressStatus;
   requirement: string;
   /**
      * @minimum 0

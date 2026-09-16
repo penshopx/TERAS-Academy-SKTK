@@ -212,6 +212,7 @@ export * from './exportAdminReadinessHistoryStatus';
 export * from './forbiddenResponse';
 export * from './gap';
 export * from './gateProgress';
+export * from './gateProgressStatus';
 export * from './getLearnerJourneyPageParams';
 export * from './healthStatus';
 export * from './journeyPage';

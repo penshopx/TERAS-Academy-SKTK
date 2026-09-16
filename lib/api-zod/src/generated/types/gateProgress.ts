@@ -5,13 +5,14 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { GateProgressStatus } from './gateProgressStatus';
 import type { ReadinessContractRequirement } from './readinessContractRequirement';
 
 export interface GateProgress {
   id: string;
   code: string;
   name: string;
-  status: string;
+  status: GateProgressStatus;
   requirement: string;
   /**
      * @minimum 0

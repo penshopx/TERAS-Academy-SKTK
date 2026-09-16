@@ -6,6 +6,7 @@ import { Activity, Lock, Unlock, CheckCircle2, AlertTriangle } from "lucide-reac
 import { cn } from "@/lib/utils";
 import { LearnerCondition } from "@/components/learner-condition";
 import { getReadinessPresentation } from "@/lib/readiness-presentation";
+import { getGateStatusPresentation } from "@/lib/gate-status-presentation";
 
 export default function Readiness() {
   const { data: readiness, isLoading, error } = useGetLearnerReadiness();
@@ -103,8 +104,8 @@ export default function Readiness() {
       <h2 className="text-xl font-bold mt-8 mb-4">Gate Sequence</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {readiness.gates.map((gate, idx) => {
-          const isPassed = gate.status === "PASSED";
-          const isCurrent = gate.status === "ACTIVE";
+          const gatePresentation = getGateStatusPresentation(gate.status);
+          const { isPassed, isCurrent } = gatePresentation;
           
           return (
             <Card key={gate.id} className={cn(
@@ -124,8 +125,8 @@ export default function Readiness() {
                   <Progress value={gate.score} className="h-1.5" />
                   <div className="flex justify-between text-muted-foreground"><span>Version {gate.ruleVersion}</span><span>{gate.hardGate ? "Hard gate" : "Threshold rule"}</span></div>
                 </div>
-                <Badge variant={isPassed ? "success" : isCurrent ? "default" : "secondary"} className="font-mono text-[10px] w-full justify-center">
-                  {gate.status}
+                <Badge variant={gatePresentation.badgeVariant} className="font-mono text-[10px] w-full justify-center">
+                  {gatePresentation.label}
                 </Badge>
               </CardContent>
             </Card>

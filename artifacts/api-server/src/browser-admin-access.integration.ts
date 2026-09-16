@@ -77,7 +77,7 @@ const queueItem = (role: "trainer" | "assessor", account: Account) => ({
 
 function learnerDashboard(account: Account) {
   const marker = workspaceMarkers.learner[account];
-  const gate = { id: "gate-1", code: "G1", name: "Foundation", status: "In progress", requirement: "Complete learning" };
+  const gate = { id: "gate-1", code: "G1", name: "Foundation", status: "ACTIVE", requirement: "Complete learning" };
   return {
     learner: profile("learner", account),
     program: { id: "program-1", domain: "Energy", name: marker, description: "Integration fixture", moduleCount: 1, learnerCount: 1, status: "Active" },

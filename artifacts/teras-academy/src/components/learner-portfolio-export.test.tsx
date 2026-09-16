@@ -30,7 +30,7 @@ const exportFixture = (terminalPortfolio: LearnerPortfolioExport["portfolio"]["t
       blockers: [],
       inputEvidence: { assessments: [], evidence: [], openCriticalGaps: [], gates: [] },
       currentGate: {
-        id: "gate-1", code: "G1", name: "Readiness gate", status: "Developing", requirement: "Evidence",
+        id: "gate-1", code: "G1", name: "Readiness gate", status: "ACTIVE", requirement: "Evidence",
         score: 50, threshold: 80, hardGate: false, competencyUnitId: null, ruleVersion: 1,
       },
       nextGate: null,

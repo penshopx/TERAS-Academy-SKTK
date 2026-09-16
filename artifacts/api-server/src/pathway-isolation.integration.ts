@@ -216,7 +216,7 @@ async function run() {
   const readiness = await request<Readiness>("/readiness");
   if (
     readiness.pathway.id !== "path-b" ||
-    readiness.gates.find((gate) => gate.code === "B1")?.status === "Passed"
+    readiness.gates.find((gate) => gate.code === "B1")?.status === "PASSED"
   ) {
     throw new Error("Retired Path B B01 assessment incorrectly satisfied the active B1 baseline gate");
   }
@@ -380,7 +380,7 @@ async function run() {
       contract.evidenceRequirementId !== `req-${contract.moduleId}` ||
       contract.gateCode !== gate.code
     )) ||
-    activeReadiness.gates.some((gate) => gate.status === "Passed")
+    activeReadiness.gates.some((gate) => gate.status === "PASSED")
   ) {
     throw new Error("Path B active projections exposed retired B01-B08 or passed before canonical prerequisites");
   }
@@ -395,8 +395,8 @@ async function run() {
     const gate = gateProgress.gates.find((item) => item.code === gateCode);
     const gateIndex = gateProgress.gates.findIndex((item) => item.code === gateCode);
     if (
-      gate?.status !== "Passed" ||
-      gateProgress.gates.slice(gateIndex + 1).some((item) => item.status === "Passed")
+      gate?.status !== "PASSED" ||
+      gateProgress.gates.slice(gateIndex + 1).some((item) => item.status === "PASSED")
     ) {
       throw new Error(`Path B ${gateCode} did not pass only after its mapped canonical prerequisites`);
     }

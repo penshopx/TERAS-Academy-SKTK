@@ -199,7 +199,7 @@ async function run() {
     }, 201);
     const missingM07Evidence = await request<Readiness>("/readiness", "learner");
     assert(
-      missingM07Evidence.gates.find((gate) => gate.code === "G2")?.status !== "Passed" &&
+      missingM07Evidence.gates.find((gate) => gate.code === "G2")?.status !== "PASSED" &&
         missingM07Evidence.missingEvidenceCount > 0,
       "M07 technical assessment bypassed its valid-evidence requirement",
     );

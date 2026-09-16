@@ -4454,13 +4454,17 @@ components:
         status: { type: string }
         type: { type: string }
       required: [id, title, description, status, type]
+    GateProgressStatus:
+      type: string
+      enum: [PASSED, ACTIVE, BLOCKED, LOCKED]
     GateProgress:
       type: object
       properties:
         id: { type: string }
         code: { type: string }
         name: { type: string }
-        status: { type: string }
+        status:
+          $ref: "#/components/schemas/GateProgressStatus"
         requirement: { type: string }
         score: { type: integer, minimum: 0, maximum: 100 }
         threshold: { type: integer, minimum: 0, maximum: 100 }

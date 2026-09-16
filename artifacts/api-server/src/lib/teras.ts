@@ -313,7 +313,13 @@ export async function readiness(context?: Awaited<ReturnType<typeof learnerConte
     if (score < gate.threshold) policyBlockers.push(`Rule threshold not met: ${score}/${gate.threshold}`);
     const hardGateFailed = gate.hardGate && policyBlockers.length > 0;
     const passed = previousPassed && policyBlockers.length === 0 && safetyBlockers.length === 0;
-    const status = passed ? "Passed" : previousPassed ? "In progress" : "Locked";
+    const status = passed
+      ? "PASSED"
+      : previousPassed
+        ? hardGateFailed || safetyBlockers.length > 0
+          ? "BLOCKED"
+          : "ACTIVE"
+        : "LOCKED";
     previousPassed = passed;
     return {
       id: gate.id, code: gate.code, name: gate.name, requirement: gate.requirement, status, score,
@@ -327,7 +333,9 @@ export async function readiness(context?: Awaited<ReturnType<typeof learnerConte
       })),
     };
   });
-  const activeGate = gateViews.find((gate) => gate.status === "In progress") ?? [...gateViews].reverse().find((gate) => gate.status === "Passed") ?? gateViews[0];
+  const activeGate = gateViews.find((gate) => gate.status === "ACTIVE" || gate.status === "BLOCKED")
+    ?? [...gateViews].reverse().find((gate) => gate.status === "PASSED")
+    ?? gateViews[0];
   if (!activeGate) throw new Error(`No readiness gates configured for ${activeContext.pathway.name}`);
   const currentIndex = gateViews.findIndex((gate) => gate.id === activeGate.id);
   const requiredAssessmentCount = assessmentIds.size;
@@ -336,11 +344,13 @@ export async function readiness(context?: Awaited<ReturnType<typeof learnerConte
   const validEvidenceCount = requirements.filter((requirement) => validEvidenceModules.has(requirement.moduleId)).length;
   const completedRequirements = completeAssessmentCount + validEvidenceCount;
   const totalRequirements = requiredAssessmentCount + requiredEvidenceCount;
-  const currentBlockers = gateViews.filter((gate) => gate.status === "In progress").flatMap((gate) => gate.blockers);
+  const currentBlockers = gateViews
+    .filter((gate) => gate.status === "ACTIVE" || gate.status === "BLOCKED")
+    .flatMap((gate) => gate.blockers);
   const blockers = [...new Set([...safetyBlockers, ...currentBlockers])];
   const score = totalRequirements ? Math.round(completedRequirements / totalRequirements * 100) : 100;
   const hardGateFailed = gateViews.some((gate) => gate.hardGateFailed);
-  const allRulesPassed = gateViews.every((gate) => gate.status === "Passed");
+  const allRulesPassed = gateViews.every((gate) => gate.status === "PASSED");
   const status = safetyBlockers.length > 0 || hardGateFailed
     ? "Not Ready"
     : allRulesPassed

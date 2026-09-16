@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { getReadinessPresentation } from "@/lib/readiness-presentation";
+import { getGateStatusPresentation } from "@/lib/gate-status-presentation";
 
 export default function ReadinessMap() {
   const { data: mapData, isLoading, isError } = useGetReadinessMap();
@@ -194,9 +195,9 @@ export default function ReadinessMap() {
             </CardHeader>
             <CardContent className="space-y-4">
               {readiness.gates.map((gate, idx) => {
-                const isPassed = gate.status === "PASSED" || gate.status === "passed";
-                const isBlocked = gate.status === "BLOCKED" || gate.status === "blocked";
-                const isCurrent = gate.id === readiness.currentGate.id;
+                const gatePresentation = getGateStatusPresentation(gate.status);
+                const { isPassed, isBlocked } = gatePresentation;
+                const isCurrent = gatePresentation.isCurrent && gate.id === readiness.currentGate.id;
                 
                 return (
                   <div key={gate.id} className="relative pl-6">
