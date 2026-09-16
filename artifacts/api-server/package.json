@@ -43,7 +43,7 @@
     "test:knowledge-safety": "NODE_ENV=test tsx ./src/lib/knowledge-safety.test.ts",
     "test:assistant-grounding": "NODE_ENV=test tsx ./src/lib/assistant-grounding.test.ts",
     "test:knowledge-lifecycle": "NODE_ENV=test tsx ./src/knowledge-lifecycle.integration.ts",
-    "test:trainer-bottlenecks": "NODE_ENV=test tsx --test ./src/lib/trainer-bottlenecks.test.ts",
+    "test:trainer-bottlenecks": "NODE_ENV=test tsx --test ./src/lib/trainer-bottlenecks.test.ts && NODE_ENV=test tsx ./src/trainer-review-queue.integration-runner.ts",
     "test:trainer-follow-up-notifications": "NODE_ENV=test tsx --test ./src/lib/trainer-follow-up-notifications.test.ts",
     "test:trainer-follow-up-notifications:integration": "NODE_ENV=test tsx ./src/trainer-follow-up-notifications.integration-runner.ts",
     "test:trainer-reminder-preference-history": "NODE_ENV=test tsx ./src/trainer-reminder-preference-history.integration-runner.ts",
