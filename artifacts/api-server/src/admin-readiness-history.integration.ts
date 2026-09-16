@@ -286,6 +286,55 @@ async function run() {
     assert(!ambiguousResult.stderr.includes(publicPem)
       && !ambiguousResult.stderr.includes(retiredPublicPem),
     "Ambiguous public key rejection must not expose public key material");
+    const malformedKeyManifests = [
+      {
+        label: "non-array keys",
+        manifest: { ...publicKeys, keys: { publicKeyPem: publicPem } },
+        expectedField: "keys must be an array",
+      },
+      {
+        label: "missing key ID",
+        manifest: {
+          ...publicKeys,
+          keys: [{ version: 2, algorithm: "Ed25519", publicKeyPem: publicPem }],
+        },
+        expectedField: "keys[0].keyId must be a string",
+      },
+      {
+        label: "non-string key ID",
+        manifest: {
+          ...publicKeys,
+          keys: [{ keyId: 2026, version: 2, algorithm: "Ed25519", publicKeyPem: publicPem }],
+        },
+        expectedField: "keys[0].keyId must be a string",
+      },
+      {
+        label: "missing key version",
+        manifest: {
+          ...publicKeys,
+          keys: [{ keyId: "teras-audit-2026-09", algorithm: "Ed25519", publicKeyPem: publicPem }],
+        },
+        expectedField: "keys[0].version must be an integer",
+      },
+      {
+        label: "non-integer key version",
+        manifest: {
+          ...publicKeys,
+          keys: [{ keyId: "teras-audit-2026-09", version: 2.5, algorithm: "Ed25519", publicKeyPem: publicPem }],
+        },
+        expectedField: "keys[0].version must be an integer",
+      },
+    ];
+    for (const malformed of malformedKeyManifests) {
+      await writeFile(keysPath, JSON.stringify(malformed.manifest));
+      const malformedResult = await runVerifier(exported);
+      assert(!malformedResult.accepted, `Official verifier must reject ${malformed.label}`);
+      assert(malformedResult.stderr.includes(malformed.expectedField),
+        `Malformed ${malformed.label} rejection must identify the invalid field`);
+      assert(!malformedResult.stderr.includes(publicPem)
+        && !malformedResult.stderr.includes(retiredPublicPem),
+      `Malformed ${malformed.label} rejection must not expose public key material`);
+    }
     const currentKeysOnly = {
       ...publicKeys,
       keys: publicKeys.keys.filter((key: any) => key.keyId !== "teras-audit-2026-01"),

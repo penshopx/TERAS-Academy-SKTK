@@ -37,9 +37,17 @@ try {
   const keyDocument = keyText.trimStart().startsWith("-----BEGIN PUBLIC KEY-----")
     ? { keys: [{ keyId: signature.keyId, version: signature.keyVersion, algorithm: "Ed25519", publicKeyPem: keyText }] }
     : JSON.parse(keyText);
+  if (!Array.isArray(keyDocument.keys)) {
+    throw new Error("invalid public key manifest: keys must be an array");
+  }
   const keyIdByVersion = new Map();
-  for (const candidate of keyDocument.keys ?? []) {
-    if (typeof candidate.keyId !== "string" || !Number.isInteger(candidate.version)) continue;
+  for (const [index, candidate] of keyDocument.keys.entries()) {
+    if (typeof candidate?.keyId !== "string") {
+      throw new Error(`invalid public key manifest: keys[${index}].keyId must be a string`);
+    }
+    if (!Number.isInteger(candidate.version)) {
+      throw new Error(`invalid public key manifest: keys[${index}].version must be an integer`);
+    }
     const existingKeyId = keyIdByVersion.get(candidate.version);
     if (existingKeyId !== undefined && existingKeyId !== candidate.keyId) {
       throw new Error(
@@ -48,7 +56,7 @@ try {
     }
     keyIdByVersion.set(candidate.version, candidate.keyId);
   }
-  const key = keyDocument.keys?.find(candidate => candidate.keyId === signature.keyId
+  const key = keyDocument.keys.find(candidate => candidate.keyId === signature.keyId
     && candidate.version === signature.keyVersion && candidate.algorithm === "Ed25519");
   if (!key) throw new Error(`public key not found for ${signature.keyId} version ${signature.keyVersion}`);
   const publicKey = createPublicKey(key.publicKeyPem);
