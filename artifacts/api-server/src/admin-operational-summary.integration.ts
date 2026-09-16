@@ -8,7 +8,7 @@ import {
   practiceTasksTable, programsTable, reassessmentLinksTable, remediationActivitiesTable,
   remediationEventsTable, remediationPlansTable,
 } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 const suffix = crypto.randomUUID();
 const id = (name: string) => `admin-summary-${name}-${suffix}`;
@@ -188,6 +188,17 @@ async function run() {
     const storedResolutions = await db.select().from(diagnosticFollowUpReminderResolutionsTable)
       .where(eq(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, ids.failedDelivery));
     assert(storedResolutions.length === 1 && storedResolutions[0].id === resolution.id, "Concurrent resolution attempts must store exactly one resolution");
+    const resolutionAudits = await db.select().from(adminAuditEventsTable).where(and(
+      eq(adminAuditEventsTable.action, "resolve"),
+      eq(adminAuditEventsTable.entityType, "trainer_reminder_escalation"),
+      eq(adminAuditEventsTable.entityId, ids.failedDelivery),
+    ));
+    assert(resolutionAudits.length === 1, "Concurrent resolution attempts must store exactly one resolve audit event");
+    assert(
+      resolutionAudits[0].actorPersonId === resolution.resolvedByPersonId
+        && (resolutionAudits[0].after as { id?: string } | null)?.id === resolution.id,
+      "Resolve audit must identify the winning administrator and resolution",
+    );
     const [originalDelivery] = await db.select().from(diagnosticFollowUpReminderDeliveriesTable).where(inArray(diagnosticFollowUpReminderDeliveriesTable.id, [ids.failedDelivery]));
     assert(originalDelivery.status === "permanently_failed" && originalDelivery.failureReason === "secret transport detail: smtp.example.test", "Resolution must not mutate the original delivery audit");
     const resolvedSummary = await (await fetch(`http://127.0.0.1:${address.port}/api/admin/summary`)).json() as any;
