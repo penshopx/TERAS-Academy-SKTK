@@ -1620,6 +1620,26 @@ export type AdminOperationalSummaryIncompleteAssignments = {
   total: number;
 };
 
+export type AdminReminderEscalationChannelStatusStatus = typeof AdminReminderEscalationChannelStatusStatus[keyof typeof AdminReminderEscalationChannelStatusStatus];
+
+
+export const AdminReminderEscalationChannelStatusStatus = {
+  pending: 'pending',
+  sending: 'sending',
+  sent: 'sent',
+  failed: 'failed',
+} as const;
+
+export interface AdminReminderEscalationChannelStatus {
+  status: AdminReminderEscalationChannelStatusStatus;
+  /** @nullable */
+  attemptedAt: string | null;
+  /** @nullable */
+  sentAt: string | null;
+  /** @nullable */
+  reason: string | null;
+}
+
 export type AdminReminderEscalationStatus = typeof AdminReminderEscalationStatus[keyof typeof AdminReminderEscalationStatus];
 
 
@@ -1636,12 +1656,6 @@ export interface AdminReminderEscalationResolution {
   resolvedAt: string;
 }
 
-export type AdminReminderEscalationFailureNotification = {
-  destination: string;
-  attemptedAt: string;
-  reason: string;
-} | null;
-
 export interface AdminReminderEscalation {
   id: string;
   trainerId: string;
@@ -1650,7 +1664,8 @@ export interface AdminReminderEscalation {
   targetAt: string;
   lastAttemptAt: string;
   reason: string;
-  failureNotification: AdminReminderEscalationFailureNotification;
+  emailNotification: AdminReminderEscalationChannelStatus | null;
+  webhookNotification: AdminReminderEscalationChannelStatus | null;
   status: AdminReminderEscalationStatus;
   resolution: AdminReminderEscalationResolution | null;
 }

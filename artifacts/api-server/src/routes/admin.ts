@@ -146,20 +146,52 @@ async function reminderEscalationRows(options: { status?: "open" | "resolved"; l
     resolutionNote: diagnosticFollowUpReminderResolutionsTable.note,
     resolvedByPersonId: diagnosticFollowUpReminderResolutionsTable.resolvedByPersonId,
     resolvedAt: diagnosticFollowUpReminderResolutionsTable.resolvedAt,
-    failureNotificationStatus: diagnosticFollowUpFailureNotificationsTable.status,
-    failureNotificationDestination: diagnosticFollowUpFailureNotificationsTable.destination,
-    failureNotificationAttemptedAt: diagnosticFollowUpFailureNotificationsTable.attemptedAt,
-    failureNotificationReason: diagnosticFollowUpFailureNotificationsTable.failureReason,
+    emailNotificationStatus: sql<string | null>`(
+      select notification.status from teras_diagnostic_follow_up_failure_notifications notification
+      where notification.reminder_delivery_id = ${diagnosticFollowUpReminderDeliveriesTable.id}
+        and notification.channel = 'email' limit 1
+    )`,
+    emailNotificationAttemptedAt: sql<Date | null>`(
+      select notification.attempted_at from teras_diagnostic_follow_up_failure_notifications notification
+      where notification.reminder_delivery_id = ${diagnosticFollowUpReminderDeliveriesTable.id}
+        and notification.channel = 'email' limit 1
+    )`,
+    emailNotificationSentAt: sql<Date | null>`(
+      select notification.sent_at from teras_diagnostic_follow_up_failure_notifications notification
+      where notification.reminder_delivery_id = ${diagnosticFollowUpReminderDeliveriesTable.id}
+        and notification.channel = 'email' limit 1
+    )`,
+    emailNotificationReason: sql<string | null>`(
+      select notification.failure_reason from teras_diagnostic_follow_up_failure_notifications notification
+      where notification.reminder_delivery_id = ${diagnosticFollowUpReminderDeliveriesTable.id}
+        and notification.channel = 'email' limit 1
+    )`,
+    webhookNotificationStatus: sql<string | null>`(
+      select notification.status from teras_diagnostic_follow_up_failure_notifications notification
+      where notification.reminder_delivery_id = ${diagnosticFollowUpReminderDeliveriesTable.id}
+        and notification.channel = 'webhook' limit 1
+    )`,
+    webhookNotificationAttemptedAt: sql<Date | null>`(
+      select notification.attempted_at from teras_diagnostic_follow_up_failure_notifications notification
+      where notification.reminder_delivery_id = ${diagnosticFollowUpReminderDeliveriesTable.id}
+        and notification.channel = 'webhook' limit 1
+    )`,
+    webhookNotificationSentAt: sql<Date | null>`(
+      select notification.sent_at from teras_diagnostic_follow_up_failure_notifications notification
+      where notification.reminder_delivery_id = ${diagnosticFollowUpReminderDeliveriesTable.id}
+        and notification.channel = 'webhook' limit 1
+    )`,
+    webhookNotificationReason: sql<string | null>`(
+      select notification.failure_reason from teras_diagnostic_follow_up_failure_notifications notification
+      where notification.reminder_delivery_id = ${diagnosticFollowUpReminderDeliveriesTable.id}
+        and notification.channel = 'webhook' limit 1
+    )`,
   })
     .from(diagnosticFollowUpReminderDeliveriesTable)
     .innerJoin(diagnosticRecommendationFollowUpsTable, eq(diagnosticRecommendationFollowUpsTable.id, diagnosticFollowUpReminderDeliveriesTable.followUpId))
     .innerJoin(diagnosticRecommendationsTable, eq(diagnosticRecommendationsTable.id, diagnosticRecommendationFollowUpsTable.recommendationId))
     .innerJoin(peopleTable, eq(peopleTable.id, diagnosticFollowUpReminderDeliveriesTable.trainerId))
     .leftJoin(diagnosticFollowUpReminderResolutionsTable, eq(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, diagnosticFollowUpReminderDeliveriesTable.id))
-    .leftJoin(diagnosticFollowUpFailureNotificationsTable, and(
-      eq(diagnosticFollowUpFailureNotificationsTable.reminderDeliveryId, diagnosticFollowUpReminderDeliveriesTable.id),
-      eq(diagnosticFollowUpFailureNotificationsTable.channel, "email"),
-    ))
     .where(and(
       eq(diagnosticFollowUpReminderDeliveriesTable.status, "permanently_failed"),
       resolutionCondition,
@@ -170,6 +202,15 @@ async function reminderEscalationRows(options: { status?: "open" | "resolved"; l
 }
 
 function serializeReminderEscalations(rows: any[]) {
+  const channelStatus = (status: unknown, attemptedAt: unknown, sentAt: unknown, failureReason: unknown) => {
+    if (!status) return null;
+    return {
+      status,
+      attemptedAt: attemptedAt ?? null,
+      sentAt: sentAt ?? null,
+      reason: status === "failed" ? safeReminderFailureReason(typeof failureReason === "string" ? failureReason : null) : null,
+    };
+  };
   return rows.flatMap(row => {
     if (!row.targetAt || !row.lastAttemptAt) return [];
     return [{
@@ -180,13 +221,8 @@ function serializeReminderEscalations(rows: any[]) {
       targetAt: row.targetAt,
       lastAttemptAt: row.lastAttemptAt,
       reason: safeReminderFailureReason(row.failureReason),
-      failureNotification: row.failureNotificationStatus === "failed" && row.failureNotificationDestination && row.failureNotificationAttemptedAt
-        ? {
-          destination: row.failureNotificationDestination,
-          attemptedAt: row.failureNotificationAttemptedAt,
-          reason: safeReminderFailureReason(row.failureNotificationReason),
-        }
-        : null,
+      emailNotification: channelStatus(row.emailNotificationStatus, row.emailNotificationAttemptedAt, row.emailNotificationSentAt, row.emailNotificationReason),
+      webhookNotification: channelStatus(row.webhookNotificationStatus, row.webhookNotificationAttemptedAt, row.webhookNotificationSentAt, row.webhookNotificationReason),
       status: row.resolutionId ? "resolved" : "open",
       resolution: row.resolutionId ? {
         id: row.resolutionId,

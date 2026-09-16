@@ -425,6 +425,28 @@ export function hasPermanentReminderEscalations(summary?: Pick<AdminOperationalS
   return Boolean(summary?.failedTrainerReminders.some(item => item.status === "open"));
 }
 
+function NotificationChannelStatus({ label, notification }: {
+  label: string;
+  notification: AdminOperationalSummary["failedTrainerReminders"][number]["emailNotification"];
+}) {
+  const statusLabel = notification?.status === "sent" ? "Terkirim"
+    : notification?.status === "failed" ? "Gagal"
+      : notification?.status === "sending" ? "Sedang dikirim"
+        : notification?.status === "pending" ? "Menunggu"
+          : "Belum dicoba";
+  const isSent = notification?.status === "sent";
+  const isFailed = notification?.status === "failed";
+  return <div className={`rounded-md border p-3 ${isSent ? "border-emerald-500/40 bg-emerald-500/5" : isFailed ? "border-destructive/40 bg-destructive/5" : "bg-muted/30"}`}>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <p className="text-sm font-semibold">{label}</p>
+      <Badge variant="outline" className={isSent ? "border-emerald-500/50 text-emerald-700 dark:text-emerald-300" : isFailed ? "border-destructive/40 text-destructive" : ""}>{statusLabel}</Badge>
+    </div>
+    {notification?.attemptedAt && <p className="mt-1 text-xs text-muted-foreground">Percobaan {auditTime(notification.attemptedAt)}</p>}
+    {notification?.sentAt && <p className="mt-1 text-xs text-muted-foreground">Terkirim {auditTime(notification.sentAt)}</p>}
+    {notification?.reason && <p className="mt-2 text-sm text-destructive">{notification.reason}</p>}
+  </div>;
+}
+
 function OperationalSummary({ summary, selectedQueue, filters, onFilterChange, onOpenQueue, onOpenTab }: { summary: SummaryQuery; selectedQueue: QueueId | null; filters: QueueFilters; onFilterChange: (key: QueueFilterKey, value: string) => void; onOpenQueue: (queue: QueueId) => void; onOpenTab: (tab: AdminTab) => void }) {
   const client = useQueryClient();
   const { toast } = useToast();
@@ -467,13 +489,13 @@ function OperationalSummary({ summary, selectedQueue, filters, onFilterChange, o
       {hasPermanentReminderEscalations(summary.data) && <section id="failed-trainer-reminders" aria-labelledby="failed-trainer-reminders-title" role="alert" data-testid="admin-failed-trainer-reminders">
         <Card className="border-destructive/60 bg-destructive/5">
           <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle id="failed-trainer-reminders-title" className="flex items-center gap-2 text-destructive"><AlertTriangle className="h-5 w-5" />Pengingat trainer gagal permanen</CardTitle><p className="mt-1 text-sm text-muted-foreground">Pengiriman telah dihentikan setelah tiga percobaan. Tindak lanjuti target ini secara manual.</p></div><Badge variant="destructive" className="text-sm">{summary.data.reminderEscalationCounts.open}</Badge></div></CardHeader>
-          <CardContent><div className="divide-y">{openReminders.map(item => <article key={item.id} className="grid gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-[1fr_auto] md:items-start" data-testid={`failed-trainer-reminder-${item.id}`}><div><p className="font-semibold">{item.target}</p><p className="mt-1 text-sm">Trainer: <strong>{item.trainerName}</strong></p><p className="mt-1 text-sm text-muted-foreground">Target {auditTime(item.targetAt)} · Percobaan terakhir {auditTime(item.lastAttemptAt)}</p><p className="mt-2 text-sm text-destructive">{item.reason}</p>{item.failureNotification && <div className="mt-3 rounded-md border border-destructive/40 bg-background/70 p-3" role="alert" data-testid={`failed-operations-notification-${item.id}`}><p className="text-sm font-semibold text-destructive">Pemberitahuan kepada pengelola juga tidak terkirim</p><p className="mt-1 text-xs text-muted-foreground">Tujuan {item.failureNotification.destination} · Percobaan {auditTime(item.failureNotification.attemptedAt)}</p><p className="mt-2 text-sm text-destructive">{item.failureNotification.reason}</p></div>}</div><div className="flex flex-col items-end gap-2"><Badge variant="outline" className="border-destructive/40 text-destructive">Perlu tindakan</Badge><Button size="sm" onClick={() => { setResolvingReminderId(item.id); setResolutionNote(""); }} data-testid={`button-resolve-reminder-${item.id}`}>Tandai ditangani</Button></div></article>)}</div></CardContent>
+          <CardContent><div className="divide-y">{openReminders.map(item => <article key={item.id} className="grid gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-[1fr_auto] md:items-start" data-testid={`failed-trainer-reminder-${item.id}`}><div><p className="font-semibold">{item.target}</p><p className="mt-1 text-sm">Trainer: <strong>{item.trainerName}</strong></p><p className="mt-1 text-sm text-muted-foreground">Target {auditTime(item.targetAt)} · Percobaan terakhir {auditTime(item.lastAttemptAt)}</p><p className="mt-2 text-sm text-destructive">{item.reason}</p><div className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Status kanal pemberitahuan"><NotificationChannelStatus label="Email pengelola" notification={item.emailNotification} /><NotificationChannelStatus label="Webhook cadangan" notification={item.webhookNotification} /></div></div><div className="flex flex-col items-end gap-2"><Badge variant="outline" className="border-destructive/40 text-destructive">Perlu tindakan</Badge><Button size="sm" onClick={() => { setResolvingReminderId(item.id); setResolutionNote(""); }} data-testid={`button-resolve-reminder-${item.id}`}>Tandai ditangani</Button></div></article>)}</div></CardContent>
         </Card>
       </section>}
       {resolvedReminders.length > 0 && <section aria-labelledby="resolved-trainer-reminders-title" data-testid="admin-resolved-trainer-reminders">
         <Card>
           <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle id="resolved-trainer-reminders-title">Eskalasi pengingat selesai</CardTitle><p className="mt-1 text-sm text-muted-foreground">Riwayat penanganan manual tetap tersimpan tanpa mengubah delivery asli.</p></div><Badge variant="secondary">{summary.data.reminderEscalationCounts.resolved}</Badge></div></CardHeader>
-          <CardContent><div className="divide-y">{resolvedReminders.map(item => <article key={item.id} className="grid gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-[1fr_auto] md:items-start" data-testid={`resolved-trainer-reminder-${item.id}`}><div><p className="font-semibold">{item.target}</p><p className="mt-1 text-sm">Trainer: <strong>{item.trainerName}</strong></p><p className="mt-1 text-sm text-muted-foreground">Percobaan terakhir {auditTime(item.lastAttemptAt)}</p>{item.resolution && <div className="mt-3 rounded-md bg-muted/50 p-3 text-sm"><p>{item.resolution.note}</p><p className="mt-1 text-xs text-muted-foreground">Ditangani {auditTime(item.resolution.resolvedAt)} · Aktor {item.resolution.resolvedByPersonId}</p></div>}</div><Badge variant="secondary">Selesai</Badge></article>)}</div></CardContent>
+          <CardContent><div className="divide-y">{resolvedReminders.map(item => <article key={item.id} className="grid gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-[1fr_auto] md:items-start" data-testid={`resolved-trainer-reminder-${item.id}`}><div><p className="font-semibold">{item.target}</p><p className="mt-1 text-sm">Trainer: <strong>{item.trainerName}</strong></p><p className="mt-1 text-sm text-muted-foreground">Percobaan terakhir {auditTime(item.lastAttemptAt)}</p><div className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Status kanal pemberitahuan"><NotificationChannelStatus label="Email pengelola" notification={item.emailNotification} /><NotificationChannelStatus label="Webhook cadangan" notification={item.webhookNotification} /></div>{item.resolution && <div className="mt-3 rounded-md bg-muted/50 p-3 text-sm"><p>{item.resolution.note}</p><p className="mt-1 text-xs text-muted-foreground">Ditangani {auditTime(item.resolution.resolvedAt)} · Aktor {item.resolution.resolvedByPersonId}</p></div>}</div><Badge variant="secondary">Selesai</Badge></article>)}</div></CardContent>
         </Card>
       </section>}
       <div className="grid gap-4 xl:grid-cols-[1.15fr_.85fr]">

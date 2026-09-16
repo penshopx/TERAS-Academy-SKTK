@@ -80,12 +80,12 @@ test("only open permanent trainer reminder failures activate the admin alarm", (
   assert.equal(hasPermanentReminderEscalations({ failedTrainerReminders: [{
     id: "delivery-1", trainerId: "trainer-1", trainerName: "Trainer Satu", target: "Inspeksi inverter",
     targetAt: "2030-01-10T00:00:00.000Z", lastAttemptAt: "2030-01-09T03:00:00.000Z", reason: "Layanan email tidak dapat menyelesaikan pengiriman.",
-    failureNotification: null, status: "open", resolution: null,
+    emailNotification: null, webhookNotification: null, status: "open", resolution: null,
   }] }), true);
   assert.equal(hasPermanentReminderEscalations({ failedTrainerReminders: [{
     id: "delivery-2", trainerId: "trainer-1", trainerName: "Trainer Satu", target: "Inspeksi inverter",
     targetAt: "2030-01-10T00:00:00.000Z", lastAttemptAt: "2030-01-09T03:00:00.000Z", reason: "Layanan email tidak dapat menyelesaikan pengiriman.",
-    failureNotification: null, status: "resolved", resolution: { id: "resolution-1", reminderDeliveryId: "delivery-2", note: "Sudah dihubungi", resolvedByPersonId: "admin-1", resolvedAt: "2030-01-09T05:00:00.000Z" },
+    emailNotification: null, webhookNotification: null, status: "resolved", resolution: { id: "resolution-1", reminderDeliveryId: "delivery-2", note: "Sudah dihubungi", resolvedByPersonId: "admin-1", resolvedAt: "2030-01-09T05:00:00.000Z" },
   }] }), false);
 });
 
@@ -96,9 +96,11 @@ test("admin summary renders every safe permanent-failure detail for the manager"
   assert.match(source, /item\.target/);
   assert.match(source, /item\.lastAttemptAt/);
   assert.match(source, /item\.reason/);
-  assert.match(source, /item\.failureNotification\.destination/);
-  assert.match(source, /item\.failureNotification\.attemptedAt/);
-  assert.match(source, /item\.failureNotification\.reason/);
+  assert.match(source, /Email pengelola/);
+  assert.match(source, /Webhook cadangan/);
+  assert.match(source, /item\.emailNotification/);
+  assert.match(source, /item\.webhookNotification/);
+  assert.doesNotMatch(source, /failureNotification\.destination/);
   assert.match(source, /useResolveAdminReminderEscalation/);
   assert.match(source, /input-reminder-resolution-note/);
   assert.match(source, /admin-resolved-trainer-reminders/);

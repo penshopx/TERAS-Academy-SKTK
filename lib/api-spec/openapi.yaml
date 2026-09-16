@@ -3740,7 +3740,7 @@ components:
         generatedAt: { type: string, format: date-time }
     AdminReminderEscalation:
       type: object
-      required: [id, trainerId, trainerName, target, targetAt, lastAttemptAt, reason, failureNotification, status, resolution]
+      required: [id, trainerId, trainerName, target, targetAt, lastAttemptAt, reason, emailNotification, webhookNotification, status, resolution]
       properties:
         id: { type: string }
         trainerId: { type: string }
@@ -3749,20 +3749,27 @@ components:
         targetAt: { type: string, format: date-time }
         lastAttemptAt: { type: string, format: date-time }
         reason: { type: string }
-        failureNotification:
+        emailNotification:
           anyOf:
-            - type: object
-              required: [destination, attemptedAt, reason]
-              properties:
-                destination: { type: string }
-                attemptedAt: { type: string, format: date-time }
-                reason: { type: string }
+            - $ref: "#/components/schemas/AdminReminderEscalationChannelStatus"
+            - type: "null"
+        webhookNotification:
+          anyOf:
+            - $ref: "#/components/schemas/AdminReminderEscalationChannelStatus"
             - type: "null"
         status: { type: string, enum: [open, resolved] }
         resolution:
           anyOf:
             - $ref: "#/components/schemas/AdminReminderEscalationResolution"
             - type: "null"
+    AdminReminderEscalationChannelStatus:
+      type: object
+      required: [status, attemptedAt, sentAt, reason]
+      properties:
+        status: { type: string, enum: [pending, sending, sent, failed] }
+        attemptedAt: { type: ["string", "null"], format: date-time }
+        sentAt: { type: ["string", "null"], format: date-time }
+        reason: { type: ["string", "null"] }
     AdminReminderEscalationCounts:
       type: object
       required: [open, resolved, total]

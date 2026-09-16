@@ -25,7 +25,7 @@ const ids = {
   inactiveReassessment: id("inactive-reassessment"), pendingAfterRemediation: id("pending-after-remediation"),
   trainer: id("trainer"), framework: id("framework"), template: id("template"), session: id("session"),
   profile: id("profile"), recommendation: id("recommendation"), followUp: id("follow-up"), failedDelivery: id("failed-delivery"),
-  failedNotification: id("failed-notification"), admin: id("admin"), secondAdmin: id("second-admin"),
+  failedNotification: id("failed-notification"), sentWebhookNotification: id("sent-webhook-notification"), admin: id("admin"), secondAdmin: id("second-admin"),
 };
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 
@@ -82,6 +82,11 @@ async function run() {
     await db.insert(diagnosticFollowUpFailureNotificationsTable).values({
       id: ids.failedNotification, reminderDeliveryId: ids.failedDelivery, destination: `operations-${suffix}@example.test`,
       status: "failed", attemptedAt: new Date("2030-01-09T03:05:00Z"), failureReason: "raw operations transport: mx.internal.example",
+    });
+    await db.insert(diagnosticFollowUpFailureNotificationsTable).values({
+      id: ids.sentWebhookNotification, reminderDeliveryId: ids.failedDelivery, channel: "webhook",
+      destination: `https://hooks.internal.example/${suffix}`, status: "sent",
+      attemptedAt: new Date("2030-01-09T03:06:00Z"), sentAt: new Date("2030-01-09T03:06:01Z"),
     });
     await db.insert(modulesTable).values([
       { id: ids.activeModule, programId: ids.program, pathwayId: ids.activePath, sequence: 1, code: "AS", name: "Active", capability: "test", evidence: "test", learningOutcomes: [], theory: [] },
@@ -141,10 +146,14 @@ async function run() {
     assert(reminderFailure?.lastAttemptAt === "2030-01-09T03:00:00.000Z", "Permanent reminder failure must expose the last attempt time");
     assert(reminderFailure?.reason === "Layanan email tidak dapat menyelesaikan pengiriman.", "Admin summary must redact raw transport failure details");
     assert(!JSON.stringify(reminderFailure).includes("smtp.example.test"), "Admin summary leaked a raw transport failure reason");
-    assert(reminderFailure?.failureNotification?.destination === `operations-${suffix}@example.test`, "Failed operations notification must identify its destination");
-    assert(reminderFailure?.failureNotification?.attemptedAt === "2030-01-09T03:05:00.000Z", "Failed operations notification must expose its attempt time");
-    assert(reminderFailure?.failureNotification?.reason === "Layanan email tidak dapat menyelesaikan pengiriman.", "Failed operations notification must expose only a safe reason");
+    assert(reminderFailure?.emailNotification?.status === "failed", "Email notification failure must remain visible");
+    assert(reminderFailure?.emailNotification?.attemptedAt === "2030-01-09T03:05:00.000Z", "Email notification must expose its attempt time");
+    assert(reminderFailure?.emailNotification?.reason === "Layanan email tidak dapat menyelesaikan pengiriman.", "Email notification must expose only a safe reason");
+    assert(reminderFailure?.webhookNotification?.status === "sent", "Successful webhook fallback must remain visible");
+    assert(reminderFailure?.webhookNotification?.sentAt === "2030-01-09T03:06:01.000Z", "Webhook notification must expose its sent time");
+    assert(summary.failedTrainerReminders.filter((item: any) => item.id === ids.failedDelivery).length === 1, "Two channel audits must still produce one escalation item");
     assert(!JSON.stringify(reminderFailure).includes("mx.internal.example"), "Admin summary leaked raw operations notification transport details");
+    assert(!JSON.stringify(reminderFailure).includes("hooks.internal.example"), "Admin summary leaked the webhook destination");
     assert(reminderFailure?.status === "open" && reminderFailure?.resolution === null, "New permanent failure must be an open escalation");
     assert(summary.failedTrainerReminders.length <= 25, "Operational summary escalation detail must remain bounded");
     assert(summary.failedTrainerReminders[0]?.status === "open", "Operational summary must prioritize open escalations");

@@ -5,7 +5,7 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
-import type { AdminReminderEscalationFailureNotification } from './adminReminderEscalationFailureNotification';
+import type { AdminReminderEscalationChannelStatus } from './adminReminderEscalationChannelStatus';
 import type { AdminReminderEscalationResolution } from './adminReminderEscalationResolution';
 import type { AdminReminderEscalationStatus } from './adminReminderEscalationStatus';
 
@@ -17,7 +17,8 @@ export interface AdminReminderEscalation {
   targetAt: Date;
   lastAttemptAt: Date;
   reason: string;
-  failureNotification: AdminReminderEscalationFailureNotification;
+  emailNotification: AdminReminderEscalationChannelStatus | null;
+  webhookNotification: AdminReminderEscalationChannelStatus | null;
   status: AdminReminderEscalationStatus;
   resolution: AdminReminderEscalationResolution | null;
 }

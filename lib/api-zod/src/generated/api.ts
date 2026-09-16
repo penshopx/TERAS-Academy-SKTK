@@ -4490,10 +4490,17 @@ export const GetAdminOperationalSummaryResponse = zod.object({
   "targetAt": zod.coerce.date(),
   "lastAttemptAt": zod.coerce.date(),
   "reason": zod.string(),
-  "failureNotification": zod.union([zod.object({
-  "destination": zod.string(),
-  "attemptedAt": zod.coerce.date(),
-  "reason": zod.string()
+  "emailNotification": zod.union([zod.object({
+  "status": zod.enum(['pending', 'sending', 'sent', 'failed']),
+  "attemptedAt": zod.coerce.date().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "reason": zod.string().nullable()
+}),zod.null()]),
+  "webhookNotification": zod.union([zod.object({
+  "status": zod.enum(['pending', 'sending', 'sent', 'failed']),
+  "attemptedAt": zod.coerce.date().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "reason": zod.string().nullable()
 }),zod.null()]),
   "status": zod.enum(['open', 'resolved']),
   "resolution": zod.union([zod.object({
@@ -4591,10 +4598,17 @@ export const ListAdminReminderEscalationsResponse = zod.object({
   "targetAt": zod.coerce.date(),
   "lastAttemptAt": zod.coerce.date(),
   "reason": zod.string(),
-  "failureNotification": zod.union([zod.object({
-  "destination": zod.string(),
-  "attemptedAt": zod.coerce.date(),
-  "reason": zod.string()
+  "emailNotification": zod.union([zod.object({
+  "status": zod.enum(['pending', 'sending', 'sent', 'failed']),
+  "attemptedAt": zod.coerce.date().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "reason": zod.string().nullable()
+}),zod.null()]),
+  "webhookNotification": zod.union([zod.object({
+  "status": zod.enum(['pending', 'sending', 'sent', 'failed']),
+  "attemptedAt": zod.coerce.date().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "reason": zod.string().nullable()
 }),zod.null()]),
   "status": zod.enum(['open', 'resolved']),
   "resolution": zod.union([zod.object({
@@ -4697,10 +4711,17 @@ export const GetAdminLearnerDashboardProjectionResponse = zod.object({
   "targetAt": zod.coerce.date(),
   "lastAttemptAt": zod.coerce.date(),
   "reason": zod.string(),
-  "failureNotification": zod.union([zod.object({
-  "destination": zod.string(),
-  "attemptedAt": zod.coerce.date(),
-  "reason": zod.string()
+  "emailNotification": zod.union([zod.object({
+  "status": zod.enum(['pending', 'sending', 'sent', 'failed']),
+  "attemptedAt": zod.coerce.date().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "reason": zod.string().nullable()
+}),zod.null()]),
+  "webhookNotification": zod.union([zod.object({
+  "status": zod.enum(['pending', 'sending', 'sent', 'failed']),
+  "attemptedAt": zod.coerce.date().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "reason": zod.string().nullable()
 }),zod.null()]),
   "status": zod.enum(['open', 'resolved']),
   "resolution": zod.union([zod.object({
@@ -4804,10 +4825,17 @@ export const GetAdminTrainerDashboardProjectionResponse = zod.object({
   "targetAt": zod.coerce.date(),
   "lastAttemptAt": zod.coerce.date(),
   "reason": zod.string(),
-  "failureNotification": zod.union([zod.object({
-  "destination": zod.string(),
-  "attemptedAt": zod.coerce.date(),
-  "reason": zod.string()
+  "emailNotification": zod.union([zod.object({
+  "status": zod.enum(['pending', 'sending', 'sent', 'failed']),
+  "attemptedAt": zod.coerce.date().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "reason": zod.string().nullable()
+}),zod.null()]),
+  "webhookNotification": zod.union([zod.object({
+  "status": zod.enum(['pending', 'sending', 'sent', 'failed']),
+  "attemptedAt": zod.coerce.date().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "reason": zod.string().nullable()
 }),zod.null()]),
   "status": zod.enum(['open', 'resolved']),
   "resolution": zod.union([zod.object({
@@ -4911,10 +4939,17 @@ export const GetAdminAssessorDashboardProjectionResponse = zod.object({
   "targetAt": zod.coerce.date(),
   "lastAttemptAt": zod.coerce.date(),
   "reason": zod.string(),
-  "failureNotification": zod.union([zod.object({
-  "destination": zod.string(),
-  "attemptedAt": zod.coerce.date(),
-  "reason": zod.string()
+  "emailNotification": zod.union([zod.object({
+  "status": zod.enum(['pending', 'sending', 'sent', 'failed']),
+  "attemptedAt": zod.coerce.date().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "reason": zod.string().nullable()
+}),zod.null()]),
+  "webhookNotification": zod.union([zod.object({
+  "status": zod.enum(['pending', 'sending', 'sent', 'failed']),
+  "attemptedAt": zod.coerce.date().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "reason": zod.string().nullable()
 }),zod.null()]),
   "status": zod.enum(['open', 'resolved']),
   "resolution": zod.union([zod.object({
