@@ -23,6 +23,40 @@ const forcedTerminationRunnerFixture =
 const hangFixture = "./src/fixtures/integration-schema-runner-hang.fixture.ts";
 const successFixture = "./src/fixtures/integration-schema-runner-success.fixture.ts";
 
+function quoteIdentifier(identifier: string) {
+  return `"${identifier.replaceAll('"', '""')}"`;
+}
+
+async function withNoCreateDbRole(
+  admin: InstanceType<typeof Client>,
+  run: (roleDatabaseUrl: string, roleName: string) => Promise<void>,
+) {
+  const roleName = `schema_runner_ci_${crypto.randomUUID().replaceAll("-", "")}`;
+  const password = crypto.randomUUID().replaceAll("-", "");
+  const roleIdentifier = quoteIdentifier(roleName);
+  const databaseName = new URL(databaseUrl!).pathname.slice(1);
+  const databaseIdentifier = quoteIdentifier(decodeURIComponent(databaseName));
+  await admin.query(
+    `CREATE ROLE ${roleIdentifier} LOGIN PASSWORD '${password}' NOCREATEDB`,
+  );
+  try {
+    await admin.query(
+      `GRANT CONNECT, CREATE ON DATABASE ${databaseIdentifier} TO ${roleIdentifier}`,
+    );
+    await admin.query(`GRANT USAGE ON SCHEMA public TO ${roleIdentifier}`);
+    await admin.query(
+      `GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${roleIdentifier}`,
+    );
+    const roleUrl = new URL(databaseUrl!);
+    roleUrl.username = roleName;
+    roleUrl.password = password;
+    await run(roleUrl.toString(), roleName);
+  } finally {
+    await admin.query(`DROP OWNED BY ${roleIdentifier}`);
+    await admin.query(`DROP ROLE ${roleIdentifier}`);
+  }
+}
+
 async function withMarkerFile(run: (markerFile: string) => Promise<void>) {
   const directory = await mkdtemp(join(tmpdir(), "schema-runner-contract-"));
   const markerFile = join(directory, "execution-order.txt");
@@ -480,6 +514,48 @@ test("setup receives the disposable DATABASE_URL and extra environment before th
 
     assert.equal(await readFile(markerFile, "utf8"), "setup\ntest\n");
   });
+});
+
+test("schema mode succeeds while empty-database mode diagnoses CREATEDB for a real restricted role", {
+  skip: !databaseUrl,
+}, async () => {
+  const admin = new Client({ connectionString: databaseUrl });
+  await admin.connect();
+  try {
+    await withNoCreateDbRole(admin, async (roleDatabaseUrl, roleName) => {
+      const previousDatabaseUrl = process.env.DATABASE_URL;
+      process.env.DATABASE_URL = roleDatabaseUrl;
+      try {
+        await withMarkerFile(async (markerFile) => {
+          await runIsolatedIntegrationTest({
+            schemaPrefix: "schema_runner_nocreatedb",
+            testFile: successFixture,
+          });
+          assert.equal(await readFile(markerFile, "utf8"), "test\n");
+        });
+
+        await withMarkerFile(async (markerFile) => {
+          await assert.rejects(
+            runIsolatedIntegrationTest({
+              schemaPrefix: "database_runner_nocreatedb",
+              testFile: successFixture,
+              useEmptyDatabase: true,
+            }),
+            (error: Error) => {
+              assert.match(error.message, /CREATEDB/);
+              assert.match(error.message, new RegExp(`Current role: ${roleName}`));
+              return true;
+            },
+          );
+          await assert.rejects(readFile(markerFile, "utf8"), { code: "ENOENT" });
+        });
+      } finally {
+        process.env.DATABASE_URL = previousDatabaseUrl;
+      }
+    });
+  } finally {
+    await admin.end();
+  }
 });
 
 test("a failing setup command prevents the test file from running", {
