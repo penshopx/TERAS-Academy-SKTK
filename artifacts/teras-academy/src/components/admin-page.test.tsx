@@ -102,8 +102,15 @@ test("admin summary renders every safe permanent-failure detail for the manager"
   assert.match(source, /item\.webhookNotification/);
   assert.doesNotMatch(source, /failureNotification\.destination/);
   assert.match(source, /useResolveAdminReminderEscalation/);
+  assert.match(source, /useInfiniteQuery/);
+  assert.match(source, /listAdminReminderEscalations/);
+  assert.match(source, /filter-reminder-escalations-open/);
+  assert.match(source, /filter-reminder-escalations-resolved/);
+  assert.match(source, /button-load-more-reminder-escalations/);
+  assert.match(source, /reminder-escalation-total/);
+  assert.match(source, /whitespace-pre-wrap break-words/);
   assert.match(source, /input-reminder-resolution-note/);
-  assert.match(source, /admin-resolved-trainer-reminders/);
+  assert.match(source, /admin-reminder-escalation-history/);
 });
 
 test("admin programme catalogue separates canonical modules from read-only legacy mappings", async () => {

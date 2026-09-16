@@ -1,10 +1,10 @@
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import {
-  type AdminDiagnosticProvenanceException, type AdminModuleCatalogue, type AdminOperationalSummary,
+  type AdminDiagnosticProvenanceException, type AdminModuleCatalogue, type AdminOperationalSummary, type AdminReminderEscalation,
   getGetAdminAccessQueryKey, getGetAdminOperationalSummaryQueryKey, getGetCurrentSessionQueryKey, getListAdminAccessRequestsQueryKey, getListAdminAuditEventsQueryKey, getListAdminCohortsQueryKey, getListAdminEnrollmentsQueryKey,
   getListAdminPathwaysQueryKey, getListAdminProgramsQueryKey, getListAdminUsersQueryKey,
   getGetAdminModuleCatalogueQueryKey, useGetAdminModuleCatalogue,
@@ -16,7 +16,7 @@ import {
   getListAdminKnowledgeArticlesQueryKey, getListAdminKnowledgeNotFoundTopicsQueryKey, useCreateAdminKnowledgeArticle, useListAdminKnowledgeArticles, useListAdminKnowledgeNotFoundTopics, usePublishAdminKnowledgeArticle, useUpdateAdminKnowledgeArticle,
   getListAdminCompetencyFrameworksQueryKey, useListAdminCompetencyFrameworks, useCreateAdminCompetencyFramework, useCreateAdminCompetencyUnit, useUpdateAdminCompetencyUnit,
   getListAdminReadinessRulesQueryKey, useCreateAdminReadinessRuleVersion, useListAdminReadinessRules,
-  useResolveAdminReminderEscalation,
+  getListAdminReminderEscalationsQueryKey, listAdminReminderEscalations, useResolveAdminReminderEscalation,
   useListAdminDiagnosticProvenanceExceptions,
   getListAdminDiagnosticProvenanceExceptionsQueryKey,
 } from "@workspace/api-client-react";
@@ -447,6 +447,84 @@ function NotificationChannelStatus({ label, notification }: {
   </div>;
 }
 
+type ReminderEscalationStatusFilter = "open" | "resolved";
+const reminderEscalationPageSize = 25;
+
+function ReminderEscalationHistory({ enabled, onResolve }: {
+  enabled: boolean;
+  onResolve: (item: AdminReminderEscalation) => void;
+}) {
+  const [status, setStatus] = useState<ReminderEscalationStatusFilter>("open");
+  const history = useInfiniteQuery({
+    queryKey: getListAdminReminderEscalationsQueryKey({ status, limit: reminderEscalationPageSize }),
+    queryFn: ({ pageParam }) => listAdminReminderEscalations({ status, limit: reminderEscalationPageSize, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: page => page.pagination.hasMore ? page.pagination.offset + page.pagination.returned : undefined,
+    enabled,
+    staleTime: queryOptions.staleTime,
+    refetchOnMount: queryOptions.refetchOnMount,
+  });
+  const items = history.data?.pages.flatMap(page => page.items) ?? [];
+  const counts = history.data?.pages[0]?.counts;
+  const filteredTotal = history.data?.pages[0]?.pagination.total ?? 0;
+
+  return <section aria-labelledby="reminder-escalation-history-title" data-testid="admin-reminder-escalation-history">
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle id="reminder-escalation-history-title">Riwayat eskalasi pengingat</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">Telusuri seluruh audit kegagalan permanen dan catatan penyelesaiannya.</p>
+          </div>
+          <Badge variant="secondary" data-testid="reminder-escalation-total">{counts?.total ?? "—"} total</Badge>
+        </div>
+        <div className="flex flex-wrap gap-2 pt-2" aria-label="Filter status eskalasi">
+          <Button
+            type="button"
+            size="sm"
+            variant={status === "open" ? "default" : "outline"}
+            aria-pressed={status === "open"}
+            onClick={() => setStatus("open")}
+            data-testid="filter-reminder-escalations-open"
+          >
+            Terbuka ({counts?.open ?? "—"})
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={status === "resolved" ? "default" : "outline"}
+            aria-pressed={status === "resolved"}
+            onClick={() => setStatus("resolved")}
+            data-testid="filter-reminder-escalations-resolved"
+          >
+            Selesai ({counts?.resolved ?? "—"})
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <State loading={history.isLoading} error={history.error} empty={!history.isLoading && items.length === 0}>
+          <p className="mb-3 text-sm text-muted-foreground" aria-live="polite">Menampilkan {items.length} dari {filteredTotal} eskalasi {status === "open" ? "terbuka" : "selesai"}.</p>
+          <div className="divide-y">{items.map(item => <article key={item.id} className="grid gap-3 py-4 first:pt-0 md:grid-cols-[1fr_auto] md:items-start" data-testid={`reminder-escalation-${item.id}`}>
+            <div>
+              <p className="font-semibold">{item.target}</p>
+              <p className="mt-1 text-sm">Trainer: <strong>{item.trainerName}</strong></p>
+              <p className="mt-1 text-sm text-muted-foreground">Target {auditTime(item.targetAt)} · Percobaan terakhir {auditTime(item.lastAttemptAt)}</p>
+              <p className="mt-2 text-sm text-destructive">{item.reason}</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Status kanal pemberitahuan"><NotificationChannelStatus label="Email pengelola" notification={item.emailNotification} /><NotificationChannelStatus label="Webhook cadangan" notification={item.webhookNotification} /></div>
+              {item.resolution && <div className="mt-3 rounded-md bg-muted/50 p-3 text-sm" data-testid={`reminder-resolution-${item.id}`}><p className="whitespace-pre-wrap break-words">{item.resolution.note}</p><p className="mt-1 text-xs text-muted-foreground">Ditangani {auditTime(item.resolution.resolvedAt)} · Aktor {item.resolution.resolvedByPersonId}</p></div>}
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <Badge variant={item.status === "open" ? "outline" : "secondary"} className={item.status === "open" ? "border-destructive/40 text-destructive" : ""}>{item.status === "open" ? "Perlu tindakan" : "Selesai"}</Badge>
+              {item.status === "open" && <Button size="sm" onClick={() => onResolve(item)} data-testid={`button-resolve-history-reminder-${item.id}`}>Tandai ditangani</Button>}
+            </div>
+          </article>)}</div>
+          {history.hasNextPage && <div className="mt-4 flex justify-center"><Button type="button" variant="outline" onClick={() => history.fetchNextPage()} disabled={history.isFetchingNextPage} data-testid="button-load-more-reminder-escalations">{history.isFetchingNextPage ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Memuat…</> : "Muat halaman berikutnya"}</Button></div>}
+        </State>
+      </CardContent>
+    </Card>
+  </section>;
+}
+
 function OperationalSummary({ summary, selectedQueue, filters, onFilterChange, onOpenQueue, onOpenTab }: { summary: SummaryQuery; selectedQueue: QueueId | null; filters: QueueFilters; onFilterChange: (key: QueueFilterKey, value: string) => void; onOpenQueue: (queue: QueueId) => void; onOpenTab: (tab: AdminTab) => void }) {
   const client = useQueryClient();
   const { toast } = useToast();
@@ -455,7 +533,6 @@ function OperationalSummary({ summary, selectedQueue, filters, onFilterChange, o
   const resolveReminder = useResolveAdminReminderEscalation();
   const activeQueue = summary.data?.queues.find(queue => queue.id === selectedQueue);
   const openReminders = summary.data?.failedTrainerReminders.filter(item => item.status === "open") ?? [];
-  const resolvedReminders = summary.data?.failedTrainerReminders.filter(item => item.status === "resolved") ?? [];
   const filterOptions = activeQueue ? {
     learner: uniqueQueueOptions(activeQueue.items, "learnerId", "learnerName"),
     pathway: uniqueQueueOptions(activeQueue.items, "pathwayId", "pathwayName"),
@@ -473,6 +550,7 @@ function OperationalSummary({ summary, selectedQueue, filters, onFilterChange, o
         setResolutionNote("");
         await Promise.all([
           client.invalidateQueries({ queryKey: getGetAdminOperationalSummaryQueryKey() }),
+           client.invalidateQueries({ queryKey: getListAdminReminderEscalationsQueryKey() }),
           client.invalidateQueries({ queryKey: getListAdminAuditEventsQueryKey() }),
         ]);
         toast({ title: "Eskalasi ditandai selesai", description: "Catatan, aktor, dan waktu penyelesaian telah disimpan." });
@@ -492,12 +570,7 @@ function OperationalSummary({ summary, selectedQueue, filters, onFilterChange, o
           <CardContent><div className="divide-y">{openReminders.map(item => <article key={item.id} className="grid gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-[1fr_auto] md:items-start" data-testid={`failed-trainer-reminder-${item.id}`}><div><p className="font-semibold">{item.target}</p><p className="mt-1 text-sm">Trainer: <strong>{item.trainerName}</strong></p><p className="mt-1 text-sm text-muted-foreground">Target {auditTime(item.targetAt)} · Percobaan terakhir {auditTime(item.lastAttemptAt)}</p><p className="mt-2 text-sm text-destructive">{item.reason}</p><div className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Status kanal pemberitahuan"><NotificationChannelStatus label="Email pengelola" notification={item.emailNotification} /><NotificationChannelStatus label="Webhook cadangan" notification={item.webhookNotification} /></div></div><div className="flex flex-col items-end gap-2"><Badge variant="outline" className="border-destructive/40 text-destructive">Perlu tindakan</Badge><Button size="sm" onClick={() => { setResolvingReminderId(item.id); setResolutionNote(""); }} data-testid={`button-resolve-reminder-${item.id}`}>Tandai ditangani</Button></div></article>)}</div></CardContent>
         </Card>
       </section>}
-      {resolvedReminders.length > 0 && <section aria-labelledby="resolved-trainer-reminders-title" data-testid="admin-resolved-trainer-reminders">
-        <Card>
-          <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle id="resolved-trainer-reminders-title">Eskalasi pengingat selesai</CardTitle><p className="mt-1 text-sm text-muted-foreground">Riwayat penanganan manual tetap tersimpan tanpa mengubah delivery asli.</p></div><Badge variant="secondary">{summary.data.reminderEscalationCounts.resolved}</Badge></div></CardHeader>
-          <CardContent><div className="divide-y">{resolvedReminders.map(item => <article key={item.id} className="grid gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-[1fr_auto] md:items-start" data-testid={`resolved-trainer-reminder-${item.id}`}><div><p className="font-semibold">{item.target}</p><p className="mt-1 text-sm">Trainer: <strong>{item.trainerName}</strong></p><p className="mt-1 text-sm text-muted-foreground">Percobaan terakhir {auditTime(item.lastAttemptAt)}</p><div className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Status kanal pemberitahuan"><NotificationChannelStatus label="Email pengelola" notification={item.emailNotification} /><NotificationChannelStatus label="Webhook cadangan" notification={item.webhookNotification} /></div>{item.resolution && <div className="mt-3 rounded-md bg-muted/50 p-3 text-sm"><p>{item.resolution.note}</p><p className="mt-1 text-xs text-muted-foreground">Ditangani {auditTime(item.resolution.resolvedAt)} · Aktor {item.resolution.resolvedByPersonId}</p></div>}</div><Badge variant="secondary">Selesai</Badge></article>)}</div></CardContent>
-        </Card>
-      </section>}
+      <ReminderEscalationHistory enabled={Boolean(summary.data)} onResolve={item => { setResolvingReminderId(item.id); setResolutionNote(""); }} />
       <div className="grid gap-4 xl:grid-cols-[1.15fr_.85fr]">
         <Card className={summary.data.bottleneck.count > 0 ? "border-amber-500/40 bg-amber-500/5" : ""}>
           <CardHeader><CardTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-amber-600" />Bottleneck lifecycle</CardTitle></CardHeader>
