@@ -1,9 +1,11 @@
 import { useState } from "react";
 import {
   getListBaselineVersionsQueryKey,
+  getListBaselineAuditQueryKey,
   getListManagedBaselinesQueryKey,
   getPreviewBaselinePublicationQueryKey,
   useCancelBaselineDraft,
+  useListBaselineAudit,
   useListBaselineVersions,
   useListManagedBaselines,
   usePreviewBaselinePublication,
@@ -35,6 +37,9 @@ export function BaselinePublicationGate() {
   const versions = useListBaselineVersions(baselineId, {
     query: { enabled: Boolean(baselineId), queryKey: getListBaselineVersionsQueryKey(baselineId) },
   });
+  const audit = useListBaselineAudit(baselineId, {
+    query: { enabled: Boolean(baselineId), queryKey: getListBaselineAuditQueryKey(baselineId) },
+  });
   const preview = usePreviewBaselinePublication(baselineId, versionId, {
     query: {
       enabled: Boolean(baselineId && versionId),
@@ -62,6 +67,7 @@ export function BaselinePublicationGate() {
         setCancellationReason("");
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: getListBaselineVersionsQueryKey(baselineId) }),
+          queryClient.invalidateQueries({ queryKey: getListBaselineAuditQueryKey(baselineId) }),
           queryClient.invalidateQueries({ queryKey: getListManagedBaselinesQueryKey() }),
         ]);
         toast({
@@ -89,6 +95,7 @@ export function BaselinePublicationGate() {
         setVersionId("");
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: getListBaselineVersionsQueryKey(baselineId) }),
+          queryClient.invalidateQueries({ queryKey: getListBaselineAuditQueryKey(baselineId) }),
           queryClient.invalidateQueries({ queryKey: getListManagedBaselinesQueryKey() }),
         ]);
         toast({ title: `Baseline v${result.version} dipublikasikan`, description: "Enrollment baru akan memakai versi ini; histori learner lama tetap dipin." });
@@ -126,6 +133,35 @@ export function BaselinePublicationGate() {
       </label>
       {versions.isLoading && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat versi baseline…</p>}
       {versions.error && <p className="text-sm text-destructive" role="alert">Baseline tidak dapat dimuat atau berada di luar scope Anda.</p>}
+      {baselineId && <section className="space-y-2 rounded-md border border-border/60 bg-black/20 p-3" data-testid="baseline-publication-history">
+        <strong className="text-sm">Riwayat publikasi</strong>
+        {audit.isLoading && <p className="text-xs text-muted-foreground">Memuat audit publikasi…</p>}
+        {audit.error && <p className="text-xs text-destructive" role="alert">Audit publikasi tidak dapat dimuat.</p>}
+        {!audit.isLoading && !audit.error && !audit.data?.some(event => event.action === "PUBLISH") && (
+          <p className="text-xs text-muted-foreground">Belum ada publikasi yang tercatat.</p>
+        )}
+        {audit.data?.filter(event => event.action === "PUBLISH").map(event => {
+          const details = event.details;
+          const hasReviewSummary = typeof details.previewFingerprint === "string"
+            && typeof details.changedPathwayCount === "number"
+            && typeof details.eligibleCohortCount === "number"
+            && typeof details.preservedEnrollmentCount === "number";
+          return <article key={event.id} className="rounded border border-border/50 bg-black/30 p-2 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-medium">Versi {typeof details.version === "number" ? details.version : event.versionId ?? "lama"}</span>
+              <time className="text-muted-foreground">{new Date(event.createdAt).toLocaleString("id-ID")}</time>
+            </div>
+            {hasReviewSummary ? <div className="mt-2 grid gap-1 text-muted-foreground sm:grid-cols-3">
+              <span>{details.changedPathwayCount} pathway berubah</span>
+              <span>{details.eligibleCohortCount} cohort eligible</span>
+              <span>{details.preservedEnrollmentCount} enrollment lama dipertahankan</span>
+              <code className="break-all text-[10px] sm:col-span-3" title={details.previewFingerprint}>
+                Fingerprint: {details.previewFingerprint}
+              </code>
+            </div> : <p className="mt-1 text-muted-foreground">Ringkasan review tidak tersedia untuk audit lama.</p>}
+          </article>;
+        })}
+      </section>}
       {baselineId && !versions.isLoading && !versions.error && <label className="grid gap-2 text-sm">
         <span className="font-medium">Draft yang akan ditinjau</span>
         <select className="h-10 rounded-md border border-input bg-background px-3" value={versionId} onChange={event => { setVersionId(event.target.value); setCancellationReason(""); setConfirmedFingerprint(null); }}>

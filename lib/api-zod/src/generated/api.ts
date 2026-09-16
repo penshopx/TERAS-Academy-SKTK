@@ -3220,13 +3220,28 @@ export const ListBaselineAuditParams = zod.object({
   "baselineId": zod.coerce.string().min(1)
 })
 
+export const listBaselineAuditResponseDetailsTwoPreviewFingerprintRegExp = new RegExp('^[a-f0-9]{64}$');
+export const listBaselineAuditResponseDetailsTwoChangedPathwayCountMin = 0;
+
+export const listBaselineAuditResponseDetailsTwoEligibleCohortCountMin = 0;
+
+export const listBaselineAuditResponseDetailsTwoPreservedEnrollmentCountMin = 0;
+
+
+
 export const ListBaselineAuditResponseItem = zod.object({
   "id": zod.string(),
   "baselineId": zod.string(),
   "versionId": zod.string().nullable(),
   "action": zod.string(),
   "actorId": zod.string(),
-  "details": zod.record(zod.string(), zod.unknown()),
+  "details": zod.record(zod.string(), zod.unknown()).and(zod.object({
+  "version": zod.int().optional(),
+  "previewFingerprint": zod.string().regex(listBaselineAuditResponseDetailsTwoPreviewFingerprintRegExp).optional(),
+  "changedPathwayCount": zod.int().min(listBaselineAuditResponseDetailsTwoChangedPathwayCountMin).optional(),
+  "eligibleCohortCount": zod.int().min(listBaselineAuditResponseDetailsTwoEligibleCohortCountMin).optional(),
+  "preservedEnrollmentCount": zod.int().min(listBaselineAuditResponseDetailsTwoPreservedEnrollmentCountMin).optional()
+})).describe('Audit metadata. PUBLISH events expose only aggregate review evidence and never learner or cohort identities.'),
   "createdAt": zod.coerce.date()
 })
 export const ListBaselineAuditResponse = zod.array(ListBaselineAuditResponseItem)

@@ -6,4 +6,17 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type BaselineAuditEventDetails = { [key: string]: unknown };
+/**
+ * Audit metadata. PUBLISH events expose only aggregate review evidence and never learner or cohort identities.
+ */
+export type BaselineAuditEventDetails = { [key: string]: unknown } & {
+  version?: number;
+  /** @pattern ^[a-f0-9]{64}$ */
+  previewFingerprint?: string;
+  /** @minimum 0 */
+  changedPathwayCount?: number;
+  /** @minimum 0 */
+  eligibleCohortCount?: number;
+  /** @minimum 0 */
+  preservedEnrollmentCount?: number;
+};

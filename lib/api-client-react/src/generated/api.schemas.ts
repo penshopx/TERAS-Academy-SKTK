@@ -1197,7 +1197,20 @@ export interface BaselinePublicationPreview {
   impact: BaselinePublicationPreviewImpact;
 }
 
-export type BaselineAuditEventDetails = { [key: string]: unknown };
+/**
+ * Audit metadata. PUBLISH events expose only aggregate review evidence and never learner or cohort identities.
+ */
+export type BaselineAuditEventDetails = { [key: string]: unknown } & {
+  version?: number;
+  /** @pattern ^[a-f0-9]{64}$ */
+  previewFingerprint?: string;
+  /** @minimum 0 */
+  changedPathwayCount?: number;
+  /** @minimum 0 */
+  eligibleCohortCount?: number;
+  /** @minimum 0 */
+  preservedEnrollmentCount?: number;
+};
 
 export interface BaselineAuditEvent {
   id: string;
@@ -1206,6 +1219,7 @@ export interface BaselineAuditEvent {
   versionId: string | null;
   action: string;
   actorId: string;
+  /** Audit metadata. PUBLISH events expose only aggregate review evidence and never learner or cohort identities. */
   details: BaselineAuditEventDetails;
   createdAt: string;
 }

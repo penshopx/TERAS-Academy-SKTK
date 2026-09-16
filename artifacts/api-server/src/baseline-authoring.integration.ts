@@ -122,7 +122,17 @@ async function main() {
   });
   const stalePreviewResponse = await request(`/trainer/authoring/baselines/${baseline.id}/versions/${draft.id}/publish`, "POST", { previewFingerprint: preview.previewFingerprint });
   assert.equal(stalePreviewResponse.status, 409, "publication rejects a preview whose enrollment impact changed");
-  const refreshedPreview = await request(`/trainer/authoring/baselines/${baseline.id}/versions/${draft.id}/publication-preview`).then(response => response.json()) as { previewFingerprint: string };
+  const baselineAfterRejectedPublish = (await db.select().from(learningBaselinesTable).where(eq(learningBaselinesTable.id, baseline.id)))[0]!;
+  assert.equal(baselineAfterRejectedPublish.publishedVersionId, active.id, "rejected publish leaves the published pointer unchanged");
+  const auditsAfterRejectedPublish = await db.select().from(learningBaselineAuditTable).where(and(
+    eq(learningBaselineAuditTable.versionId, draft.id), eq(learningBaselineAuditTable.action, "PUBLISH"),
+  ));
+  assert.equal(auditsAfterRejectedPublish.length, 0, "rejected publish does not commit an audit independently");
+  const refreshedPreview = await request(`/trainer/authoring/baselines/${baseline.id}/versions/${draft.id}/publication-preview`).then(response => response.json()) as {
+    previewFingerprint: string;
+    changes: unknown[];
+    impact: { eligibleCohorts: unknown[]; preservedEnrollmentCount: number };
+  };
   const publishedResponse = await request(`/trainer/authoring/baselines/${baseline.id}/versions/${draft.id}/publish`, "POST", { previewFingerprint: refreshedPreview.previewFingerprint });
   assert.equal(publishedResponse.status, 201);
   const publishedResult = await publishedResponse.json() as { version: number };
@@ -134,6 +144,23 @@ async function main() {
     eq(learningBaselineAuditTable.versionId, draft.id), eq(learningBaselineAuditTable.action, "PUBLISH"),
   ));
   assert.equal(publishAudit.length, 1, "publish and audit are committed together");
+  assert.deepEqual(publishAudit[0]!.details, {
+    version: publishedResult.version,
+    previewFingerprint: refreshedPreview.previewFingerprint,
+    changedPathwayCount: refreshedPreview.changes.length,
+    eligibleCohortCount: refreshedPreview.impact.eligibleCohorts.length,
+    preservedEnrollmentCount: refreshedPreview.impact.preservedEnrollmentCount,
+  }, "publish audit stores only the reviewed aggregate impact");
+  assert.equal(JSON.stringify(publishAudit[0]!.details).includes(person.id), false, "publish audit excludes learner identity");
+  activeRole = "trainer";
+  activeLearner = person.id;
+  const auditResponse = await request(`/trainer/authoring/baselines/${baseline.id}/audit`);
+  assert.equal(auditResponse.status, 200);
+  const auditPayload = await auditResponse.json() as Array<{ action: string; details: Record<string, unknown> }>;
+  const publishedAuditPayload = auditPayload.find(event => event.action === "PUBLISH")!;
+  assert.deepEqual(publishedAuditPayload.details, publishAudit[0]!.details, "audit endpoint returns the approved publish summary unchanged");
+  const cloneAuditPayload = auditPayload.find(event => event.action === "CLONE_DRAFT")!;
+  assert.equal(typeof cloneAuditPayload.details.sourceVersionId, "string", "audit endpoint preserves action-specific legacy metadata");
 
   const oldEnrollment = (await db.select().from(enrollmentsTable).where(eq(enrollmentsTable.id, enrollmentId)))[0]!;
   const oldEvent = (await db.select().from(enrollmentPathwayEventsTable).where(eq(enrollmentPathwayEventsTable.enrollmentId, enrollmentId)))[0]!;

@@ -3396,7 +3396,18 @@ components:
         versionId: { type: ["string", "null"] }
         action: { type: string }
         actorId: { type: string }
-        details: { type: object, additionalProperties: true }
+        details:
+          description: Audit metadata. PUBLISH events expose only aggregate review evidence and never learner or cohort identities.
+          allOf:
+            - type: object
+              additionalProperties: true
+            - type: object
+              properties:
+                version: { type: integer }
+                previewFingerprint: { type: string, pattern: "^[a-f0-9]{64}$" }
+                changedPathwayCount: { type: integer, minimum: 0 }
+                eligibleCohortCount: { type: integer, minimum: 0 }
+                preservedEnrollmentCount: { type: integer, minimum: 0 }
         createdAt: { type: string, format: date-time }
       required: [id, baselineId, versionId, action, actorId, details, createdAt]
     LearningActivityType:

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ApplyCourseAuthoringCommandBody, RequestManagedResourceUploadUrlBody, CancelBaselineDraftBody, CancelBaselineDraftResponse, CreateBaselineDraftResponse, ListManagedBaselinesResponse, PreviewBaselinePublicationResponse, PublishBaselineVersionBody, PublishBaselineVersionResponse, SelectLearnerPathwayResponse, UpdateBaselineDraftBody } from "@workspace/api-zod";
+import { ApplyCourseAuthoringCommandBody, RequestManagedResourceUploadUrlBody, CancelBaselineDraftBody, CancelBaselineDraftResponse, CreateBaselineDraftResponse, ListBaselineAuditResponse, ListManagedBaselinesResponse, PreviewBaselinePublicationResponse, PublishBaselineVersionBody, PublishBaselineVersionResponse, SelectLearnerPathwayResponse, UpdateBaselineDraftBody } from "@workspace/api-zod";
 import { allocatedSiblingSequence, assignmentAllows, orderedSiblingIds } from "./lib/course-authoring";
 import { learnerCourseAvailable } from "./routes/learning";
 
@@ -126,6 +126,37 @@ assert.equal(PreviewBaselinePublicationResponse.safeParse({
     historyRule: "Existing history stays on v1.",
   },
 }).success, true, "baseline publication preview is contract-valid");
+assert.equal(ListBaselineAuditResponse.safeParse([{
+  id: "audit-1",
+  baselineId: "baseline-1",
+  versionId: "v2",
+  action: "PUBLISH",
+  actorId: "manager-1",
+  details: {
+    version: 2,
+    previewFingerprint: "c".repeat(64),
+    changedPathwayCount: 1,
+    eligibleCohortCount: 2,
+    preservedEnrollmentCount: 3,
+  },
+  createdAt: new Date().toISOString(),
+}]).success, true, "publish audit exposes safe aggregate review evidence");
+const legacyAudit = ListBaselineAuditResponse.parse([{
+  id: "audit-legacy",
+  baselineId: "baseline-1",
+  versionId: "v1",
+  action: "CANCEL_DRAFT",
+  actorId: "manager-1",
+  details: {
+    version: 1,
+    reason: "Superseded by a corrected draft",
+    sourceVersionId: "v0",
+    sourceVersion: 0,
+  },
+  createdAt: new Date().toISOString(),
+}])[0]!;
+assert.equal(legacyAudit.details.reason, "Superseded by a corrected draft", "audit parsing preserves cancellation reasons");
+assert.equal(legacyAudit.details.sourceVersionId, "v0", "audit parsing preserves legacy clone metadata");
 assert.equal(UpdateBaselineDraftBody.safeParse({ snapshot: { modules: [], selections: [] } }).success, true, "baseline draft edits are contract-valid");
 assert.equal(SelectLearnerPathwayResponse.safeParse({
   pathway: { id: "path-1", name: "Path", type: "Primary", purpose: "unspecified", outcome: "Outcome", moduleCount: 1, gateCount: 0, gates: [], terminalPortfolio: "Capability Portfolio" },

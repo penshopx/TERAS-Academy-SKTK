@@ -353,7 +353,14 @@ export async function publishBaseline(
       .where(eq(learningBaselinesTable.id, baselineId));
     await tx.insert(learningBaselineAuditTable).values({
       id: id("baseline-audit"), baselineId, versionId: published.id, action: "PUBLISH",
-      actorId: manager.id, details: { version: published.version },
+      actorId: manager.id,
+      details: {
+        version: published.version,
+        previewFingerprint: preview.previewFingerprint,
+        changedPathwayCount: preview.changes.length,
+        eligibleCohortCount: preview.impact.eligibleCohorts.length,
+        preservedEnrollmentCount: preview.impact.preservedEnrollmentCount,
+      },
     });
     return { baselineId, versionId: published.id, version: published.version, status: published.status, publishedAt: published.publishedAt };
   }, { isolationLevel: "serializable" });

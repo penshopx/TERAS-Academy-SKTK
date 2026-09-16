@@ -14,6 +14,7 @@ export interface BaselineAuditEvent {
   versionId: string | null;
   action: string;
   actorId: string;
+  /** Audit metadata. PUBLISH events expose only aggregate review evidence and never learner or cohort identities. */
   details: BaselineAuditEventDetails;
   createdAt: Date;
 }
