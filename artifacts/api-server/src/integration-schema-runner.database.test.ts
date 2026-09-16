@@ -786,3 +786,35 @@ test("cleanup timeout stops the runner without hiding the command failure", asyn
   assert.ok(Date.now() - startedAt < 5_000);
   assert.equal(connectionDestroyed, true);
 });
+
+test("connection timeout stops the runner before the test fixture runs", async () => {
+  let connectionDestroyed = false;
+  const never = new Promise<never>(() => {});
+  const fakeAdmin = {
+    connection: {
+      stream: {
+        destroy: () => {
+          connectionDestroyed = true;
+        },
+      },
+    },
+    connect: () => never,
+  } as unknown as InstanceType<typeof Client>;
+
+  await withMarkerFile(async (markerFile) => {
+    const startedAt = Date.now();
+    await assert.rejects(
+      runIsolatedIntegrationTest({
+        schemaPrefix: "connection_timeout_test",
+        testFile: successFixture,
+        connectionTimeoutMs: 100,
+        createAdminClient: () => fakeAdmin,
+      }),
+      /Integration database connection timed out after 100ms/,
+    );
+
+    assert.ok(Date.now() - startedAt < 5_000);
+    assert.equal(connectionDestroyed, true);
+    await assert.rejects(readFile(markerFile, "utf8"), { code: "ENOENT" });
+  });
+});
