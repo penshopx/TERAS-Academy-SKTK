@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { AdminReadinessExport } from "@workspace/api-client-react";
+import {
+  ReadinessSummaryStatus,
+  type AdminReadinessExport,
+} from "@workspace/api-client-react";
 import { customFetch } from "../../../../lib/api-client-react/src/custom-fetch";
 import {
   cancelReadinessExportOnUnmount,
@@ -10,6 +13,7 @@ import {
   ReadinessExportProgress,
   ReadinessExportFeedback,
   ReadinessExportAlerts,
+  ReadinessAuditStatusBadge,
   readinessExportTrendInput,
   runReadinessAuditExport,
 } from "./admin/ReadinessAuditHistory";
@@ -40,6 +44,28 @@ const payload = {
     verificationCommand: "node verify-readiness-audit.mjs readiness-audit.json public-keys.json",
   },
 } as AdminReadinessExport;
+
+test("readiness audit badge explicitly presents every canonical status", () => {
+  const expectedVariants = {
+    [ReadinessSummaryStatus.Not_Ready]: "destructive",
+    [ReadinessSummaryStatus.Developing]: "warning",
+    [ReadinessSummaryStatus.Ready_for_Official_Assessment]: "success",
+  } as const;
+
+  for (const status of Object.values(ReadinessSummaryStatus)) {
+    const markup = renderToStaticMarkup(<ReadinessAuditStatusBadge status={status} />);
+    assert.match(markup, new RegExp(`data-readiness-presentation="${expectedVariants[status]}"`));
+    assert.match(markup, new RegExp(`>${status}<`));
+  }
+});
+
+test("readiness audit badge presents an unknown runtime status conservatively", () => {
+  const markup = renderToStaticMarkup(<ReadinessAuditStatusBadge status="Future API status" />);
+
+  assert.match(markup, /data-readiness-presentation="warning"/);
+  assert.match(markup, />Status kesiapan tidak dikenal</);
+  assert.doesNotMatch(markup, /Future API status/);
+});
 
 test("readiness history export downloads the JSON and canonical checksum sidecar", async () => {
   const blobs: Blob[] = [];

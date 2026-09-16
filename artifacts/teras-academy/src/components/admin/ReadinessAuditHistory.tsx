@@ -2,11 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   exportAdminReadinessHistory,
   getListAdminReadinessHistoryQueryKey,
+  ReadinessSummaryStatus,
   type AdminReadinessEvaluation,
   type AdminReadinessExport,
   type AdminPathway,
   type AdminUser,
   type ListAdminReadinessHistoryParams,
+  type ReadinessSummaryStatus as ReadinessStatus,
   getGetAdminReadinessExportTrendsQueryKey,
   useGetAdminReadinessExportTrends,
   useListAdminReadinessHistory,
@@ -19,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { trackReadinessAuditExport } from "@/lib/analytics";
+import { getReadinessPresentation } from "@/lib/readiness-presentation";
 
 type Props = {
   enabled: boolean;
@@ -27,8 +30,13 @@ type Props = {
   errorMessage: (error: unknown) => string;
 };
 
-const statuses = ["Not Ready", "Developing", "Ready for Official Assessment"] as const;
+const statuses: ReadinessStatus[] = Object.values(ReadinessSummaryStatus);
 type ExportStatus = "idle" | "preparing" | "success" | "failed" | "cancelled";
+
+export function ReadinessAuditStatusBadge({ status }: { status: unknown }) {
+  const presentation = getReadinessPresentation(status);
+  return <Badge variant={presentation.badgeVariant} data-readiness-presentation={presentation.badgeVariant}>{presentation.label}</Badge>;
+}
 
 type DownloadEnvironment = {
   createObjectURL: (blob: Blob) => string;
@@ -228,7 +236,7 @@ export function ReadinessExportAlerts({
 export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }: Props) {
   const [learnerId, setLearnerId] = useState("");
   const [pathwayId, setPathwayId] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState<ReadinessStatus | "">("");
   const [ruleVersion, setRuleVersion] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<AdminReadinessEvaluation | null>(null);
@@ -243,7 +251,7 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
   const params = useMemo<ListAdminReadinessHistoryParams>(() => ({
     ...(learnerId ? { learnerId } : {}),
     ...(pathwayId ? { pathwayId } : {}),
-    ...(status ? { status: status as typeof statuses[number] } : {}),
+    ...(status ? { status } : {}),
     ...(ruleVersion ? { ruleVersion: Number(ruleVersion) } : {}),
     page,
     pageSize: 25,
@@ -260,7 +268,7 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
   const exportParams = useMemo(() => ({
     ...(learnerId ? { learnerId } : {}),
     ...(pathwayId ? { pathwayId } : {}),
-    ...(status ? { status: status as typeof statuses[number] } : {}),
+    ...(status ? { status } : {}),
     ...(ruleVersion ? { ruleVersion: Number(ruleVersion) } : {}),
   }), [learnerId, pathwayId, status, ruleVersion]);
 
@@ -351,7 +359,7 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
             </select>
           </label>
           <label className="grid gap-1 text-sm">Status
-            <select value={status} onChange={event => { setStatus(event.target.value); setPage(1); }} className="h-10 rounded-md border bg-background px-3" data-testid="filter-readiness-status">
+            <select value={status} onChange={event => { setStatus(event.target.value as ReadinessStatus | ""); setPage(1); }} className="h-10 rounded-md border bg-background px-3" data-testid="filter-readiness-status">
               <option value="">Semua status</option>
               {statuses.map(item => <option key={item}>{item}</option>)}
             </select>
@@ -377,7 +385,7 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
               <span className="font-semibold">{item.learnerName} · {item.pathwayName}</span>
               <span className="mt-1 block text-sm text-muted-foreground">{item.gateCode} · {item.gateName} · {new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.evaluatedAt))}</span>
             </span>
-            <span className="flex flex-wrap items-center gap-2"><Badge variant="outline">v{item.ruleVersion}</Badge><Badge variant={item.status === "Not Ready" ? "destructive" : "secondary"}>{item.status}</Badge><strong>{item.score}%</strong></span>
+            <span className="flex flex-wrap items-center gap-2"><Badge variant="outline">v{item.ruleVersion}</Badge><ReadinessAuditStatusBadge status={item.status} /><strong>{item.score}%</strong></span>
           </button>)}
         </div>}
         {!!history.data?.total && <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
@@ -393,7 +401,7 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
       <DialogContent className="max-h-[90dvh] max-w-3xl overflow-y-auto">
         <DialogHeader><DialogTitle>Detail evaluasi readiness</DialogTitle><DialogDescription>Snapshot ini disimpan saat keputusan dibuat dan tidak dihitung ulang.</DialogDescription></DialogHeader>
         {selected && <div className="space-y-5 text-sm">
-          <div className="flex flex-wrap gap-2"><Badge>{selected.status}</Badge><Badge variant="outline">Rule v{selected.ruleVersion}</Badge><Badge variant="outline">Skor {selected.score}%</Badge></div>
+          <div className="flex flex-wrap gap-2"><ReadinessAuditStatusBadge status={selected.status} /><Badge variant="outline">Rule v{selected.ruleVersion}</Badge><Badge variant="outline">Skor {selected.score}%</Badge></div>
           <section><h3 className="font-semibold">Alasan keputusan</h3><p className="mt-1 text-muted-foreground">{selected.decisionReason}</p></section>
           <section><h3 className="font-semibold">Blocker</h3>{selected.blockers.length ? <ul className="mt-2 list-disc space-y-1 pl-5">{selected.blockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul> : <p className="mt-1 text-muted-foreground">Tidak ada blocker.</p>}</section>
           <section><h3 className="font-semibold">Assessment snapshot</h3><div className="mt-2 grid gap-2">{selected.inputEvidence.assessments.map(item => <div key={item.id} className="rounded border p-3"><strong>{item.id}</strong><p>Skor {item.score} · {item.completed ? "Selesai" : "Belum selesai"} · {item.criticalFailure ? "Critical failure" : "Tanpa critical failure"}</p></div>)}</div></section>
