@@ -64,6 +64,9 @@ CREATE TABLE IF NOT EXISTS "teras_diagnostic_provenance_check_runs" (
   "checked_at" timestamp with time zone NOT NULL DEFAULT now()
 );
 
+COMMENT ON TABLE "teras_diagnostic_provenance_check_runs" IS
+  'Bounded operational schema-check history; schema-check.sql retains the newest 30 runs, including the next comparison baseline.';
+
 CREATE TABLE IF NOT EXISTS "teras_diagnostic_provenance_check_counts" (
   "check_run_id" bigint NOT NULL
     REFERENCES "teras_diagnostic_provenance_check_runs" ("id") ON DELETE CASCADE,
@@ -79,6 +82,9 @@ CREATE TABLE IF NOT EXISTS "teras_diagnostic_provenance_check_counts" (
   CONSTRAINT "teras_diagnostic_provenance_check_counts_nonnegative_check"
     CHECK ("exception_count" >= 0)
 );
+
+COMMENT ON TABLE "teras_diagnostic_provenance_check_counts" IS
+  'Aggregate exception snapshots owned by check runs and removed with pruned runs; this table does not own or delete provenance exceptions.';
 
 -- Reconstruct profile provenance only from responses whose question and option
 -- form a valid chain in the profile's own diagnostic session.

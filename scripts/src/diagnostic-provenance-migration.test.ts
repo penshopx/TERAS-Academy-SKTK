@@ -54,3 +54,30 @@ test("schema check reports aggregate counts and warns only on increases", () => 
     /entity_id|profile_id|session_id|competency_unit_id|details/,
   );
 });
+
+test("schema check bounds snapshot history without touching the exception register", () => {
+  assert.match(
+    migration,
+    /schema-check\.sql retains the newest 30 runs, including the next comparison baseline/,
+  );
+  assert.match(
+    schemaCheck,
+    /retained_check_run_count constant integer := 30/,
+  );
+  assert.match(
+    schemaCheck,
+    /DELETE FROM teras_diagnostic_provenance_check_runs\s+WHERE id IN \(\s+SELECT id\s+FROM teras_diagnostic_provenance_check_runs\s+ORDER BY id DESC\s+OFFSET retained_check_run_count\s+\)/,
+  );
+  assert.match(
+    migration,
+    /REFERENCES "teras_diagnostic_provenance_check_runs" \("id"\) ON DELETE CASCADE/,
+  );
+
+  const cleanup = schemaCheck.slice(
+    schemaCheck.indexOf("DELETE FROM teras_diagnostic_provenance_check_runs"),
+  );
+  assert.doesNotMatch(
+    cleanup,
+    /DELETE FROM teras_diagnostic_provenance_exceptions/,
+  );
+});

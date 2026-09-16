@@ -122,10 +122,12 @@ export const diagnosticProvenanceExceptionsTable = pgTable("teras_diagnostic_pro
   check("teras_diagnostic_provenance_exceptions_entity_type_check", sql`${table.entityType} IN ('profile', 'profile_item', 'gap')`),
   check("teras_diagnostic_provenance_exceptions_reason_check", sql`${table.reason} IN ('NO_VALID_RESPONSE_CHAIN', 'NO_VALID_UNIT_RESPONSE_CHAIN')`),
 ]);
+/** Bounded operational history; schema-check.sql retains the newest 30 runs. */
 export const diagnosticProvenanceCheckRunsTable = pgTable("teras_diagnostic_provenance_check_runs", {
   id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
   checkedAt: timestamp("checked_at", { withTimezone: true }).notNull().defaultNow(),
 });
+/** Aggregate snapshots cascade only when their owning retained check run is pruned. */
 export const diagnosticProvenanceCheckCountsTable = pgTable("teras_diagnostic_provenance_check_counts", {
   checkRunId: bigint("check_run_id", { mode: "number" }).notNull().references(() => diagnosticProvenanceCheckRunsTable.id, { onDelete: "cascade" }),
   entityType: text("entity_type").notNull(),

@@ -350,6 +350,9 @@ END $$;
 
 DO $$
 DECLARE
+  -- Keep enough recent checks for operational comparison while bounding this
+  -- upgrade-time history. The newest run is always retained as the next baseline.
+  retained_check_run_count constant integer := 30;
   current_run_id bigint;
   previous_run_id bigint;
   exception_group record;
@@ -408,6 +411,17 @@ BEGIN
         exception_group.delta;
     END IF;
   END LOOP;
+
+  -- Counts are children of runs with ON DELETE CASCADE, so pruning old runs
+  -- removes only their aggregate snapshots. The current exception register is
+  -- deliberately independent and is never touched by this cleanup.
+  DELETE FROM teras_diagnostic_provenance_check_runs
+  WHERE id IN (
+    SELECT id
+    FROM teras_diagnostic_provenance_check_runs
+    ORDER BY id DESC
+    OFFSET retained_check_run_count
+  );
 END $$;
 
 SELECT 'TERAS schema regression checks passed' AS result;
