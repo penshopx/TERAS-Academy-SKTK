@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import test from "node:test";
-import { verifyPortfolioText } from "./portfolio-verification";
+import {
+  MAX_PORTFOLIO_FILE_SIZE_BYTES,
+  verifyPortfolioFile,
+  verifyPortfolioText,
+} from "./portfolio-verification";
 
 function portfolioDocument(overrides: Record<string, unknown> = {}) {
   const payload = {
@@ -51,4 +55,38 @@ test("rejects unknown schema and canonicalization versions", async () => {
 test("rejects malformed JSON and invalid document shapes", async () => {
   assert.equal((await verifyPortfolioText("{")).status, "rejected");
   assert.equal((await verifyPortfolioText(JSON.stringify({ schemaVersion: "1.0" }))).status, "rejected");
+});
+
+test("reads and verifies a portfolio file exactly at the local size limit", async () => {
+  let textCalls = 0;
+  const result = await verifyPortfolioFile({
+    size: MAX_PORTFOLIO_FILE_SIZE_BYTES,
+    text: async () => {
+      textCalls += 1;
+      return JSON.stringify(portfolioDocument());
+    },
+  });
+
+  assert.equal(textCalls, 1);
+  assert.equal(result.status, "match");
+});
+
+test("rejects a portfolio file above the local size limit before reading it", async () => {
+  let textCalls = 0;
+  const result = await verifyPortfolioFile({
+    size: MAX_PORTFOLIO_FILE_SIZE_BYTES + 1,
+    text: async () => {
+      textCalls += 1;
+      return JSON.stringify(portfolioDocument());
+    },
+  });
+
+  assert.equal(textCalls, 0);
+  assert.deepEqual(
+    result,
+    {
+      status: "rejected",
+      message: "Ukuran file melebihi batas 5 MiB. Pilih file portfolio yang lebih kecil.",
+    },
+  );
 });

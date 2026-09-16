@@ -1,5 +1,7 @@
 export const SUPPORTED_PORTFOLIO_SCHEMA_VERSION = "1.0";
 export const SUPPORTED_PORTFOLIO_CANONICALIZATION = "teras-learner-portfolio-v1-json-stringify";
+export const MAX_PORTFOLIO_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+export const MAX_PORTFOLIO_FILE_SIZE_LABEL = "5 MiB";
 
 type PortfolioDocument = {
   schemaVersion: string;
@@ -23,6 +25,24 @@ export type PortfolioVerificationResult =
       calculatedChecksum: string;
     }
   | { status: "rejected"; message: string };
+
+export function rejectOversizedPortfolioFile(fileSize: number): PortfolioVerificationResult | null {
+  if (fileSize <= MAX_PORTFOLIO_FILE_SIZE_BYTES) return null;
+
+  return {
+    status: "rejected",
+    message: `Ukuran file melebihi batas ${MAX_PORTFOLIO_FILE_SIZE_LABEL}. Pilih file portfolio yang lebih kecil.`,
+  };
+}
+
+export async function verifyPortfolioFile(
+  file: Pick<File, "size" | "text">,
+): Promise<PortfolioVerificationResult> {
+  const sizeRejection = rejectOversizedPortfolioFile(file.size);
+  if (sizeRejection) return sizeRejection;
+
+  return verifyPortfolioText(await file.text());
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

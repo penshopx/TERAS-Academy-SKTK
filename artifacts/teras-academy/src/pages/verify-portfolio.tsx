@@ -3,7 +3,11 @@ import { Link } from "wouter";
 import { AlertTriangle, CheckCircle2, FileJson, ShieldCheck, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { verifyPortfolioText, type PortfolioVerificationResult } from "@/lib/portfolio-verification";
+import {
+  MAX_PORTFOLIO_FILE_SIZE_LABEL,
+  verifyPortfolioFile,
+  type PortfolioVerificationResult,
+} from "@/lib/portfolio-verification";
 
 export default function VerifyPortfolio() {
   const [result, setResult] = useState<PortfolioVerificationResult | null>(null);
@@ -15,9 +19,10 @@ export default function VerifyPortfolio() {
     if (!file) return;
     setFileName(file.name);
     setResult(null);
+
     setIsChecking(true);
     try {
-      setResult(await verifyPortfolioText(await file.text()));
+      setResult(await verifyPortfolioFile(file));
     } catch {
       setResult({ status: "rejected", message: "Browser tidak dapat menghitung checksum file ini." });
     } finally {
@@ -71,6 +76,9 @@ export default function VerifyPortfolio() {
                 />
               </label>
             </Button>
+            <p className="text-sm text-muted-foreground">
+              Maksimum {MAX_PORTFOLIO_FILE_SIZE_LABEL}. File diperiksa di browser dan tidak diunggah.
+            </p>
             {fileName && <p className="text-sm text-muted-foreground" data-testid="text-selected-file">File: {fileName}</p>}
           </CardContent>
         </Card>
