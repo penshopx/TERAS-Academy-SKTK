@@ -38,3 +38,12 @@ test("post-merge invokes the canonical database protection bootstrap", () => {
     "removing the post-push protection bootstrap must fail this contract",
   );
 });
+
+test("bootstrap identifies the protection migration that fails", () => {
+  const bootstrap = readFileSync(bootstrapPath, "utf8");
+  assert.match(
+    bootstrap,
+    /Database protection migration failed: \$migration/,
+    "rerun failures must identify the unsafe migration rather than only reporting psql failure",
+  );
+});

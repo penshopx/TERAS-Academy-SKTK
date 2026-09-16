@@ -14,5 +14,9 @@ readonly protection_migrations=(
 
 pnpm --filter @workspace/db run push
 for migration in "${protection_migrations[@]}"; do
-  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+  echo "Applying database protection migration: $migration"
+  if ! psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"; then
+    echo "Database protection migration failed: $migration" >&2
+    exit 1
+  fi
 done
