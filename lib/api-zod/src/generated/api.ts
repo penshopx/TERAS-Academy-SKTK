@@ -2962,6 +2962,24 @@ export const ListAuthoredCoursesResponse = zod.array(ListAuthoredCoursesResponse
 
 
 /**
+ * @summary List baselines governed by the manager's active assignments
+ */
+export const listManagedBaselinesResponseDraftCountMin = 0;
+
+
+
+export const ListManagedBaselinesResponseItem = zod.object({
+  "baselineId": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "status": zod.string(),
+  "activeVersion": zod.int().nullable(),
+  "draftCount": zod.int().min(listManagedBaselinesResponseDraftCountMin)
+})
+export const ListManagedBaselinesResponse = zod.array(ListManagedBaselinesResponseItem)
+
+
+/**
  * @summary Clone the active published baseline into a draft
  */
 

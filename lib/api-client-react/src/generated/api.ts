@@ -118,6 +118,7 @@ import type {
   LearningTransitionResult,
   ListAdminReadinessHistoryParams,
   ListAdminReminderEscalationsParams,
+  ManagedBaselineSummary,
   ManagedResourceUploadRequest,
   ManagedResourceUploadResponse,
   ModuleDetail,
@@ -3688,6 +3689,83 @@ export function useListAuthoredCourses<TData = Awaited<ReturnType<typeof listAut
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListAuthoredCoursesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListManagedBaselinesUrl = () => {
+
+
+
+
+  return `/api/trainer/authoring/baselines`
+}
+
+/**
+ * @summary List baselines governed by the manager's active assignments
+ */
+export const listManagedBaselines = async ( options?: Parameters<typeof customFetch>[1]): Promise<ManagedBaselineSummary[]> => {
+
+  return customFetch<ManagedBaselineSummary[]>(getListManagedBaselinesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListManagedBaselinesQueryKey = () => {
+    return [
+    `/api/trainer/authoring/baselines`
+    ] as const;
+    }
+
+
+export const getListManagedBaselinesQueryOptions = <TData = Awaited<ReturnType<typeof listManagedBaselines>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listManagedBaselines>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListManagedBaselinesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listManagedBaselines>>> = ({ signal }) => listManagedBaselines({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listManagedBaselines>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListManagedBaselinesQueryResult = NonNullable<Awaited<ReturnType<typeof listManagedBaselines>>>
+export type ListManagedBaselinesQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse>
+
+
+/**
+ * @summary List baselines governed by the manager's active assignments
+ */
+
+export function useListManagedBaselines<TData = Awaited<ReturnType<typeof listManagedBaselines>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listManagedBaselines>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListManagedBaselinesQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

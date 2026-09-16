@@ -1,9 +1,11 @@
 import { useState } from "react";
 import {
   getListBaselineVersionsQueryKey,
+  getListManagedBaselinesQueryKey,
   getPreviewBaselinePublicationQueryKey,
   useCancelBaselineDraft,
   useListBaselineVersions,
+  useListManagedBaselines,
   usePreviewBaselinePublication,
   usePublishBaselineVersion,
 } from "@workspace/api-client-react";
@@ -23,11 +25,13 @@ export function isBaselinePreviewConfirmed(confirmedFingerprint: string | null, 
 export function BaselinePublicationGate() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [baselineInput, setBaselineInput] = useState("");
   const [baselineId, setBaselineId] = useState("");
   const [versionId, setVersionId] = useState("");
   const [cancellationReason, setCancellationReason] = useState("");
   const [confirmedFingerprint, setConfirmedFingerprint] = useState<string | null>(null);
+  const baselines = useListManagedBaselines({
+    query: { queryKey: getListManagedBaselinesQueryKey() },
+  });
   const versions = useListBaselineVersions(baselineId, {
     query: { enabled: Boolean(baselineId), queryKey: getListBaselineVersionsQueryKey(baselineId) },
   });
@@ -41,8 +45,7 @@ export function BaselinePublicationGate() {
   const cancel = useCancelBaselineDraft();
   const drafts = versions.data?.filter(version => version.status === "DRAFT") ?? [];
 
-  const inspect = () => {
-    const next = baselineInput.trim();
+  const selectBaseline = (next: string) => {
     setBaselineId(next);
     setVersionId("");
     setCancellationReason("");
@@ -57,7 +60,10 @@ export function BaselinePublicationGate() {
         setConfirmedFingerprint(null);
         setVersionId("");
         setCancellationReason("");
-        await queryClient.invalidateQueries({ queryKey: getListBaselineVersionsQueryKey(baselineId) });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: getListBaselineVersionsQueryKey(baselineId) }),
+          queryClient.invalidateQueries({ queryKey: getListManagedBaselinesQueryKey() }),
+        ]);
         toast({
           title: `Draft baseline v${result.version} ditutup`,
           description: "Snapshot dan audit tetap tersimpan. Versi published serta pin learner tidak berubah.",
@@ -81,7 +87,10 @@ export function BaselinePublicationGate() {
       onSuccess: async result => {
         setConfirmedFingerprint(null);
         setVersionId("");
-        await queryClient.invalidateQueries({ queryKey: getListBaselineVersionsQueryKey(baselineId) });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: getListBaselineVersionsQueryKey(baselineId) }),
+          queryClient.invalidateQueries({ queryKey: getListManagedBaselinesQueryKey() }),
+        ]);
         toast({ title: `Baseline v${result.version} dipublikasikan`, description: "Enrollment baru akan memakai versi ini; histori learner lama tetap dipin." });
       },
       onError: error => toast({
@@ -98,10 +107,23 @@ export function BaselinePublicationGate() {
       <p className="text-sm text-muted-foreground">Bandingkan draft dengan snapshot aktif, lalu tinjau pathway, cohort, dan enrollment sebelum publikasi.</p>
     </CardHeader>
     <CardContent className="space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <Input value={baselineInput} onChange={event => setBaselineInput(event.target.value)} placeholder="ID baseline" aria-label="ID baseline" />
-        <Button type="button" variant="outline" onClick={inspect} disabled={!baselineInput.trim()}>Muat baseline</Button>
-      </div>
+      <label className="grid gap-2 text-sm">
+        <span className="font-medium">Baseline dalam scope Anda</span>
+        <select
+          className="h-10 rounded-md border border-input bg-background px-3"
+          value={baselineId}
+          onChange={event => selectBaseline(event.target.value)}
+          aria-label="Pilih baseline"
+          disabled={baselines.isLoading}
+        >
+          <option value="">{baselines.isLoading ? "Memuat baseline…" : "Pilih baseline"}</option>
+          {baselines.data?.map(baseline => <option key={baseline.baselineId} value={baseline.baselineId}>
+            {baseline.name} ({baseline.code}) · Aktif {baseline.activeVersion === null ? "belum ada" : `v${baseline.activeVersion}`} · {baseline.draftCount} draft
+          </option>)}
+        </select>
+        {baselines.error && <span className="text-destructive" role="alert">Daftar baseline dalam scope Anda tidak dapat dimuat.</span>}
+        {!baselines.isLoading && !baselines.error && !baselines.data?.length && <span className="text-muted-foreground">Tidak ada baseline yang sesuai assignment aktif Anda.</span>}
+      </label>
       {versions.isLoading && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat versi baseline…</p>}
       {versions.error && <p className="text-sm text-destructive" role="alert">Baseline tidak dapat dimuat atau berada di luar scope Anda.</p>}
       {baselineId && !versions.isLoading && !versions.error && <label className="grid gap-2 text-sm">

@@ -12,6 +12,7 @@ import {
   PublishBaselineVersionParams, PublishBaselineVersionResponse,
   PreviewBaselinePublicationParams, PreviewBaselinePublicationResponse, PublishBaselineVersionBody,
   ListBaselineVersionsParams, ListBaselineVersionsResponse,
+  ListManagedBaselinesResponse,
   ListBaselineAuditParams, ListBaselineAuditResponse,
   ValidateAuthoredCourseParams, ValidateAuthoredCourseResponse,
 } from "@workspace/api-zod";
@@ -19,7 +20,7 @@ import { authorizeBaselineManager, authorizeWorkspaceRole, type BaselineManager 
 import { applyCourseAuthoring, authoredCourse, courseAudit, coursePreview, courseVersions, listAuthoredCourses, publishCourse, trainerHasAssignment, validateCourse } from "../lib/course-authoring";
 import { db, enrollmentsTable } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
-import { baselineAudit, baselinePathwayIds, baselinePublicationPreview, cancelBaselineDraft, createBaselineDraft, listBaselineVersions, publishBaseline, snapshotPathwayIds, updateBaselineDraft } from "../lib/baseline-authoring";
+import { baselineAudit, baselinePathwayIds, baselinePublicationPreview, cancelBaselineDraft, createBaselineDraft, listBaselineVersions, listManagedBaselines, publishBaseline, snapshotPathwayIds, updateBaselineDraft } from "../lib/baseline-authoring";
 
 const router: IRouter = Router();
 async function requireBaselineScope(baselineId: string, manager: BaselineManager, res: Response, additionalPathways: Iterable<string> = []) {
@@ -37,6 +38,12 @@ async function requireBaselineScope(baselineId: string, manager: BaselineManager
   }
   return true;
 }
+
+router.get("/trainer/authoring/baselines", async (req, res): Promise<void> => {
+  const manager = await authorizeBaselineManager(req, res);
+  if (!manager) return;
+  res.json(ListManagedBaselinesResponse.parse(await listManagedBaselines(manager)));
+});
 
 router.post("/trainer/authoring/baselines/:baselineId/drafts", async (req, res): Promise<void> => {
   const manager = await authorizeBaselineManager(req, res);

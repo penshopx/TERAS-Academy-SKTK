@@ -424,6 +424,37 @@ export async function listBaselineVersions(baselineId: string) {
     .orderBy(desc(learningBaselineVersionsTable.version));
 }
 
+export async function listManagedBaselines(manager: { id: string; global: boolean }) {
+  const baselines = await db.select().from(learningBaselinesTable);
+  const versions = await db.select().from(learningBaselineVersionsTable);
+  const assignedPathways = manager.global ? null : new Set((await db.select({ pathwayId: enrollmentsTable.pathwayId })
+    .from(enrollmentsTable).where(and(
+      eq(enrollmentsTable.trainerId, manager.id),
+      eq(enrollmentsTable.status, "active"),
+    ))).map(row => row.pathwayId));
+  const versionsByBaseline = new Map<string, typeof versions>();
+  for (const version of versions) {
+    const rows = versionsByBaseline.get(version.baselineId) ?? [];
+    rows.push(version);
+    versionsByBaseline.set(version.baselineId, rows);
+  }
+  return baselines.flatMap(baseline => {
+    const rows = versionsByBaseline.get(baseline.id) ?? [];
+    const pathwayIds = new Set(rows.flatMap(version => [...snapshotPathwayIds(version.snapshot)]));
+    if (assignedPathways && (!pathwayIds.size || [...pathwayIds].some(pathwayId => !assignedPathways.has(pathwayId)))) return [];
+    const active = rows.find(version =>
+      version.id === baseline.publishedVersionId && version.status === "PUBLISHED");
+    return [{
+      baselineId: baseline.id,
+      code: baseline.code,
+      name: baseline.name,
+      status: baseline.status,
+      activeVersion: active?.version ?? null,
+      draftCount: rows.filter(version => version.status === "DRAFT").length,
+    }];
+  }).sort((left, right) => left.name.localeCompare(right.name) || left.code.localeCompare(right.code));
+}
+
 export async function baselinePathwayIds(baselineId: string) {
   return baselinePathwayIdsWithExecutor(baselineId, db);
 }

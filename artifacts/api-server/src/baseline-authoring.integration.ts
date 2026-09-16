@@ -70,11 +70,32 @@ async function main() {
   const request = (path: string, method = "GET", body?: unknown) => fetch(`${base}${path}`, {
     method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body),
   });
+  const baselineListResponse = await request("/trainer/authoring/baselines");
+  assert.equal(baselineListResponse.status, 200);
+  const baselineList = await baselineListResponse.json() as Array<{
+    baselineId: string; name: string; activeVersion: number | null; draftCount: number;
+  }>;
+  const listedBaseline = baselineList.find(item => item.baselineId === baseline.id);
+  assert(listedBaseline, "assigned trainer can discover the governed baseline without knowing its ID");
+  assert.equal(listedBaseline.name, baseline.name);
+  assert.equal(listedBaseline.activeVersion, active.version);
+  assert.equal(listedBaseline.draftCount, 0);
+  activeLearner = newPerson.id;
+  const outOfScopeList = await request("/trainer/authoring/baselines").then(response => response.json()) as Array<{
+    baselineId: string;
+  }>;
+  assert.equal(outOfScopeList.some(item => item.baselineId === baseline.id), false,
+    "the server excludes baselines outside the trainer's active assignments");
+  activeLearner = person.id;
   const cloneResponse = await request(`/trainer/authoring/baselines/${baseline.id}/drafts`, "POST");
   assert.equal(cloneResponse.status, 201);
   const draftResult = await cloneResponse.json() as { versionId: string; version: number };
   const draft = (await db.select().from(learningBaselineVersionsTable)
     .where(eq(learningBaselineVersionsTable.id, draftResult.versionId)))[0]!;
+  const listWithDraft = await request("/trainer/authoring/baselines").then(response => response.json()) as Array<{
+    baselineId: string; draftCount: number;
+  }>;
+  assert.equal(listWithDraft.find(item => item.baselineId === baseline.id)?.draftCount, 1);
   const editedSnapshot = {
     ...(draft.snapshot as Record<string, unknown>),
     baseline: { ...((draft.snapshot as any).baseline), description: "Version 2 integration snapshot" },

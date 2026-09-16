@@ -273,6 +273,7 @@ export * from './listAdminReadinessHistoryParams';
 export * from './listAdminReadinessHistoryStatus';
 export * from './listAdminReminderEscalationsParams';
 export * from './listAdminReminderEscalationsStatus';
+export * from './managedBaselineSummary';
 export * from './managedResourceUploadRequest';
 export * from './managedResourceUploadRequestContentType';
 export * from './managedResourceUploadResponse';

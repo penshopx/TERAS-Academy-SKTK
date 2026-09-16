@@ -59,6 +59,9 @@ test("Course authoring uses authored course endpoints, NOT learning endpoints", 
   assert.match(allContent, /useListAuthoredCourseVersions/);
   assert.match(allContent, /useListCourseAuthoringAudit/);
   assert.match(allContent, /usePreviewBaselinePublication/);
+  assert.match(allContent, /useListManagedBaselines/);
+  assert.doesNotMatch(allContent, /placeholder="ID baseline"/);
+  assert.match(allContent, /Baseline dalam scope Anda/);
   assert.match(allContent, /previewFingerprint/);
   assert.match(allContent, /enrollment lama tidak berubah/);
   assert.match(allContent, /Cohort aktif yang eligible/);

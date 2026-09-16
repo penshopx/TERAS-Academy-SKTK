@@ -850,6 +850,15 @@ paths:
       summary: List all trainer-authorable courses including drafts and archived courses
       responses:
         "200": { description: Authoring courses, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/LearningCourse" } } } } }
+  /trainer/authoring/baselines:
+    get:
+      operationId: listManagedBaselines
+      tags: [trainer]
+      summary: List baselines governed by the manager's active assignments
+      responses:
+        "200": { description: Baselines available for review, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/ManagedBaselineSummary" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /trainer/authoring/baselines/{baselineId}/drafts:
     post:
       operationId: createBaselineDraft
@@ -3251,6 +3260,16 @@ components:
         status: { type: string, enum: [DRAFT] }
         snapshot: { type: object, additionalProperties: true }
       required: [baselineId, versionId, version, status, snapshot]
+    ManagedBaselineSummary:
+      type: object
+      properties:
+        baselineId: { type: string }
+        code: { type: string }
+        name: { type: string }
+        status: { type: string }
+        activeVersion: { type: ["integer", "null"] }
+        draftCount: { type: integer, minimum: 0 }
+      required: [baselineId, code, name, status, activeVersion, draftCount]
     BaselineVersion:
       type: object
       properties:

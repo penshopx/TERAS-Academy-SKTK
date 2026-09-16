@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ApplyCourseAuthoringCommandBody, RequestManagedResourceUploadUrlBody, CancelBaselineDraftBody, CancelBaselineDraftResponse, CreateBaselineDraftResponse, PreviewBaselinePublicationResponse, PublishBaselineVersionBody, PublishBaselineVersionResponse, SelectLearnerPathwayResponse, UpdateBaselineDraftBody } from "@workspace/api-zod";
+import { ApplyCourseAuthoringCommandBody, RequestManagedResourceUploadUrlBody, CancelBaselineDraftBody, CancelBaselineDraftResponse, CreateBaselineDraftResponse, ListManagedBaselinesResponse, PreviewBaselinePublicationResponse, PublishBaselineVersionBody, PublishBaselineVersionResponse, SelectLearnerPathwayResponse, UpdateBaselineDraftBody } from "@workspace/api-zod";
 import { allocatedSiblingSequence, assignmentAllows, orderedSiblingIds } from "./lib/course-authoring";
 import { learnerCourseAvailable } from "./routes/learning";
 
@@ -81,6 +81,10 @@ assert.equal(assignmentAllows(assignments, "trainer-b", "program-c", "path-c"), 
 assert.equal(CreateBaselineDraftResponse.safeParse({
   baselineId: "baseline-1", versionId: "baseline-version-2", version: 2, status: "DRAFT", sourceVersion: 1,
 }).success, true, "baseline clone response is contract-valid");
+assert.equal(ListManagedBaselinesResponse.safeParse([{
+  baselineId: "baseline-1", code: "CORE", name: "Core baseline", status: "active",
+  activeVersion: 1, draftCount: 2,
+}]).success, true, "managed baseline summaries expose recognizable active and draft state");
 assert.equal(PublishBaselineVersionResponse.safeParse({
   baselineId: "baseline-1", versionId: "baseline-version-2", version: 2, status: "PUBLISHED",
   publishedAt: new Date().toISOString(),

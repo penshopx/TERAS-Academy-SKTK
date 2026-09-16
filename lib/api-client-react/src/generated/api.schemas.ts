@@ -1028,6 +1028,17 @@ export interface BaselineDraftUpdated {
   snapshot: BaselineDraftUpdatedSnapshot;
 }
 
+export interface ManagedBaselineSummary {
+  baselineId: string;
+  code: string;
+  name: string;
+  status: string;
+  /** @nullable */
+  activeVersion: number | null;
+  /** @minimum 0 */
+  draftCount: number;
+}
+
 export type BaselineVersionStatus = typeof BaselineVersionStatus[keyof typeof BaselineVersionStatus];
 
 
