@@ -12,6 +12,7 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { createIntegrationTestApp } from "./integration-test-app";
+import { assertBoundedIndexPlan, explainQuery } from "./lib/explain-plan";
 import { latestPracticeReviewQuery } from "./lib/trainer-bottlenecks";
 
 type QueueItem = {
@@ -35,18 +36,6 @@ const unrelatedAttemptPrefix = `trainer-queue-unrelated-attempt-${suffix}`;
 const reviewTimestamp = new Date("2026-09-16T08:30:00.000Z");
 const LARGE_HISTORY_SIZE = 500;
 
-type PlanNode = {
-  "Node Type": string;
-  "Index Name"?: string;
-  "Actual Rows": number;
-  "Actual Loops": number;
-  Plans?: PlanNode[];
-};
-
-function flattenPlan(node: PlanNode): PlanNode[] {
-  return [node, ...(node.Plans ?? []).flatMap(flattenPlan)];
-}
-
 async function assertLatestReviewLookupIsBounded() {
   await pool.query("ANALYZE teras_practice_reviews");
   await pool.query("SET enable_seqscan = off");
@@ -59,17 +48,8 @@ async function assertLatestReviewLookupIsBounded() {
   `);
   const latestReviewIndex = indexResult.rows[0]?.indexname;
   assert(latestReviewIndex, "Expected an attempt_id, created_at DESC, id DESC review index");
-  const result = await pool.query<{ "QUERY PLAN": Array<{ Plan: PlanNode }> }>(
-    `EXPLAIN (ANALYZE, FORMAT JSON, TIMING FALSE, SUMMARY FALSE) ${latestPracticeReviewQuery}`,
-    [[attemptId]],
-  );
-  const nodes = flattenPlan(result.rows[0]!["QUERY PLAN"][0]!.Plan);
-  const scan = nodes.find((node) => node["Index Name"] === latestReviewIndex);
-  assert(scan, `Expected ${latestReviewIndex}; plan: ${nodes.map((node) => `${node["Node Type"]}:${node["Index Name"] ?? "-"}`).join(", ")}`);
-  assert.ok(
-    scan["Actual Rows"] * scan["Actual Loops"] <= 1,
-    `Latest-review lookup read ${scan["Actual Rows"] * scan["Actual Loops"]} index rows for one attempt`,
-  );
+  const nodes = await explainQuery(pool, latestPracticeReviewQuery, [[attemptId]]);
+  assertBoundedIndexPlan(nodes, { indexName: latestReviewIndex, maximumRowsRead: 1 });
 }
 
 async function requestQueue(baseUrl: string) {

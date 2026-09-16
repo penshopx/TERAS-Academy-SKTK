@@ -6,54 +6,19 @@ import {
   buildOpenReminderEscalationIdsQuery,
   buildResolvedReminderEscalationIdsQuery,
 } from "./routes/admin";
+import {
+  assertBoundedIndexPlan,
+  assertSinglePassScanPlan,
+  explainQuery,
+} from "./lib/explain-plan";
 
 const { Client } = pg;
 const client = new Client({ connectionString: process.env.DATABASE_URL });
 const OPEN_COUNT = 12_000;
 const RESOLVED_COUNT = 8_000;
 
-type PlanNode = {
-  "Node Type": string;
-  "Index Name"?: string;
-  "Actual Rows": number;
-  "Actual Loops": number;
-  "Rows Removed by Filter"?: number;
-  Plans?: PlanNode[];
-};
-
-function flatten(node: PlanNode): PlanNode[] {
-  return [node, ...(node.Plans ?? []).flatMap(flatten)];
-}
-
 async function explain(query: string, values: unknown[]) {
-  const result = await client.query<{ "QUERY PLAN": Array<{ Plan: PlanNode }> }>(
-    `EXPLAIN (ANALYZE, FORMAT JSON, TIMING FALSE, SUMMARY FALSE) ${query}`,
-    values,
-  );
-  return flatten(result.rows[0]!["QUERY PLAN"][0]!.Plan);
-}
-
-function assertIndexPlan(nodes: PlanNode[], indexName: string, maximumRowsRead: number) {
-  const scan = nodes.find(node => node["Index Name"] === indexName);
-  assert.ok(
-    scan,
-    `expected ${indexName}; plan nodes: ${nodes.map(node => `${node["Node Type"]}:${node["Index Name"] ?? "-"}`).join(", ")}`,
-  );
-  const rowsRead = (scan["Actual Rows"] + (scan["Rows Removed by Filter"] ?? 0)) * scan["Actual Loops"];
-  assert.ok(rowsRead <= maximumRowsRead, `${indexName} read ${rowsRead} candidates, expected at most ${maximumRowsRead}`);
-}
-
-function assertSinglePassCountPlan(nodes: PlanNode[], maximumRowsRead: number) {
-  const scans = nodes.filter(node => node["Node Type"].includes("Scan"));
-  const rowsRead = scans.reduce(
-    (total, scan) => total + (scan["Actual Rows"] + (scan["Rows Removed by Filter"] ?? 0)) * scan["Actual Loops"],
-    0,
-  );
-  assert.ok(
-    rowsRead <= maximumRowsRead,
-    `count query read ${rowsRead} candidates, expected a single pass of at most ${maximumRowsRead}`,
-  );
-  assert.ok(scans.every(scan => scan["Actual Loops"] === 1), "count query must not execute correlated scan loops");
+  return explainQuery(client, query, values);
 }
 
 async function run() {
@@ -161,15 +126,21 @@ async function run() {
 
     const openSql = buildOpenReminderEscalationIdsQuery({ limit: 25 }).toSQL();
     const openPlan = await explain(openSql.sql, openSql.params);
-    assertIndexPlan(openPlan, "teras_diagnostic_follow_up_reminder_failed_history_idx", 50);
+    assertBoundedIndexPlan(openPlan, {
+      indexName: "teras_diagnostic_follow_up_reminder_failed_history_idx",
+      maximumRowsRead: 50,
+    });
 
     const resolvedSql = buildResolvedReminderEscalationIdsQuery({ limit: 25 }).toSQL();
     const resolvedPlan = await explain(resolvedSql.sql, resolvedSql.params);
-    assertIndexPlan(resolvedPlan, "teras_diagnostic_follow_up_reminder_resolved_history_idx", 50);
+    assertBoundedIndexPlan(resolvedPlan, {
+      indexName: "teras_diagnostic_follow_up_reminder_resolved_history_idx",
+      maximumRowsRead: 50,
+    });
 
     const countSql = buildReminderEscalationCountQuery().toSQL();
     const countPlan = await explain(countSql.sql, countSql.params);
-    assertSinglePassCountPlan(countPlan, OPEN_COUNT + RESOLVED_COUNT + 10);
+    assertSinglePassScanPlan(countPlan, OPEN_COUNT + RESOLVED_COUNT + 10);
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     await client.end();

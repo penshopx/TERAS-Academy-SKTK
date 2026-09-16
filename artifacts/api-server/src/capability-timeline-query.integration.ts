@@ -1,41 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import pg from "pg";
+import { assertBoundedIndexPlan, explainQuery } from "./lib/explain-plan";
 
 const { Client } = pg;
 const client = new Client({ connectionString: process.env.DATABASE_URL });
 
-type PlanNode = {
-  "Node Type": string;
-  "Index Name"?: string;
-  "Actual Rows": number;
-  "Actual Loops": number;
-  Plans?: PlanNode[];
-};
-
-function flatten(node: PlanNode): PlanNode[] {
-  return [node, ...(node.Plans ?? []).flatMap(flatten)];
-}
-
 async function explain(query: string, values: unknown[]) {
-  const result = await client.query<{ "QUERY PLAN": Array<{ Plan: PlanNode }> }>(
-    `EXPLAIN (ANALYZE, FORMAT JSON, TIMING FALSE, SUMMARY FALSE) ${query}`,
-    values,
-  );
-  return flatten(result.rows[0]!["QUERY PLAN"][0]!.Plan);
-}
-
-function assertBoundedIndexPlan(
-  nodes: PlanNode[],
-  indexName: string,
-  maximumRowsRead: number,
-) {
-  const scan = nodes.find(node => node["Index Name"] === indexName);
-  assert.ok(scan, `expected query plan to use ${indexName}; plan nodes: ${nodes.map(node => `${node["Node Type"]}:${node["Index Name"] ?? "-"}`).join(", ")}`);
-  assert.ok(
-    scan["Actual Rows"] * scan["Actual Loops"] <= maximumRowsRead,
-    `${indexName} read ${scan["Actual Rows"] * scan["Actual Loops"]} rows, expected at most ${maximumRowsRead}`,
-  );
+  return explainQuery(client, query, values);
 }
 
 test("timeline parent lookups stay index-bounded at representative volume", async () => {
@@ -149,19 +121,19 @@ test("timeline parent lookups stay index-bounded at representative volume", asyn
       "SELECT * FROM teras_evidence_reviews WHERE evidence_id = ANY($1::text[])",
       [["plan-noise-evidence-1", "plan-noise-evidence-2"]],
     );
-    assertBoundedIndexPlan(reviewPlan, "teras_evidence_reviews_parent_timeline_idx", 4);
+    assertBoundedIndexPlan(reviewPlan, { indexName: "teras_evidence_reviews_parent_timeline_idx", maximumRowsRead: 4 });
 
     const diagnosticPlan = await explain(
       "SELECT * FROM teras_diagnostic_gaps WHERE profile_id = ANY($1::text[])",
       [["plan-target-profile"]],
     );
-    assertBoundedIndexPlan(diagnosticPlan, "teras_diagnostic_gaps_profile_idx", 130);
+    assertBoundedIndexPlan(diagnosticPlan, { indexName: "teras_diagnostic_gaps_profile_idx", maximumRowsRead: 130 });
 
     const remediationPlan = await explain(
       "SELECT * FROM teras_remediation_events WHERE activity_id = ANY($1::text[])",
       [["plan-target-activity-1", "plan-target-activity-2"]],
     );
-    assertBoundedIndexPlan(remediationPlan, "teras_remediation_events_parent_timeline_idx", 30);
+    assertBoundedIndexPlan(remediationPlan, { indexName: "teras_remediation_events_parent_timeline_idx", maximumRowsRead: 30 });
   } finally {
     await client.end();
   }
