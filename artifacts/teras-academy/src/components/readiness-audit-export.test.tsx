@@ -9,6 +9,8 @@ import {
   downloadReadinessAuditExport,
   ReadinessExportProgress,
   ReadinessExportFeedback,
+  ReadinessExportAlerts,
+  readinessExportTrendInput,
   runReadinessAuditExport,
 } from "./admin/ReadinessAuditHistory";
 
@@ -104,6 +106,55 @@ test("readiness export feedback displays export failures", () => {
 
   assert.match(markup, /role="alert"/);
   assert.match(markup, /Ekspor gagal: Jaringan terputus/);
+});
+
+test("server-owned export warning remains visible across an invalid and corrected device clock", () => {
+  const RealDate = Date;
+  let deviceTime = Number.NaN;
+  globalThis.Date = class extends RealDate {
+    constructor(value?: string | number | Date) {
+      super(value === undefined ? deviceTime : value);
+    }
+
+    static now() {
+      return deviceTime;
+    }
+  } as DateConstructor;
+  const alert = {
+    periodStart: "2026-09-10",
+    periodEnd: "2026-09-16",
+    recordGroup: "5.000–9.999 record",
+    sampleSize: 5,
+    explanation: "3 dari 5 ekspor gagal atau dibatalkan (60%), melewati ambang 40%.",
+  };
+
+  try {
+    const invalidClockMarkup = renderToStaticMarkup(
+      <ReadinessExportAlerts alerts={[alert]} periodDays={7} minimumSampleSize={5} />,
+    );
+    deviceTime = RealDate.parse("1999-01-01T00:00:00.000Z");
+    const rolledBackMarkup = renderToStaticMarkup(
+      <ReadinessExportAlerts alerts={[alert]} periodDays={7} minimumSampleSize={5} />,
+    );
+    deviceTime = RealDate.parse("2026-09-16T12:00:00.000Z");
+    const correctedMarkup = renderToStaticMarkup(
+      <ReadinessExportAlerts alerts={[alert]} periodDays={7} minimumSampleSize={5} />,
+    );
+
+    for (const markup of [invalidClockMarkup, rolledBackMarkup, correctedMarkup]) {
+      assert.match(markup, /Peringatan kegagalan ekspor besar/);
+      assert.match(markup, /5\.000–9\.999 record/);
+      assert.match(markup, /3 dari 5 ekspor gagal/);
+    }
+  } finally {
+    globalThis.Date = RealDate;
+  }
+});
+
+test("export trend mutation cannot send device time to the server", () => {
+  assert.deepEqual(readinessExportTrendInput("failed", 5_000), {
+    data: { outcome: "failed", recordCount: 5_000 },
+  });
 });
 
 test("readiness export shows the filtered record count and advancing streamed bytes", async () => {

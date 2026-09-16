@@ -153,6 +153,74 @@ test("dispatches only export outcome and numeric record count", () => {
   ]);
 });
 
+test("keeps export tracking safe and timestamp-free when the device clock is invalid", () => {
+  const calls: Array<{
+    name: string;
+    data?: Record<string, string | number | boolean>;
+  }> = [];
+  const RealDate = Date;
+
+  setTestWindow({ track: (name, data) => calls.push({ name, data }) });
+  globalThis.Date = class extends RealDate {
+    constructor(...args: ConstructorParameters<typeof Date>) {
+      super(...(args.length === 0 ? [Number.NaN] : args));
+    }
+
+    static now() {
+      return Number.NaN;
+    }
+  } as DateConstructor;
+
+  try {
+    assert.doesNotThrow(() => trackReadinessAuditExport("failed", 5_000));
+    assert.deepStrictEqual(calls, [{
+      name: "readiness_audit_export",
+      data: { outcome: "failed", record_count: 5_000 },
+    }]);
+  } finally {
+    globalThis.Date = RealDate;
+  }
+});
+
+test("device clock rollback cannot hide export outcomes after the clock is corrected", () => {
+  const calls: Array<{
+    name: string;
+    data?: Record<string, string | number | boolean>;
+  }> = [];
+  const RealDate = Date;
+  let fixedTime = RealDate.parse("1999-01-01T00:00:00.000Z");
+
+  setTestWindow({ track: (name, data) => calls.push({ name, data }) });
+  globalThis.Date = class extends RealDate {
+    constructor(...args: ConstructorParameters<typeof Date>) {
+      super(...(args.length === 0 ? [fixedTime] : args));
+    }
+
+    static now() {
+      return fixedTime;
+    }
+  } as DateConstructor;
+
+  try {
+    trackReadinessAuditExport("failed", 5_000);
+    fixedTime = RealDate.parse("2026-09-16T12:00:00.000Z");
+    trackReadinessAuditExport("succeeded", 5_000);
+
+    assert.deepStrictEqual(calls, [
+      {
+        name: "readiness_audit_export",
+        data: { outcome: "failed", record_count: 5_000 },
+      },
+      {
+        name: "readiness_audit_export",
+        data: { outcome: "succeeded", record_count: 5_000 },
+      },
+    ]);
+  } finally {
+    globalThis.Date = RealDate;
+  }
+});
+
 test("remains a safe no-op when the injected tracker is unavailable", () => {
   setTestWindow();
 

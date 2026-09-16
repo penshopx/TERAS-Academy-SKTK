@@ -180,6 +180,51 @@ export function ReadinessExportProgress({
   </div>;
 }
 
+type ExportTrendOutcome = "succeeded" | "cancelled" | "failed";
+
+export function readinessExportTrendInput(outcome: ExportTrendOutcome, recordCount: number) {
+  return { data: { outcome, recordCount } };
+}
+
+export function ReadinessExportAlerts({
+  alerts,
+  periodDays,
+  minimumSampleSize,
+}: {
+  alerts: Array<{
+    periodStart: string;
+    periodEnd: string;
+    recordGroup: string;
+    sampleSize: number;
+    explanation: string;
+  }>;
+  periodDays: number;
+  minimumSampleSize: number;
+}) {
+  if (alerts.length === 0) return null;
+  return <section className="rounded-md border border-amber-500/50 bg-amber-500/10 p-4" role="alert" data-testid="readiness-export-alerts">
+    <div className="flex items-start gap-3">
+      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
+      <div className="min-w-0">
+        <h3 className="font-semibold">Peringatan kegagalan ekspor besar</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Agregat anonim {periodDays} hari terakhir; minimum {minimumSampleSize} ekspor per kelompok.
+        </p>
+        <ul className="mt-3 space-y-2 text-sm">
+          {alerts.map(alert => <li key={`${alert.periodStart}-${alert.recordGroup}`} className="rounded border border-amber-500/30 bg-background/60 p-3">
+            <p className="font-medium">{alert.recordGroup}</p>
+            <p className="text-muted-foreground">
+              Periode {new Intl.DateTimeFormat("id-ID", { dateStyle: "medium" }).format(new Date(`${alert.periodStart}T00:00:00Z`))}–{new Intl.DateTimeFormat("id-ID", { dateStyle: "medium" }).format(new Date(`${alert.periodEnd}T00:00:00Z`))}
+              {" · "}{alert.sampleSize} ekspor
+            </p>
+            <p className="mt-1"><span className="font-medium">Alasan: </span>{alert.explanation}</p>
+          </li>)}
+        </ul>
+      </div>
+    </div>
+  </section>;
+}
+
 export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }: Props) {
   const [learnerId, setLearnerId] = useState("");
   const [pathwayId, setPathwayId] = useState("");
@@ -225,9 +270,9 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
   }, []);
 
   const exportAlerts = exportTrends.data?.alerts ?? [];
-  const recordFinalExportOutcome = (outcome: "succeeded" | "cancelled" | "failed", recordCount: number) => {
+  const recordFinalExportOutcome = (outcome: ExportTrendOutcome, recordCount: number) => {
     if (!enabled) return;
-    void recordExportTrend.mutateAsync({ data: { outcome, recordCount } })
+    void recordExportTrend.mutateAsync(readinessExportTrendInput(outcome, recordCount))
       .then(() => exportTrends.refetch())
       .catch(() => undefined);
   };
@@ -286,27 +331,11 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
       <CardContent className="space-y-4">
         {exportTrends.isLoading && <p className="text-sm text-muted-foreground" role="status">Memuat tren ekspor anonim…</p>}
         {exportTrends.error && <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive" role="alert">Tren ekspor anonim tidak tersedia saat ini.</p>}
-        {exportAlerts.length > 0 && <section className="rounded-md border border-amber-500/50 bg-amber-500/10 p-4" role="alert" data-testid="readiness-export-alerts">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
-            <div className="min-w-0">
-              <h3 className="font-semibold">Peringatan kegagalan ekspor besar</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                 Agregat anonim {exportTrends.data?.thresholds.periodDays ?? 7} hari terakhir; minimum {exportTrends.data?.thresholds.minimumSampleSize ?? 5} ekspor per kelompok.
-              </p>
-              <ul className="mt-3 space-y-2 text-sm">
-                {exportAlerts.map(alert => <li key={`${alert.periodStart}-${alert.recordGroup}`} className="rounded border border-amber-500/30 bg-background/60 p-3">
-                  <p className="font-medium">{alert.recordGroup}</p>
-                  <p className="text-muted-foreground">
-                    Periode {new Intl.DateTimeFormat("id-ID", { dateStyle: "medium" }).format(new Date(`${alert.periodStart}T00:00:00Z`))}–{new Intl.DateTimeFormat("id-ID", { dateStyle: "medium" }).format(new Date(`${alert.periodEnd}T00:00:00Z`))}
-                    {" · "}{alert.sampleSize} ekspor
-                  </p>
-                  <p className="mt-1"><span className="font-medium">Alasan: </span>{alert.explanation}</p>
-                </li>)}
-              </ul>
-            </div>
-          </div>
-        </section>}
+        <ReadinessExportAlerts
+          alerts={exportAlerts}
+          periodDays={exportTrends.data?.thresholds.periodDays ?? 7}
+          minimumSampleSize={exportTrends.data?.thresholds.minimumSampleSize ?? 5}
+        />
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5" aria-label="Filter riwayat readiness">
           <label className="grid gap-1 text-sm">Learner
             <select value={learnerId} onChange={event => { setLearnerId(event.target.value); setPage(1); }} className="h-10 rounded-md border bg-background px-3" data-testid="filter-readiness-learner">
