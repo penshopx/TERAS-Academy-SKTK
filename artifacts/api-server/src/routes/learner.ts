@@ -7,7 +7,7 @@ import { baselineForModule, catalogue, evidenceRecords, gapRecords, learnerConte
 import { authorizeLearner } from "../lib/authorization";
 import { pinPublishedBaseline } from "../lib/baseline-authoring";
 import { learningNextAction, transitionLearningState, type LearningState, type LearningTransitionResult } from "../lib/learning-transition";
-import { createLearnerPortfolioExport } from "../lib/learner-portfolio-export";
+import { collectTimelineExportPages, createLearnerPortfolioExport } from "../lib/learner-portfolio-export";
 const router: IRouter = Router(); const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const TIMELINE_PAGE_SIZE = 50;
 type TimelineCursor = { date: string; id: string };
@@ -494,12 +494,27 @@ router.get("/learner/learning-plan", async (req, res): Promise<void> => {
     })));
 });
 router.get("/learner/dashboard", async (req, res): Promise<void> => { const learnerId = await authorizeLearner(req, res); if (!learnerId) return; const [context, source] = await Promise.all([learnerContext(learnerId), catalogue()]); const { modules, tasks, enrollments } = source; const selected = await selectedBaselineModuleIds(context.pathway.id, context.baselineVersionId); const [view, gaps, evidence, progress, diagnostic] = await Promise.all([readiness(context), gapRecords(learnerId, context.pathway.id), evidenceRecords(learnerId, context.pathway.id, context.baselineVersionId), progressByModule(learnerId, context.pathway.id), diagnosticView(learnerId)]); const pathwayModules = modules.filter((module) => selected.has(module.id)).sort((a, b) => a.sequence - b.sequence); const current = pathwayModules.find((module) => progress(module.id).progress < 100) ?? pathwayModules[0]; const task = tasks.find((item) => item.moduleId === current.id); if (!current || !task) throw new Error(`Incomplete curriculum for ${context.pathway.name}`); const currentBaseline = baselineForModule(current.id, source); const currentContract = source.pathwayContracts.find(item => item.pathwayId === context.pathway.id && item.moduleId === (currentBaseline?.moduleId ?? current.id)); const result = diagnostic.attempt?.result as { baselineScore?: number; gaps?: string[]; safetyBlockers?: string[]; blocked?: boolean } | null; const diagnosticDone = diagnostic.attempt?.status === "completed"; res.json(GetLearnerDashboardResponse.parse({ learner: context.learner, program: { ...context.program, moduleCount: pathwayModules.length, learnerCount: new Set(enrollments.filter((item) => item.programId === context.program.id).map((item) => item.learnerId)).size }, pathway: view.pathway, capabilityProgress: Math.round(pathwayModules.reduce((sum, module) => sum + progress(module.id).progress, 0) / pathwayModules.length), readiness: view, currentLearning: moduleSummary(current, progress(current.id).progress, progress(current.id).status, context.pathway.id, currentBaseline, currentContract), currentPractice: { ...task, status: "Available" }, mainGap: gaps.find((gap) => gap.status !== "Resolved") ?? null, evidenceCounts: { total: evidence.length, valid: evidence.filter((item) => item.status === "Valid").length, underReview: evidence.filter((item) => item.status === "Under review").length, needsRevision: evidence.filter((item) => item.status === "Needs revision").length }, diagnostic: { status: diagnostic.attempt?.status ?? "not_started", score: diagnosticDone ? result?.baselineScore ?? 0 : null, topGaps: diagnosticDone ? result?.gaps?.slice(0, 3) ?? [] : [], safetyBlockers: diagnosticDone ? result?.safetyBlockers ?? [] : [], blocked: diagnosticDone ? Boolean(result?.blocked) : false }, nextAction: !diagnosticDone ? { title: diagnostic.attempt ? "Resume your diagnostic" : "Start your diagnostic", description: "Set your personal baseline before continuing pathway learning.", href: "/diagnostic", priority: "High" } : { title: `Continue ${current.code}`, description: result?.blocked ? "Resolve the critical safety blocker before practice." : "Continue your active pathway learning.", href: result?.blocked ? "/diagnostic/result" : `/modules/${current.id}`, priority: "High" } })); });
-async function capabilityPassport(learnerId: string, timelineLimit?: number) {
+async function fullPathwayTimeline(learnerId: string) {
+  let firstPage: Awaited<ReturnType<typeof pathwayTimeline>> | undefined;
+  const steps = await collectTimelineExportPages(async cursorValue => {
+    const decodedCursor = cursorValue ? decodeTimelineCursor(cursorValue) : undefined;
+    if (cursorValue && !decodedCursor) throw new Error("Timeline pagination produced an invalid cursor");
+    const page = await pathwayTimeline(learnerId, { cursor: decodedCursor ?? undefined, limit: TIMELINE_PAGE_SIZE });
+    firstPage ??= page;
+    return { items: page.steps, nextCursor: page.nextCursor };
+  });
+  if (!firstPage) throw new Error("Timeline pagination did not return an initial page");
+  return { ...firstPage, steps, nextCursor: null };
+}
+
+async function capabilityPassport(learnerId: string, timelineMode: "page" | "full") {
   const context = await learnerContext(learnerId);
   // Readiness persists the decision snapshot. Build the timeline afterwards so
   // a first passport request includes the exact decision it returns.
   const view = await readiness(context);
-  const timeline = await pathwayTimeline(learnerId, timelineLimit ? { limit: timelineLimit } : undefined);
+  const timeline = timelineMode === "full"
+    ? await fullPathwayTimeline(learnerId)
+    : await pathwayTimeline(learnerId, { limit: TIMELINE_PAGE_SIZE });
   const [attempts, assessments, modules, evidence, selected] = await Promise.all([
     db.select().from(assessmentAttemptsTable).where(and(
       eq(assessmentAttemptsTable.learnerId, learnerId),
@@ -546,12 +561,12 @@ async function capabilityPassport(learnerId: string, timelineLimit?: number) {
 router.get("/passport", async (req, res): Promise<void> => {
   const learnerId = await authorizeLearner(req, res);
   if (!learnerId) return;
-  res.json(await capabilityPassport(learnerId, TIMELINE_PAGE_SIZE));
+  res.json(await capabilityPassport(learnerId, req.query.history === "full" ? "full" : "page"));
 });
 router.get("/passport/export", async (req, res): Promise<void> => {
   const learnerId = await authorizeLearner(req, res);
   if (!learnerId) return;
-  const portfolio = await capabilityPassport(learnerId, TIMELINE_PAGE_SIZE);
+  const portfolio = await capabilityPassport(learnerId, "full");
   const exported = ExportLearnerPortfolioResponse.parse(createLearnerPortfolioExport(portfolio));
   const slug = portfolio.terminalPortfolio === "Capability Portfolio" ? "capability-portfolio" : "certification-readiness-portfolio";
   res.setHeader("Content-Disposition", `attachment; filename="${slug}-${new Date(exported.exportedAt).toISOString().slice(0, 10)}.json"`);

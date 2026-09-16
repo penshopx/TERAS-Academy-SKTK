@@ -9,6 +9,32 @@ export type LearnerPortfolioPayload = {
   portfolio: unknown;
 };
 
+export type TimelineExportPage<T> = {
+  items: T[];
+  nextCursor: string | null;
+};
+
+export async function collectTimelineExportPages<T>(
+  fetchPage: (cursor?: string) => Promise<TimelineExportPage<T>>,
+) {
+  const items: T[] = [];
+  let cursor: string | undefined;
+  const seenCursors = new Set<string>();
+
+  do {
+    const page = await fetchPage(cursor);
+    items.push(...page.items);
+    if (!page.nextCursor) return items;
+    if (seenCursors.has(page.nextCursor)) {
+      throw new Error("Timeline pagination returned a repeated cursor");
+    }
+    seenCursors.add(page.nextCursor);
+    cursor = page.nextCursor;
+  } while (cursor);
+
+  return items;
+}
+
 export function createLearnerPortfolioExport(portfolio: unknown, exportedAt = new Date()) {
   const exportedAtIso = exportedAt.toISOString();
   const portfolioChecksum = crypto.createHash("sha256").update(JSON.stringify(portfolio)).digest("hex");

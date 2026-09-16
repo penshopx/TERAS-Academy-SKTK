@@ -28,11 +28,13 @@ const enrollmentA = `passport-enrollment-a-${suffix}`;
 const enrollmentB = `passport-enrollment-b-${suffix}`;
 const evidenceA = `passport-evidence-a-${suffix}`;
 const evidenceB = `passport-evidence-b-${suffix}`;
+const longHistoryEvidence = Array.from({ length: 55 }, (_, index) => `passport-history-${String(index).padStart(2, "0")}-${suffix}`);
+const longHistoryReviews = longHistoryEvidence.map((_, index) => `passport-history-review-${String(index).padStart(2, "0")}-${suffix}`);
 
 async function cleanup() {
   await db.delete(readinessEventsTable).where(inArray(readinessEventsTable.enrollmentId, [enrollmentA, enrollmentB]));
-  await db.delete(evidenceReviewsTable).where(inArray(evidenceReviewsTable.evidenceId, [evidenceA, evidenceB]));
-  await db.delete(evidenceTable).where(inArray(evidenceTable.id, [evidenceA, evidenceB]));
+  await db.delete(evidenceReviewsTable).where(inArray(evidenceReviewsTable.evidenceId, [evidenceA, evidenceB, ...longHistoryEvidence]));
+  await db.delete(evidenceTable).where(inArray(evidenceTable.id, [evidenceA, evidenceB, ...longHistoryEvidence]));
   await db.delete(enrollmentsTable).where(inArray(enrollmentsTable.id, [enrollmentA, enrollmentB]));
   await db.delete(peopleTable).where(inArray(peopleTable.id, [learnerA, learnerB]));
 }
@@ -55,6 +57,25 @@ async function seed() {
     { id: `passport-review-a-${suffix}`, evidenceId: evidenceA, status: "Under review", quality: { valid: false, relevant: true, sufficient: false, traceable: true }, createdBy: learnerA },
     { id: `passport-review-b-${suffix}`, evidenceId: evidenceB, status: "Under review", quality: { valid: false, relevant: true, sufficient: false, traceable: true }, createdBy: learnerB },
   ]);
+  await db.insert(evidenceTable).values(longHistoryEvidence.map((id, index) => ({
+    id,
+    learnerId: learnerA,
+    pathwayId: "path-a",
+    moduleId: "m03",
+    taskId: "task-m03",
+    title: `Long Passport history ${index}`,
+    type: "Report",
+    description: `Multi-page export fixture ${index}`,
+    fileName: null,
+    createdBy: learnerA,
+  })));
+  await db.insert(evidenceReviewsTable).values(longHistoryEvidence.map((evidenceId, index) => ({
+    id: longHistoryReviews[index]!,
+    evidenceId,
+    status: "Under review",
+    quality: { valid: false, relevant: true, sufficient: false, traceable: true },
+    createdBy: learnerA,
+  })));
 }
 
 function parityProjection(passport: Passport) {
@@ -92,8 +113,9 @@ async function run() {
     for (const identity of ["path-a", "path-b"] as const) {
       const eventsBefore = await db.select().from(readinessEventsTable)
         .where(eq(readinessEventsTable.enrollmentId, identity === "path-a" ? enrollmentA : enrollmentB));
-      const [passport, exported] = await Promise.all([
+      const [passport, fullPassport, exported] = await Promise.all([
         request<Passport>("/passport", identity),
+        request<Passport>("/passport?history=full", identity),
         request<ExportPayload>("/passport/export", identity),
       ]);
       const eventsAfterParallelRequests = await db.select().from(readinessEventsTable)
@@ -103,16 +125,27 @@ async function run() {
         eventsBefore.length + 1,
         `${identity} parallel Passport requests with identical inputs must append one readiness event`,
       );
-      assert.deepEqual(exported.portfolio, passport, `${identity} exported portfolio must equal the complete Passport response`);
+      assert.deepEqual(exported.portfolio, fullPassport, `${identity} exported portfolio must equal the full-history Passport response`);
       assert.deepEqual(
         parityProjection(exported.portfolio),
-        parityProjection(passport),
-        `${identity} export portfolio must match the Passport page contract`,
+        parityProjection(fullPassport),
+        `${identity} export portfolio must match the full-history Passport contract`,
       );
       assert(
         passport.timeline.some(step => Object.values(step.causalReferences).flat().includes(identity === "path-a" ? evidenceA : evidenceB)),
         `${identity} fixture must exercise causal evidence references`,
       );
+      if (identity === "path-a") {
+        assert.equal(passport.timeline.length, 50, "the default Passport page must retain its 50-event boundary");
+        assert(fullPassport.timeline.length > 50, "the full-history Passport must include multiple timeline pages");
+        assert.equal(new Set(fullPassport.timeline.map(step => JSON.stringify(step))).size, fullPassport.timeline.length, "full-history pagination must not duplicate timeline events");
+        for (const evidenceId of longHistoryEvidence) {
+          assert(
+            fullPassport.timeline.some(step => Object.values(step.causalReferences).flat().includes(evidenceId)),
+            `full-history export must retain causal reference ${evidenceId}`,
+          );
+        }
+      }
     }
 
     const pathAEventsBeforeChange = await db.select().from(readinessEventsTable)
