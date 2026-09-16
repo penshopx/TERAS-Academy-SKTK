@@ -16,6 +16,7 @@ import {
 import {
   createBaselineDraft,
   baselinePublicationPreview,
+  cancelBaselineDraft,
   publishBaseline,
   updateBaselineDraft,
 } from "./lib/baseline-authoring";
@@ -307,6 +308,94 @@ async function main() {
     await assert.rejects(
       db.delete(learningBaselineVersionsTable).where(eq(learningBaselineVersionsTable.id, cancellationDraft.versionId)),
     );
+  }
+
+  const cancelEditDraft = await createBaselineDraft(baseline.id, "trainer-cancel-edit");
+  assert(!("error" in cancelEditDraft));
+  if (!("error" in cancelEditDraft)) {
+    const pointerBeforeRace = (await db.select().from(learningBaselinesTable)
+      .where(eq(learningBaselinesTable.id, baseline.id)))[0]!.publishedVersionId;
+    const pinBeforeRace = (await db.select().from(enrollmentsTable)
+      .where(eq(enrollmentsTable.id, enrollmentId)))[0]!.baselineVersionId;
+    const draftBeforeRace = (await db.select().from(learningBaselineVersionsTable)
+      .where(eq(learningBaselineVersionsTable.id, cancelEditDraft.versionId)))[0]!;
+    const racedSnapshot = structuredClone(draftBeforeRace.snapshot as Record<string, unknown>);
+    (racedSnapshot.baseline as Record<string, unknown>).description = "Concurrent edit committed before cancellation";
+    const [cancelResult, editResult] = await Promise.all([
+      cancelBaselineDraft(baseline.id, cancelEditDraft.versionId, "trainer-cancel-winner", "Concurrent cancel and edit"),
+      updateBaselineDraft(baseline.id, cancelEditDraft.versionId, racedSnapshot, "trainer-edit-racer"),
+    ]);
+    assert(!("error" in cancelResult), "cancel remains the terminal winner against an edit");
+    const versionAfterRace = (await db.select().from(learningBaselineVersionsTable)
+      .where(eq(learningBaselineVersionsTable.id, cancelEditDraft.versionId)))[0]!;
+    assert.equal(versionAfterRace.status, "CANCELLED");
+    const raceAudits = await db.select().from(learningBaselineAuditTable).where(eq(
+      learningBaselineAuditTable.versionId,
+      cancelEditDraft.versionId,
+    ));
+    const cancelAudits = raceAudits.filter(audit => audit.action === "CANCEL_DRAFT");
+    const updateAudits = raceAudits.filter(audit => audit.action === "UPDATE_DRAFT");
+    assert.equal(cancelAudits.length, 1, "the committed cancellation has exactly one audit");
+    assert.equal(updateAudits.length, "error" in editResult ? 0 : 1, "edit audit exists only when the edit committed");
+    assert.deepEqual(
+      versionAfterRace.snapshot,
+      "error" in editResult ? draftBeforeRace.snapshot : racedSnapshot,
+      "cancel preserves whichever complete draft snapshot won before the terminal transition",
+    );
+    assert.equal((await db.select().from(learningBaselinesTable)
+      .where(eq(learningBaselinesTable.id, baseline.id)))[0]!.publishedVersionId, pointerBeforeRace);
+    assert.equal((await db.select().from(enrollmentsTable)
+      .where(eq(enrollmentsTable.id, enrollmentId)))[0]!.baselineVersionId, pinBeforeRace);
+  }
+
+  const cancelPublishDraft = await createBaselineDraft(baseline.id, "trainer-cancel-publish");
+  assert(!("error" in cancelPublishDraft));
+  if (!("error" in cancelPublishDraft)) {
+    const preview = await baselinePublicationPreview(baseline.id, cancelPublishDraft.versionId);
+    assert(!("error" in preview));
+    if (!("error" in preview)) {
+      const pointerBeforeRace = (await db.select().from(learningBaselinesTable)
+        .where(eq(learningBaselinesTable.id, baseline.id)))[0]!.publishedVersionId;
+      const enrollmentPinBeforeRace = (await db.select().from(enrollmentsTable)
+        .where(eq(enrollmentsTable.id, enrollmentId)))[0]!.baselineVersionId;
+      const eventPinBeforeRace = (await db.select().from(enrollmentPathwayEventsTable)
+        .where(eq(enrollmentPathwayEventsTable.enrollmentId, enrollmentId)))[0]!.baselineVersionId;
+      const [cancelResult, publishResult] = await Promise.all([
+        cancelBaselineDraft(baseline.id, cancelPublishDraft.versionId, "trainer-cancel-racer", "Concurrent cancel and publish"),
+        publishBaseline(
+          baseline.id,
+          cancelPublishDraft.versionId,
+          { id: "trainer-publish-racer", global: true },
+          preview.previewFingerprint,
+        ),
+      ]);
+      assert.equal(
+        [cancelResult, publishResult].filter(result => !("error" in result)).length,
+        1,
+        "cancel and publish produce exactly one committed terminal transition",
+      );
+      const terminalVersion = (await db.select().from(learningBaselineVersionsTable)
+        .where(eq(learningBaselineVersionsTable.id, cancelPublishDraft.versionId)))[0]!;
+      const raceAudits = await db.select().from(learningBaselineAuditTable).where(eq(
+        learningBaselineAuditTable.versionId,
+        cancelPublishDraft.versionId,
+      ));
+      assert.equal(raceAudits.filter(audit => audit.action === "CANCEL_DRAFT").length, "error" in cancelResult ? 0 : 1);
+      assert.equal(raceAudits.filter(audit => audit.action === "PUBLISH").length, "error" in publishResult ? 0 : 1);
+      const pointerAfterRace = (await db.select().from(learningBaselinesTable)
+        .where(eq(learningBaselinesTable.id, baseline.id)))[0]!.publishedVersionId;
+      if ("error" in publishResult) {
+        assert.equal(terminalVersion.status, "CANCELLED");
+        assert.equal(pointerAfterRace, pointerBeforeRace, "cancel winner leaves the published pointer unchanged");
+      } else {
+        assert.equal(terminalVersion.status, "PUBLISHED");
+        assert.equal(pointerAfterRace, cancelPublishDraft.versionId, "publish winner moves the pointer to its terminal version");
+      }
+      assert.equal((await db.select().from(enrollmentsTable)
+        .where(eq(enrollmentsTable.id, enrollmentId)))[0]!.baselineVersionId, enrollmentPinBeforeRace);
+      assert.equal((await db.select().from(enrollmentPathwayEventsTable)
+        .where(eq(enrollmentPathwayEventsTable.enrollmentId, enrollmentId)))[0]!.baselineVersionId, eventPinBeforeRace);
+    }
   }
 
   const clones = await Promise.all([
