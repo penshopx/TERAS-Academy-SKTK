@@ -274,7 +274,10 @@ export const readinessEventsTable = pgTable("teras_readiness_events", {
   index("teras_readiness_events_status_evaluated_idx").on(table.status, table.evaluatedAt, table.id),
   index("teras_readiness_events_rule_version_evaluated_idx").on(table.ruleVersion, table.evaluatedAt, table.id),
 ]);
-/** Anonymous operational counts for readiness audit export outcomes. */
+/**
+ * Anonymous operational counts for readiness audit export outcomes.
+ * Rows are retained for 90 complete UTC days and pruned daily by the API.
+ */
 export const readinessAuditExportAggregatesTable = pgTable("teras_readiness_audit_export_aggregates", {
   day: date("day", { mode: "string" }).notNull(),
   recordGroup: text("record_group").notNull(),

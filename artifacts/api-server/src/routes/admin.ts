@@ -611,6 +611,8 @@ const READINESS_EXPORT_TREND_THRESHOLDS = {
   failureRatio: 0.4,
   periodDays: 7,
 } as const;
+// Retention cleanup is intentionally independent of this seven-day reporting
+// window; see readiness-export-trend-retention.ts.
 const READINESS_EXPORT_RECORD_GROUPS = [
   "1.000–4.999 record",
   "5.000–9.999 record",

@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { eq, inArray } from "drizzle-orm";
 import { db, readinessAuditExportAggregatesTable } from "@workspace/db";
 import { createIntegrationTestApp } from "./integration-test-app";
+import {
+  pruneReadinessExportTrendAggregates,
+  READINESS_EXPORT_TREND_RETENTION_DAYS,
+  readinessExportTrendRetentionCutoff,
+} from "./lib/readiness-export-trend-retention";
 
 const suffix = crypto.randomUUID();
 const seed = Number.parseInt(suffix.replaceAll("-", "").slice(0, 6), 16);
@@ -17,6 +22,14 @@ const future = datePart(1);
 const fixturePastDay = formatDate(past.year, past.month, past.day);
 const fixtureFutureDay = formatDate(2100 + (future.year - 1900), future.month, future.day);
 const today = new Date().toISOString().slice(0, 10);
+const retentionNow = new Date(`${today}T12:00:00.000Z`);
+const retentionCutoffDay = readinessExportTrendRetentionCutoff(retentionNow);
+const olderThanRetention = new Date(`${retentionCutoffDay}T00:00:00.000Z`);
+olderThanRetention.setUTCDate(olderThanRetention.getUTCDate() - 1);
+const expiredRetentionDay = olderThanRetention.toISOString().slice(0, 10);
+const activePeriodDay = new Date(`${today}T00:00:00.000Z`);
+activePeriodDay.setUTCDate(activePeriodDay.getUTCDate() - 6);
+const activeFixtureDay = activePeriodDay.toISOString().slice(0, 10);
 
 const app = createIntegrationTestApp(request => {
   const role = request.get("x-test-role");
@@ -27,10 +40,10 @@ const app = createIntegrationTestApp(request => {
 });
 
 async function run() {
+  const fixtureDays = [fixturePastDay, fixtureFutureDay, expiredRetentionDay, retentionCutoffDay, activeFixtureDay];
   const baselineRows = await db.select()
     .from(readinessAuditExportAggregatesTable)
-    .where(eq(readinessAuditExportAggregatesTable.day, today));
-  const fixtureDays = [fixturePastDay, fixtureFutureDay];
+    .where(inArray(readinessAuditExportAggregatesTable.day, [today, ...fixtureDays]));
   const server = await new Promise<ReturnType<typeof app.listen>>(resolve => {
     const listener = app.listen(0, () => resolve(listener));
   });
@@ -52,11 +65,25 @@ async function run() {
 
   try {
     // Isolate this test's current UTC day, then restore it in finally.
-    await db.delete(readinessAuditExportAggregatesTable).where(eq(readinessAuditExportAggregatesTable.day, today));
+    await db.delete(readinessAuditExportAggregatesTable)
+      .where(inArray(readinessAuditExportAggregatesTable.day, [today, ...fixtureDays]));
     await db.insert(readinessAuditExportAggregatesTable).values([
       { day: fixturePastDay, recordGroup: "1.000–4.999 record", outcome: "failed", count: 99 },
       { day: fixtureFutureDay, recordGroup: "1.000–4.999 record", outcome: "succeeded", count: 99 },
+      { day: expiredRetentionDay, recordGroup: "5.000–9.999 record", outcome: "succeeded", count: 7 },
+      { day: retentionCutoffDay, recordGroup: "5.000–9.999 record", outcome: "succeeded", count: 8 },
+      { day: activeFixtureDay, recordGroup: "10.000+ record", outcome: "succeeded", count: 9 },
     ]);
+
+    assert(READINESS_EXPORT_TREND_RETENTION_DAYS > 7, "Retention must exceed the active reporting period");
+    const cleanup = await pruneReadinessExportTrendAggregates(retentionNow);
+    assert(cleanup.cutoffDay === retentionCutoffDay && cleanup.deletedRows >= 2,
+      "Cleanup must report at least the fixture rows strictly older than the retention cutoff");
+    const retainedFixtures = await db.select().from(readinessAuditExportAggregatesTable)
+      .where(inArray(readinessAuditExportAggregatesTable.day, [expiredRetentionDay, retentionCutoffDay, activeFixtureDay]));
+    assert(!retainedFixtures.some(row => row.day === expiredRetentionDay), "Expired retention rows must be deleted");
+    assert(retainedFixtures.some(row => row.day === retentionCutoffDay), "The retention boundary day must remain");
+    assert(retainedFixtures.some(row => row.day === activeFixtureDay), "The active seven-day period must remain");
 
     assert((await request(null)).status === 401, "Unauthenticated GET must be rejected");
     assert((await post(null, { outcome: "failed", recordCount: 1_000 })).status === 401, "Unauthenticated POST must be rejected");
@@ -127,6 +154,9 @@ async function run() {
     assert(aggregate("10.000+ record", "succeeded")?.count === 1, "10.000+ boundary must map to one group");
     assert(aggregate("5.000–9.999 record", "failed")?.count === 1, "Failed outcomes must be grouped");
     assert(aggregate("5.000–9.999 record", "cancelled")?.count === 2, "Cancelled outcomes must be grouped");
+    assert(aggregate("5.000–9.999 record", "succeeded")?.count === 2, "Boundary writes must remain independent from retained active history");
+    assert(summary.aggregates.some((item: any) => item.periodStart === activeFixtureDay && item.count === 9),
+      "Cleanup must preserve aggregates inside the active seven-day period");
     assert(!summary.aggregates.some((item: any) => item.periodStart === fixturePastDay || item.periodStart === fixtureFutureDay), "Expired and future fixtures must be excluded");
 
     const alert = summary.alerts.find((item: any) => item.recordGroup === "5.000–9.999 record");
