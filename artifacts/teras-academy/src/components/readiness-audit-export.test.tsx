@@ -152,8 +152,9 @@ test("server-owned export warning remains visible across an invalid and correcte
 });
 
 test("export trend mutation cannot send device time to the server", () => {
-  assert.deepEqual(readinessExportTrendInput("failed", 5_000), {
-    data: { outcome: "failed", recordCount: 5_000 },
+  const attemptKey = "8581da20-938a-4f90-96f6-5cc20456134b";
+  assert.deepEqual(readinessExportTrendInput(attemptKey, "failed", 5_000), {
+    data: { attemptKey, outcome: "failed", recordCount: 5_000 },
   });
 });
 

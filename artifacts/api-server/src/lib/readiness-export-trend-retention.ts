@@ -1,5 +1,5 @@
 import { lt } from "drizzle-orm";
-import { db, readinessAuditExportAggregatesTable } from "@workspace/db";
+import { db, readinessAuditExportAggregatesTable, readinessAuditExportAttemptsTable } from "@workspace/db";
 import { logger } from "./logger";
 
 /** Daily aggregates are kept for 90 complete UTC days; the current day is additional. */
@@ -13,10 +13,20 @@ export function readinessExportTrendRetentionCutoff(now = new Date()) {
 
 export async function pruneReadinessExportTrendAggregates(now = new Date()) {
   const cutoffDay = readinessExportTrendRetentionCutoff(now);
-  const deleted = await db.delete(readinessAuditExportAggregatesTable)
-    .where(lt(readinessAuditExportAggregatesTable.day, cutoffDay))
-    .returning({ day: readinessAuditExportAggregatesTable.day });
-  return { cutoffDay, deletedRows: deleted.length };
+  const { deletedAggregates, deletedAttempts } = await db.transaction(async tx => {
+    const deletedAggregates = await tx.delete(readinessAuditExportAggregatesTable)
+      .where(lt(readinessAuditExportAggregatesTable.day, cutoffDay))
+      .returning({ day: readinessAuditExportAggregatesTable.day });
+    const deletedAttempts = await tx.delete(readinessAuditExportAttemptsTable)
+      .where(lt(readinessAuditExportAttemptsTable.day, cutoffDay))
+      .returning({ day: readinessAuditExportAttemptsTable.day });
+    return { deletedAggregates, deletedAttempts };
+  });
+  return {
+    cutoffDay,
+    deletedRows: deletedAggregates.length,
+    deletedAttemptKeys: deletedAttempts.length,
+  };
 }
 
 export function startReadinessExportTrendRetentionScheduler() {

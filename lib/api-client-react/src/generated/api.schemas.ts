@@ -2833,6 +2833,7 @@ export const ReadinessExportTrendInputOutcome = {
 } as const;
 
 export interface ReadinessExportTrendInput {
+  attemptKey: string;
   outcome: ReadinessExportTrendInputOutcome;
   /** @minimum 0 */
   recordCount: number;

@@ -289,6 +289,13 @@ export const readinessAuditExportAggregatesTable = pgTable("teras_readiness_audi
   check("teras_readiness_audit_export_aggregates_outcome_check", sql`${table.outcome} IN ('succeeded', 'cancelled', 'failed')`),
   check("teras_readiness_audit_export_aggregates_count_check", sql`${table.count} > 0`),
 ]);
+/** Anonymous idempotency keys for readiness audit export outcome delivery retries. */
+export const readinessAuditExportAttemptsTable = pgTable("teras_readiness_audit_export_attempts", {
+  attemptKey: text("attempt_key").primaryKey(),
+  day: date("day", { mode: "string" }).notNull(),
+}, table => [
+  index("teras_readiness_audit_export_attempts_day_idx").on(table.day),
+]);
 
 export const programRelations = relations(programsTable, ({ many }) => ({ modules: many(modulesTable), pathways: many(pathwaysTable) }));
 export const moduleRelations = relations(modulesTable, ({ many }) => ({ tasks: many(practiceTasksTable), assessments: many(assessmentsTable) }));

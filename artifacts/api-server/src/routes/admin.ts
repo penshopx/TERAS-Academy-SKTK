@@ -36,6 +36,7 @@ import {
   diagnosticRecommendationsTable,
   diagnosticProvenanceExceptionsTable,
   readinessAuditExportAggregatesTable,
+  readinessAuditExportAttemptsTable,
 } from "@workspace/db";
 import { authorizeAdmin, authorizeLocalUser, authorizeSuperAdmin, type AdminActor } from "../lib/authorization";
 import { pinPublishedBaseline } from "../lib/baseline-authoring";
@@ -634,8 +635,8 @@ function readinessExportRecordGroup(recordCount: number) {
 router.post("/admin/readiness-history/export-trends", async (req, res): Promise<void> => {
   if (!await authorizeAdmin(req, res)) return;
   if (!req.body || typeof req.body !== "object"
-    || Object.keys(req.body).some(key => key !== "outcome" && key !== "recordCount")) {
-    res.status(400).json({ error: "Only outcome and recordCount are accepted" });
+    || Object.keys(req.body).some(key => key !== "attemptKey" && key !== "outcome" && key !== "recordCount")) {
+    res.status(400).json({ error: "Only attemptKey, outcome, and recordCount are accepted" });
     return;
   }
   const input = parsed(RecordAdminReadinessExportTrendBody, req.body, res);
@@ -646,16 +647,23 @@ router.post("/admin/readiness-history/export-trends", async (req, res): Promise<
   }
   const day = new Date().toISOString().slice(0, 10);
   const recordGroup = readinessExportRecordGroup(input.recordCount);
-  await db.insert(readinessAuditExportAggregatesTable)
-    .values({ day, recordGroup, outcome: input.outcome, count: 1 })
-    .onConflictDoUpdate({
-      target: [
-        readinessAuditExportAggregatesTable.day,
-        readinessAuditExportAggregatesTable.recordGroup,
-        readinessAuditExportAggregatesTable.outcome,
-      ],
-      set: { count: sql`${readinessAuditExportAggregatesTable.count} + 1` },
-    });
+  await db.transaction(async tx => {
+    const inserted = await tx.insert(readinessAuditExportAttemptsTable)
+      .values({ attemptKey: input.attemptKey, day })
+      .onConflictDoNothing()
+      .returning({ attemptKey: readinessAuditExportAttemptsTable.attemptKey });
+    if (inserted.length === 0) return;
+    await tx.insert(readinessAuditExportAggregatesTable)
+      .values({ day, recordGroup, outcome: input.outcome, count: 1 })
+      .onConflictDoUpdate({
+        target: [
+          readinessAuditExportAggregatesTable.day,
+          readinessAuditExportAggregatesTable.recordGroup,
+          readinessAuditExportAggregatesTable.outcome,
+        ],
+        set: { count: sql`${readinessAuditExportAggregatesTable.count} + 1` },
+      });
+  });
   res.sendStatus(204);
 });
 

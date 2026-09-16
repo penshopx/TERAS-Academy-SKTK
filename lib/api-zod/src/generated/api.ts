@@ -3793,6 +3793,7 @@ export const recordAdminReadinessExportTrendBodyRecordCountMin = 0;
 
 
 export const RecordAdminReadinessExportTrendBody = zod.object({
+  "attemptKey": zod.uuid(),
   "outcome": zod.enum(['started', 'succeeded', 'cancelled', 'failed']),
   "recordCount": zod.int().min(recordAdminReadinessExportTrendBodyRecordCountMin)
 })

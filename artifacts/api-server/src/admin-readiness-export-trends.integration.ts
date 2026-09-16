@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { eq, inArray } from "drizzle-orm";
-import { db, readinessAuditExportAggregatesTable } from "@workspace/db";
+import { db, readinessAuditExportAggregatesTable, readinessAuditExportAttemptsTable } from "@workspace/db";
 import { createIntegrationTestApp } from "./integration-test-app";
 import {
   pruneReadinessExportTrendAggregates,
@@ -60,7 +60,9 @@ async function run() {
   });
   const post = (role: "admin" | "learner" | null, body: unknown) => request(role, {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify(body && typeof body === "object" && !("attemptKey" in body)
+      ? { attemptKey: crypto.randomUUID(), ...body }
+      : body),
   });
 
   try {
@@ -89,6 +91,15 @@ async function run() {
     assert((await post(null, { outcome: "failed", recordCount: 1_000 })).status === 401, "Unauthenticated POST must be rejected");
     assert((await request("learner")).status === 403, "Non-admin GET must be rejected");
     assert((await post("learner", { outcome: "failed", recordCount: 1_000 })).status === 403, "Non-admin POST must be rejected");
+    assert((await request("admin", {
+      method: "POST",
+      body: JSON.stringify({ outcome: "failed", recordCount: 1_000 }),
+    })).status === 400, "Every outcome must include an attempt key");
+    assert((await post("admin", {
+      attemptKey: "contains-identity-or-filter-data",
+      outcome: "failed",
+      recordCount: 1_000,
+    })).status === 400, "Attempt keys must use the anonymous UUID shape");
     assert((await post("admin", {
       outcome: "failed",
       recordCount: 1_000,
@@ -115,6 +126,26 @@ async function run() {
       recordCount: 1_500,
     }));
     assert((await Promise.all(concurrentWrites)).every(response => response.status === 204), "Concurrent writes must succeed");
+
+    const lostResponseAttemptKey = crypto.randomUUID();
+    await post("admin", {
+      attemptKey: lostResponseAttemptKey,
+      outcome: "succeeded",
+      recordCount: 1_500,
+    });
+    assert((await post("admin", {
+      attemptKey: lostResponseAttemptKey,
+      outcome: "succeeded",
+      recordCount: 1_500,
+    })).status === 204, "Retry after a lost response must succeed");
+
+    const concurrentRetryAttemptKey = crypto.randomUUID();
+    const concurrentRetries = await Promise.all(Array.from({ length: 8 }, () => post("admin", {
+      attemptKey: concurrentRetryAttemptKey,
+      outcome: "succeeded",
+      recordCount: 1_500,
+    })));
+    assert(concurrentRetries.every(response => response.status === 204), "Concurrent retries with one attempt key must succeed");
 
     const groupedResponses = await Promise.all([
       post("admin", { outcome: "failed", recordCount: 5_500 }),
@@ -144,12 +175,13 @@ async function run() {
       Object.keys(aggregate).sort().join(",") === "count,outcome,periodEnd,periodStart,recordGroup"
       && aggregate.periodStart >= expectedStart
       && aggregate.periodEnd <= expectedEnd), "Aggregate response must contain only anonymous dimensions");
-    const forbiddenKey = JSON.stringify(summary).match(/actor|identity|learner|pathway|filter|audit|content/i);
-    assert(!forbiddenKey, `Summary must not expose identity, filter, audit, or raw content (matched ${forbiddenKey?.[0]})`);
+    const forbiddenKey = JSON.stringify(summary).match(/attemptKey|actor|identity|learner|pathway|filter|audit|content/i);
+    assert(!forbiddenKey, `Summary must not expose attempt keys, identity, filter, audit, or raw content (matched ${forbiddenKey?.[0]})`);
 
     const aggregate = (recordGroup: string, outcome: string) => summary.aggregates.find((item: any) =>
       item.recordGroup === recordGroup && item.outcome === outcome && item.periodStart === expectedEnd);
-    assert(aggregate("1.000–4.999 record", "succeeded")?.count === 10, "1.000–4.999 writes must increment atomically");
+    assert(aggregate("1.000–4.999 record", "succeeded")?.count === 12,
+      "Unique writes must increment atomically while lost-response and concurrent retries count once each");
     assert(aggregate("5.000–9.999 record", "succeeded")?.count === 2, "5.000–9.999 boundaries must map to one group");
     assert(aggregate("10.000+ record", "succeeded")?.count === 1, "10.000+ boundary must map to one group");
     assert(aggregate("5.000–9.999 record", "failed")?.count === 1, "Failed outcomes must be grouped");
@@ -165,6 +197,8 @@ async function run() {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     await db.delete(readinessAuditExportAggregatesTable)
       .where(inArray(readinessAuditExportAggregatesTable.day, [today, ...fixtureDays]));
+    await db.delete(readinessAuditExportAttemptsTable)
+      .where(inArray(readinessAuditExportAttemptsTable.day, [today, ...fixtureDays]));
     if (baselineRows.length) await db.insert(readinessAuditExportAggregatesTable).values(baselineRows);
   }
 }

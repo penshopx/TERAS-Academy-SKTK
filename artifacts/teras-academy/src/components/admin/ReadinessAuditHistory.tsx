@@ -182,8 +182,8 @@ export function ReadinessExportProgress({
 
 type ExportTrendOutcome = "succeeded" | "cancelled" | "failed";
 
-export function readinessExportTrendInput(outcome: ExportTrendOutcome, recordCount: number) {
-  return { data: { outcome, recordCount } };
+export function readinessExportTrendInput(attemptKey: string, outcome: ExportTrendOutcome, recordCount: number) {
+  return { data: { attemptKey, outcome, recordCount } };
 }
 
 export function ReadinessExportAlerts({
@@ -270,14 +270,15 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
   }, []);
 
   const exportAlerts = exportTrends.data?.alerts ?? [];
-  const recordFinalExportOutcome = (outcome: ExportTrendOutcome, recordCount: number) => {
+  const recordFinalExportOutcome = (attemptKey: string, outcome: ExportTrendOutcome, recordCount: number) => {
     if (!enabled) return;
-    void recordExportTrend.mutateAsync(readinessExportTrendInput(outcome, recordCount))
+    void recordExportTrend.mutateAsync(readinessExportTrendInput(attemptKey, outcome, recordCount))
       .then(() => exportTrends.refetch())
       .catch(() => undefined);
   };
 
   const download = async () => {
+    const attemptKey = crypto.randomUUID();
     const controller = new AbortController();
     exportAbortController.current = controller;
     setExportStatus("preparing");
@@ -301,17 +302,17 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
       if (!mounted.current) return;
       if (result.status === "success") {
         trackReadinessAuditExport("succeeded", result.recordCount);
-        recordFinalExportOutcome("succeeded", result.recordCount);
+        recordFinalExportOutcome(attemptKey, "succeeded", result.recordCount);
         setLastChecksum(result.checksum);
         setExportRecordCount(result.recordCount);
         setExportStatus("success");
       } else if (result.status === "cancelled") {
         trackReadinessAuditExport("cancelled", result.recordCount);
-        recordFinalExportOutcome("cancelled", result.recordCount);
+        recordFinalExportOutcome(attemptKey, "cancelled", result.recordCount);
         setExportStatus("cancelled");
       } else {
         trackReadinessAuditExport("failed", result.recordCount);
-        recordFinalExportOutcome("failed", result.recordCount);
+        recordFinalExportOutcome(attemptKey, "failed", result.recordCount);
         setExportError(result.error);
         setExportStatus("failed");
       }

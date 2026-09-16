@@ -4616,8 +4616,9 @@ components:
     ReadinessExportTrendInput:
       type: object
       additionalProperties: false
-      required: [outcome, recordCount]
+      required: [attemptKey, outcome, recordCount]
       properties:
+        attemptKey: { type: string, format: uuid }
         outcome: { type: string, enum: [started, succeeded, cancelled, failed] }
         recordCount: { type: integer, minimum: 0 }
     AdminReadinessExportTrendAggregate:

@@ -8,6 +8,7 @@
 import type { ReadinessExportTrendInputOutcome } from './readinessExportTrendInputOutcome';
 
 export interface ReadinessExportTrendInput {
+  attemptKey: string;
   outcome: ReadinessExportTrendInputOutcome;
   /** @minimum 0 */
   recordCount: number;

@@ -189,6 +189,8 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0047_readiness_audit_export_aggregate_retention.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0048_readiness_audit_export_idempotency.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0046_practice_review_latest_index.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0033_enrollment_event_context.sql
