@@ -704,6 +704,46 @@ test("a timed out setup is killed and removes its empty disposable database", {
   }
 });
 
+test("a timed out test file is killed and removes its empty disposable database", {
+  skip: !databaseUrl,
+}, async () => {
+  const client = new Client({ connectionString: databaseUrl });
+  const contractPrefix =
+    `database_test_t_${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`;
+  await client.connect();
+  try {
+    await withMarkerFile(async (markerFile) => {
+      const command = [
+        "pnpm",
+        "--filter",
+        "@workspace/api-server",
+        "exec",
+        "tsx",
+        hangFixture,
+      ] as const;
+      await assert.rejects(
+        runIsolatedIntegrationTest({
+          schemaPrefix: contractPrefix,
+          testFile: hangFixture,
+          testTimeoutMs: 2_000,
+          useEmptyDatabase: true,
+        }),
+        new RegExp(
+          `Integration command ${command.join(" ")} timed out after 2000ms`,
+        ),
+      );
+
+      assert.equal(await readFile(markerFile, "utf8"), "setup\n");
+      assert.deepEqual(await databasesWithPrefix(client, contractPrefix), []);
+    });
+  } finally {
+    for (const remainingDatabase of await databasesWithPrefix(client, contractPrefix)) {
+      await client.query(`DROP DATABASE IF EXISTS "${remainingDatabase}" WITH (FORCE)`);
+    }
+    await client.end();
+  }
+});
+
 test("cleanup timeout stops the runner without hiding the command failure", async () => {
   let connectionDestroyed = false;
   const never = new Promise<never>(() => {});
