@@ -172,10 +172,21 @@ export async function cleanupStaleIntegrationSchemas(
     })) {
       continue;
     }
-    const lock = await admin.query<{ acquired: boolean }>(
-      "SELECT pg_try_advisory_lock(hashtextextended($1, $2)) AS acquired",
-      [schemaName, ADVISORY_LOCK_SEED],
-    );
+    let lock: { rows: Array<{ acquired: boolean }> };
+    try {
+      lock = await admin.query<{ acquired: boolean }>(
+        "SELECT pg_try_advisory_lock(hashtextextended($1, $2)) AS acquired",
+        [schemaName, ADVISORY_LOCK_SEED],
+      );
+    } catch (error) {
+      cleanupErrors.push(
+        new Error(
+          `Failed to check cleanup advisory lock for integration schema ${schemaName}`,
+          { cause: error },
+        ),
+      );
+      continue;
+    }
     if (!canDropStaleIntegrationSchema({
       schemaName,
       schemaPrefix,

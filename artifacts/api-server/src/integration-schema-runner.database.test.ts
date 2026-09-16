@@ -377,6 +377,131 @@ test("cleanup reports a failed lock release and continues cleaning later schemas
   }
 });
 
+test("cleanup combines a failed lock check with other failures and continues cleaning later schemas", {
+  skip: !databaseUrl,
+}, async () => {
+  const cleaner = new Client({ connectionString: databaseUrl });
+  const inspector = new Client({ connectionString: databaseUrl });
+  const contractPrefix =
+    `schema_lock_check_${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`;
+  const schemaNames = [
+    `${contractPrefix}_first`,
+    `${contractPrefix}_second`,
+    `${contractPrefix}_third`,
+  ];
+  let failedLockName = "";
+  let failedDropName = "";
+  await cleaner.connect();
+  await inspector.connect();
+  const originalQuery = cleaner.query.bind(cleaner);
+  try {
+    for (const name of schemaNames) {
+      await cleaner.query(`CREATE SCHEMA "${name}"`);
+      await cleaner.query(
+        `COMMENT ON SCHEMA "${name}" IS '${JSON.stringify({
+          kind: "teras-integration-test",
+          version: 1,
+          schemaPrefix: contractPrefix,
+          createdAt: "2000-01-01T00:00:00.000Z",
+        })}'`,
+      );
+    }
+
+    let lockFailurePending = true;
+    let dropFailurePending = true;
+    const failingCleaner = Object.create(cleaner) as InstanceType<typeof Client>;
+    failingCleaner.query = (async (query: unknown, values?: unknown[]) => {
+      if (
+        lockFailurePending &&
+        typeof query === "string" &&
+        query.includes("pg_try_advisory_lock")
+      ) {
+        lockFailurePending = false;
+        failedLockName = String(values?.[0] ?? "");
+        throw new Error("simulated cleanup advisory lock check failure");
+      }
+      if (
+        dropFailurePending &&
+        typeof query === "string" &&
+        query.startsWith("DROP SCHEMA")
+      ) {
+        dropFailurePending = false;
+        failedDropName = query.match(/"([^"]+)"/)?.[1] ?? "";
+        throw new Error("simulated stale schema drop failure after lock check");
+      }
+      return originalQuery(query as never, values as never);
+    }) as InstanceType<typeof Client>["query"];
+
+    let reportedError: unknown;
+    try {
+      await cleanupStaleIntegrationSchemas(
+        failingCleaner,
+        contractPrefix,
+        staleSchemaAgeMs,
+      );
+    } catch (error) {
+      reportedError = error;
+    }
+
+    assert.ok(failedLockName);
+    assert.ok(failedDropName);
+    assert.notEqual(failedLockName, failedDropName);
+    assert.ok(reportedError instanceof AggregateError);
+    assert.match(
+      reportedError.message,
+      /Failed to clean up 2 stale integration schema operation/,
+    );
+    assert.equal(reportedError.errors.length, 2);
+    assert.match(
+      reportedError.errors[0].message,
+      new RegExp(`Failed to check cleanup advisory lock.*${failedLockName}`),
+    );
+    assert.match(
+      String(reportedError.errors[0].cause),
+      /simulated cleanup advisory lock check failure/,
+    );
+    assert.match(reportedError.errors[1].message, new RegExp(failedDropName));
+    assert.match(
+      String(reportedError.errors[1].cause),
+      /simulated stale schema drop failure after lock check/,
+    );
+
+    const cleanedName = schemaNames.find(
+      (name) => name !== failedLockName && name !== failedDropName,
+    );
+    assert.ok(cleanedName);
+    assert.equal(await schemaExists(inspector, failedLockName), true);
+    assert.equal(await schemaExists(inspector, failedDropName), true);
+    assert.equal(await schemaExists(inspector, cleanedName), false);
+
+    for (const name of schemaNames) {
+      const lock = await inspector.query<{ acquired: boolean }>(
+        "SELECT pg_try_advisory_lock(hashtextextended($1, $2)) AS acquired",
+        [name, 847_201],
+      );
+      assert.equal(lock.rows[0]?.acquired, true);
+      await inspector.query(
+        "SELECT pg_advisory_unlock(hashtextextended($1, $2))",
+        [name, 847_201],
+      );
+    }
+  } finally {
+    for (const name of schemaNames) {
+      await cleaner.query(`DROP SCHEMA IF EXISTS "${name}" CASCADE`);
+      await originalQuery(
+        "SELECT pg_advisory_unlock(hashtextextended($1, $2))",
+        [name, 847_201],
+      );
+      await inspector.query(
+        "SELECT pg_advisory_unlock(hashtextextended($1, $2))",
+        [name, 847_201],
+      );
+    }
+    await cleaner.end();
+    await inspector.end();
+  }
+});
+
 test("the next harness run reaps a schema orphaned by forced termination without touching active or unknown schemas", {
   skip: !databaseUrl,
 }, async () => {
