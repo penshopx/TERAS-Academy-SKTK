@@ -185,6 +185,8 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0031_trainer_review_idempotency.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0046_practice_review_latest_index.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0033_enrollment_event_context.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0034_solar_pv_shared_learning_baseline.sql

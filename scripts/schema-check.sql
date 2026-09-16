@@ -136,6 +136,10 @@ BEGIN
     RAISE EXCEPTION 'Learning transition idempotency constraint is missing';
   END IF;
 
+  IF to_regclass('public.teras_practice_reviews_latest_idx') IS NULL THEN
+    RAISE EXCEPTION 'Latest practice review lookup index is missing';
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM pg_index

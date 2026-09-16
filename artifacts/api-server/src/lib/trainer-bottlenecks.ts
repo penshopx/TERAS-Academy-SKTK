@@ -1,8 +1,9 @@
 import {
-  assessmentAttemptsTable, db, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable,
+  assessmentAttemptsTable, db, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, pool,
   learningTransitionEventsTable, practiceAttemptsTable, practiceReviewsTable, readinessEventsTable, reassessmentLinksTable,
   remediationActivitiesTable, remediationEventsTable, remediationPlansTable,
 } from "@workspace/db";
+import { and, eq, or } from "drizzle-orm";
 
 export const bottleneckStages = ["Learning", "Practice", "Feedback", "Evidence", "Remediation", "Reassessment", "Readiness"] as const;
 export type BottleneckStage = typeof bottleneckStages[number];
@@ -21,8 +22,55 @@ export function latestBy<T extends EventRow, K extends string>(rows: T[], key: (
   return result;
 }
 
-export function latestPracticeReviews(rows: BottleneckData["practiceReviews"]) {
+type PracticeReviewState = Pick<typeof practiceReviewsTable.$inferSelect, "id" | "attemptId" | "status" | "createdAt">;
+type PracticeReviewHistoryRow = Pick<typeof practiceReviewsTable.$inferSelect, "id" | "attemptId" | "reviewerId" | "status" | "feedback" | "createdAt">;
+
+export function latestPracticeReviews(rows: PracticeReviewState[]) {
   return latestBy(rows, (review) => review.attemptId);
+}
+
+export const latestPracticeReviewQuery = `
+  SELECT latest.id,
+         latest.attempt_id AS "attemptId",
+         latest.status,
+         latest.created_at AS "createdAt"
+  FROM unnest($1::text[]) AS requested(attempt_id)
+  CROSS JOIN LATERAL (
+    SELECT review.id, review.attempt_id, review.status, review.created_at
+    FROM teras_practice_reviews review
+    WHERE review.attempt_id = requested.attempt_id
+    ORDER BY review.created_at DESC, review.id DESC
+    LIMIT 1
+  ) latest
+`;
+
+export async function latestPracticeReviewRows(attemptIds: string[]): Promise<PracticeReviewState[]> {
+  if (!attemptIds.length) return [];
+  const result = await pool.query<PracticeReviewState>(latestPracticeReviewQuery, [attemptIds]);
+  return result.rows;
+}
+
+export async function recentPracticeReviewRows(attemptIds: string[], limit: number): Promise<PracticeReviewHistoryRow[]> {
+  if (!attemptIds.length) return [];
+  const result = await pool.query<PracticeReviewHistoryRow>(`
+    SELECT recent.id,
+           recent.attempt_id AS "attemptId",
+           recent.reviewer_id AS "reviewerId",
+           recent.status,
+           recent.feedback,
+           recent.created_at AS "createdAt"
+    FROM unnest($1::text[]) AS requested(attempt_id)
+    CROSS JOIN LATERAL (
+      SELECT review.id, review.attempt_id, review.reviewer_id, review.status, review.feedback, review.created_at
+      FROM teras_practice_reviews review
+      WHERE review.attempt_id = requested.attempt_id
+      ORDER BY review.created_at DESC, review.id DESC
+      LIMIT $2
+    ) recent
+    ORDER BY recent.created_at DESC, recent.id DESC
+    LIMIT $2
+  `, [attemptIds, limit]);
+  return result.rows;
 }
 
 export function practiceQueueState(
@@ -36,7 +84,7 @@ export function practiceQueueState(
 
 export type BottleneckData = {
   attempts: (typeof practiceAttemptsTable.$inferSelect)[];
-  practiceReviews: (typeof practiceReviewsTable.$inferSelect)[];
+  practiceReviews: PracticeReviewState[];
   evidence: (typeof evidenceTable.$inferSelect)[];
   evidenceReviews: (typeof evidenceReviewsTable.$inferSelect)[];
   gaps: (typeof gapsTable.$inferSelect)[];
@@ -99,8 +147,16 @@ export function classifyBottleneck(context: AssignmentContext, data: BottleneckD
 export async function trainerBottlenecks(contexts: AssignmentContext[]) {
   // An enrollment can only contribute one learner/pathway context to an aggregate.
   const uniqueContexts = [...new Map(contexts.map((context) => [`${context.learner.id}\u0000${context.pathway.id}`, context])).values()];
-  const [attempts, practiceReviews, evidence, evidenceReviews, gaps, gapEvents, plans, activities, remediationEvents, reassessmentLinks, assessments, learningTransitions, readinessEvents] = await Promise.all([
-    db.select().from(practiceAttemptsTable), db.select().from(practiceReviewsTable), db.select().from(evidenceTable), db.select().from(evidenceReviewsTable),
+  const attemptScopes = uniqueContexts.map((context) => and(
+    eq(practiceAttemptsTable.learnerId, context.learner.id),
+    eq(practiceAttemptsTable.pathwayId, context.pathway.id),
+  ));
+  const attempts = attemptScopes.length
+    ? await db.select().from(practiceAttemptsTable).where(or(...attemptScopes))
+    : [];
+  const practiceReviews = await latestPracticeReviewRows(attempts.map((attempt) => attempt.id));
+  const [evidence, evidenceReviews, gaps, gapEvents, plans, activities, remediationEvents, reassessmentLinks, assessments, learningTransitions, readinessEvents] = await Promise.all([
+    db.select().from(evidenceTable), db.select().from(evidenceReviewsTable),
     db.select().from(gapsTable), db.select().from(gapEventsTable), db.select().from(remediationPlansTable), db.select().from(remediationActivitiesTable),
     db.select().from(remediationEventsTable), db.select().from(reassessmentLinksTable), db.select().from(assessmentAttemptsTable), db.select().from(learningTransitionEventsTable), db.select().from(readinessEventsTable),
   ]);

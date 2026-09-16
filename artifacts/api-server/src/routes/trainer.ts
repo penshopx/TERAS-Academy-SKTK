@@ -2,16 +2,17 @@ import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
 import { GetTrainerDashboardResponse, GetTrainerReminderPreferenceHistoryResponse, GetTrainerReminderPreferencesResponse, GetTrainerReviewQueueResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse, UpdateTrainerReminderPreferencesBody, UpdateTrainerReminderPreferencesResponse } from "@workspace/api-zod";
 import { db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, trainerReminderPreferencesTable } from "@workspace/db";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { evidenceRecords, gapRecords, pathwayHasModule, remediationRecords, selectedBaselineModuleIds, workspaceAssignmentContexts } from "../lib/teras";
 import { authorizeWorkspaceRole } from "../lib/authorization";
 import { learningNextAction } from "../lib/learning-transition";
-import { latestPracticeReviews, practiceQueueState, trainerBottlenecks } from "../lib/trainer-bottlenecks";
+import { latestPracticeReviewRows, latestPracticeReviews, practiceQueueState, recentPracticeReviewRows, trainerBottlenecks } from "../lib/trainer-bottlenecks";
 import { isValidIanaTimeZone, reminderDeliveryAvailability } from "../lib/trainer-follow-up-notifications";
 
 const router: IRouter = Router();
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const FOLLOW_UP_DUE_SOON_DAYS = 7;
+const TRAINER_REVIEW_HISTORY_LIMIT = 50;
 const followUpFingerprint = (value: { status: string; targetAt: string | null; note: string }) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const reviewFingerprint = (value: object) =>
@@ -64,10 +65,34 @@ async function appendModuleRevisionState(tx: Parameters<Parameters<typeof db.tra
 }
 
 async function queue(trainerId: string) {
-  const [contexts, attempts, reviews, tasks, modules] = await Promise.all([workspaceAssignmentContexts(trainerId, "trainer"), db.select().from(practiceAttemptsTable), db.select().from(practiceReviewsTable), db.select().from(practiceTasksTable), db.select().from(modulesTable)]);
+  const contexts = await workspaceAssignmentContexts(trainerId, "trainer");
+  const [tasks, modules, selectedByContext] = await Promise.all([
+    db.select().from(practiceTasksTable),
+    db.select().from(modulesTable),
+    Promise.all(contexts.map((context) => selectedBaselineModuleIds(context.pathway.id, context.baselineVersionId))),
+  ]);
+  const taskIdsByContext = contexts.map((context, index) => {
+    const selected = selectedByContext[index];
+    const moduleIds = new Set(modules
+      .filter((module) => (module.pathwayId === context.pathway.id || selected.has(module.id)) && module.programId === context.program.id)
+      .map((module) => module.id));
+    return new Set(tasks.filter((task) => moduleIds.has(task.moduleId)).map((task) => task.id));
+  });
+  const attemptScopes = contexts.flatMap((context, index) => {
+    const taskIds = [...taskIdsByContext[index]];
+    return taskIds.length ? [and(
+      eq(practiceAttemptsTable.learnerId, context.learner.id),
+      eq(practiceAttemptsTable.pathwayId, context.pathway.id),
+      inArray(practiceAttemptsTable.taskId, taskIds),
+    )] : [];
+  });
+  const attempts = attemptScopes.length
+    ? await db.select().from(practiceAttemptsTable).where(or(...attemptScopes))
+    : [];
+  const reviews = await latestPracticeReviewRows(attempts.map((attempt) => attempt.id));
   const latestReviews = latestPracticeReviews(reviews);
-  const items = await Promise.all(contexts.map(async (context) => {
-    const selected = await selectedBaselineModuleIds(context.pathway.id, context.baselineVersionId);
+  const items = await Promise.all(contexts.map(async (context, index) => {
+    const selected = selectedByContext[index];
     const pathwayModules = modules.filter((module) => (module.pathwayId === context.pathway.id || selected.has(module.id)) && module.programId === context.program.id);
     const moduleIds = new Set(pathwayModules.map((module) => module.id));
     const evidence = await evidenceRecords(context.learner.id, context.pathway.id, context.baselineVersionId);
@@ -79,12 +104,20 @@ async function queue(trainerId: string) {
       }),
     ];
   }));
-  return { contexts, items: items.flat() };
+  return { contexts, items: items.flat(), attempts, tasks };
 }
 
 async function diagnosticFollowUps(contexts: Awaited<ReturnType<typeof workspaceAssignmentContexts>>) {
   const [followUps, people] = await Promise.all([
-    db.select().from(diagnosticRecommendationFollowUpsTable),
+    db.select({
+      id: diagnosticRecommendationFollowUpsTable.id,
+      recommendationId: diagnosticRecommendationFollowUpsTable.recommendationId,
+      trainerId: diagnosticRecommendationFollowUpsTable.trainerId,
+      status: diagnosticRecommendationFollowUpsTable.status,
+      targetAt: diagnosticRecommendationFollowUpsTable.targetAt,
+      note: diagnosticRecommendationFollowUpsTable.note,
+      createdAt: diagnosticRecommendationFollowUpsTable.createdAt,
+    }).from(diagnosticRecommendationFollowUpsTable),
     db.select().from(peopleTable),
   ]);
   const trainerNames = new Map(people.map((person) => [person.id, person.name]));
@@ -160,17 +193,33 @@ router.get("/trainer/review-queue", async (req, res): Promise<void> => {
 });
 router.get("/trainer/dashboard", async (req, res): Promise<void> => {
   const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;
-  const { contexts, items } = await queue(trainerId);
-  const [scoped, allEvidence, allEvidenceReviews, allAttempts, allPracticeReviews, allTasks, people] = await Promise.all([
+  const { contexts, items, attempts, tasks } = await queue(trainerId);
+  const evidenceScopes = contexts.map((context) => and(
+    eq(evidenceTable.learnerId, context.learner.id),
+    eq(evidenceTable.pathwayId, context.pathway.id),
+  ));
+  const allEvidence = evidenceScopes.length
+    ? await db.select().from(evidenceTable).where(or(...evidenceScopes))
+    : [];
+  const evidenceIds = allEvidence.map((item) => item.id);
+  const attemptIds = attempts.map((attempt) => attempt.id);
+  const [scoped, allEvidenceReviews, allPracticeReviews, people] = await Promise.all([
     Promise.all(contexts.map(async (context) => ({ evidence: await evidenceRecords(context.learner.id, context.pathway.id, context.baselineVersionId), gaps: await gapRecords(context.learner.id, context.pathway.id), plans: await remediationRecords(context.learner.id, context.pathway.id) }))),
-    db.select().from(evidenceTable), db.select().from(evidenceReviewsTable), db.select().from(practiceAttemptsTable), db.select().from(practiceReviewsTable), db.select().from(practiceTasksTable), db.select().from(peopleTable),
+    evidenceIds.length
+      ? db.select().from(evidenceReviewsTable)
+        .where(inArray(evidenceReviewsTable.evidenceId, evidenceIds))
+        .orderBy(desc(evidenceReviewsTable.createdAt), desc(evidenceReviewsTable.id))
+        .limit(TRAINER_REVIEW_HISTORY_LIMIT)
+      : [],
+    recentPracticeReviewRows(attemptIds, TRAINER_REVIEW_HISTORY_LIMIT),
+    db.select().from(peopleTable),
   ]);
   const [trainer] = await db.select().from(peopleTable).where(eq(peopleTable.id, trainerId));
   const contextFor = (learnerId: string, pathwayId: string) => contexts.find((context) => context.learner.id === learnerId && context.pathway.id === pathwayId);
   const reviewerNames = new Map(people.map((person) => [person.id, person.name]));
   const evidenceById = new Map(allEvidence.map((item) => [item.id, item]));
-  const attemptById = new Map(allAttempts.map((item) => [item.id, item]));
-  const taskById = new Map(allTasks.map((item) => [item.id, item]));
+  const attemptById = new Map(attempts.map((item) => [item.id, item]));
+  const taskById = new Map(tasks.map((item) => [item.id, item]));
   const reviewHistory = [
     ...allEvidenceReviews.flatMap((review) => {
       const evidence = evidenceById.get(review.evidenceId); const context = evidence && contextFor(evidence.learnerId, evidence.pathwayId);
@@ -180,7 +229,8 @@ router.get("/trainer/dashboard", async (req, res): Promise<void> => {
       const attempt = attemptById.get(review.attemptId); const context = attempt && contextFor(attempt.learnerId, attempt.pathwayId);
       return attempt && context ? [{ id: review.id, kind: "Practice" as const, learnerId: context.learner.id, learnerName: context.learner.name, pathwayId: context.pathway.id, pathwayName: context.pathway.name, subject: taskById.get(attempt.taskId)?.title ?? "Practice attempt", outcome: review.status, comment: review.feedback, quality: null, reviewer: review.reviewerId ? reviewerNames.get(review.reviewerId) ?? null : null, recordedAt: review.createdAt }] : [];
     }),
-  ].sort((a, b) => b.recordedAt.getTime() - a.recordedAt.getTime() || b.id.localeCompare(a.id));
+  ].sort((a, b) => b.recordedAt.getTime() - a.recordedAt.getTime() || b.id.localeCompare(a.id))
+    .slice(0, TRAINER_REVIEW_HISTORY_LIMIT);
   const [bottlenecks, diagnosticFollowUpItems] = await Promise.all([trainerBottlenecks(contexts), diagnosticFollowUps(contexts)]);
   res.json(GetTrainerDashboardResponse.parse({ trainer, assignedLearnerCount: new Set(contexts.map((context) => context.learner.id)).size, pendingFeedbackCount: items.filter((item) => item.kind === "Practice").length, pendingEvidenceCount: scoped.flatMap((item) => item.evidence).filter((item) => item.status === "Under review").length, activeRemediationCount: scoped.flatMap((item) => item.plans).filter((item) => item.status !== "Completed").length, blockedLearnerCount: new Set(contexts.filter((context, index) => scoped[index]!.gaps.some((gap) => gap.severity === "Critical" && gap.status !== "Resolved")).map((context) => context.learner.id)).size, bottlenecks, diagnosticFollowUps: diagnosticFollowUpItems, recentActivity: items, reviewHistory }));
 });

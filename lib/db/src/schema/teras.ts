@@ -158,7 +158,10 @@ export const practiceReviewsTable = pgTable("teras_practice_reviews", {
   id: text("id").primaryKey(), attemptId: text("attempt_id").notNull().references(() => practiceAttemptsTable.id),
   reviewerId: text("reviewer_id").references(() => peopleTable.id), status: text("status").notNull(),
   feedback: text("feedback").notNull(), idempotencyKey: text("idempotency_key"), idempotencyFingerprint: text("idempotency_fingerprint"), ...audit,
-}, table => [uniqueIndex("teras_practice_reviews_idempotency_unique").on(table.attemptId, table.reviewerId, table.idempotencyKey)]);
+}, table => [
+  uniqueIndex("teras_practice_reviews_idempotency_unique").on(table.attemptId, table.reviewerId, table.idempotencyKey),
+  index("teras_practice_reviews_latest_idx").on(table.attemptId, table.createdAt.desc(), table.id.desc()),
+]);
 export const evidenceTable = pgTable("teras_evidence", {
   id: text("id").primaryKey(), learnerId: text("learner_id").notNull().references(() => peopleTable.id),
   pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id), moduleId: text("module_id").notNull().references(() => modulesTable.id), taskId: text("task_id").notNull().references(() => practiceTasksTable.id),

@@ -5,12 +5,14 @@ import {
   enrollmentsTable,
   peopleTable,
   personRolesTable,
+  pool,
   practiceAttemptsTable,
   practiceReviewsTable,
   practiceTasksTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { createIntegrationTestApp } from "./integration-test-app";
+import { latestPracticeReviewQuery } from "./lib/trainer-bottlenecks";
 
 type QueueItem = {
   id: string;
@@ -18,13 +20,57 @@ type QueueItem = {
   status: string;
   updatedAt: string;
 };
+type Dashboard = {
+  recentActivity: QueueItem[];
+  reviewHistory: Array<{ id: string; kind: "Evidence" | "Practice" }>;
+};
 
 const suffix = crypto.randomUUID();
 const trainerId = `trainer-queue-trainer-${suffix}`;
 const learnerId = `trainer-queue-learner-${suffix}`;
 const enrollmentId = `trainer-queue-enrollment-${suffix}`;
 const attemptId = `trainer-queue-attempt-${suffix}`;
+const unrelatedLearnerId = `trainer-queue-unrelated-${suffix}`;
+const unrelatedAttemptPrefix = `trainer-queue-unrelated-attempt-${suffix}`;
 const reviewTimestamp = new Date("2026-09-16T08:30:00.000Z");
+const LARGE_HISTORY_SIZE = 500;
+
+type PlanNode = {
+  "Node Type": string;
+  "Index Name"?: string;
+  "Actual Rows": number;
+  "Actual Loops": number;
+  Plans?: PlanNode[];
+};
+
+function flattenPlan(node: PlanNode): PlanNode[] {
+  return [node, ...(node.Plans ?? []).flatMap(flattenPlan)];
+}
+
+async function assertLatestReviewLookupIsBounded() {
+  await pool.query("ANALYZE teras_practice_reviews");
+  await pool.query("SET enable_seqscan = off");
+  const indexResult = await pool.query<{ indexname: string }>(`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = current_schema()
+      AND tablename = 'teras_practice_reviews'
+      AND indexdef LIKE '%(attempt_id, created_at DESC, id DESC)%'
+  `);
+  const latestReviewIndex = indexResult.rows[0]?.indexname;
+  assert(latestReviewIndex, "Expected an attempt_id, created_at DESC, id DESC review index");
+  const result = await pool.query<{ "QUERY PLAN": Array<{ Plan: PlanNode }> }>(
+    `EXPLAIN (ANALYZE, FORMAT JSON, TIMING FALSE, SUMMARY FALSE) ${latestPracticeReviewQuery}`,
+    [[attemptId]],
+  );
+  const nodes = flattenPlan(result.rows[0]!["QUERY PLAN"][0]!.Plan);
+  const scan = nodes.find((node) => node["Index Name"] === latestReviewIndex);
+  assert(scan, `Expected ${latestReviewIndex}; plan: ${nodes.map((node) => `${node["Node Type"]}:${node["Index Name"] ?? "-"}`).join(", ")}`);
+  assert.ok(
+    scan["Actual Rows"] * scan["Actual Loops"] <= 1,
+    `Latest-review lookup read ${scan["Actual Rows"] * scan["Actual Loops"]} index rows for one attempt`,
+  );
+}
 
 async function requestQueue(baseUrl: string) {
   const response = await fetch(`${baseUrl}/trainer/review-queue`);
@@ -32,6 +78,14 @@ async function requestQueue(baseUrl: string) {
     throw new Error(`GET /trainer/review-queue: expected 200, got ${response.status}: ${await response.text()}`);
   }
   return response.json() as Promise<QueueItem[]>;
+}
+
+async function requestDashboard(baseUrl: string) {
+  const response = await fetch(`${baseUrl}/trainer/dashboard`);
+  if (response.status !== 200) {
+    throw new Error(`GET /trainer/dashboard: expected 200, got ${response.status}: ${await response.text()}`);
+  }
+  return response.json() as Promise<Dashboard>;
 }
 
 function practiceItem(queue: QueueItem[]) {
@@ -62,6 +116,14 @@ async function run() {
       role: "learner",
       createdBy: "trainer-queue-integration",
     },
+    {
+      id: unrelatedLearnerId,
+      name: "Unassigned Queue Learner",
+      initials: "UQ",
+      email: `${unrelatedLearnerId}@example.test`,
+      role: "learner",
+      createdBy: "trainer-queue-integration",
+    },
   ]);
   await db.insert(personRolesTable).values({
     personId: trainerId,
@@ -88,7 +150,26 @@ async function run() {
     createdAt: submittedAt,
     createdBy: learnerId,
   });
-
+  await db.insert(practiceAttemptsTable).values(Array.from({ length: LARGE_HISTORY_SIZE }, (_, index) => ({
+    id: `${unrelatedAttemptPrefix}-${index.toString().padStart(4, "0")}`,
+    taskId: task.id,
+    learnerId: unrelatedLearnerId,
+    pathwayId: "path-a",
+    reflection: "Unassigned history fixture",
+    outputSummary: `Unassigned output ${index}`,
+    status: "Submitted" as const,
+    createdAt: new Date(reviewTimestamp.getTime() - LARGE_HISTORY_SIZE + index),
+    createdBy: unrelatedLearnerId,
+  })));
+  await db.insert(practiceReviewsTable).values(Array.from({ length: LARGE_HISTORY_SIZE }, (_, index) => ({
+    id: `trainer-queue-unrelated-review-${suffix}-${index.toString().padStart(4, "0")}`,
+    attemptId: `${unrelatedAttemptPrefix}-${index.toString().padStart(4, "0")}`,
+    reviewerId: trainerId,
+    status: index % 2 ? "Needs revision" as const : "Reviewed" as const,
+    feedback: "Unrelated append-only review history",
+    createdAt: new Date(reviewTimestamp.getTime() - LARGE_HISTORY_SIZE + index),
+    createdBy: trainerId,
+  })));
   const app = createIntegrationTestApp(() => ({
     userId: `clerk-${trainerId}`,
     role: "trainer",
@@ -102,21 +183,46 @@ async function run() {
     assert(item, "Submitted practice attempt must appear in the trainer queue");
     assert.equal(item.status, "Submitted");
     assert.equal(item.updatedAt, submittedAt.toISOString());
+    assert.equal((await requestQueue(baseUrl)).some((queueItem) => queueItem.id.startsWith(unrelatedAttemptPrefix)), false);
 
-    await db.insert(practiceReviewsTable).values({
-      id: `trainer-queue-review-a-${suffix}`,
-      attemptId,
-      reviewerId: trainerId,
-      status: "Needs revision",
-      feedback: "Revise the practice output",
-      createdAt: reviewTimestamp,
-      createdBy: trainerId,
-    });
+    await db.insert(practiceReviewsTable).values([
+      ...Array.from({ length: LARGE_HISTORY_SIZE }, (_, index) => ({
+        id: `trainer-queue-review-history-${suffix}-${index.toString().padStart(4, "0")}`,
+        attemptId,
+        reviewerId: trainerId,
+        status: "Needs revision" as const,
+        feedback: `Historical review round ${index}`,
+        createdAt: new Date(reviewTimestamp.getTime() - LARGE_HISTORY_SIZE + index),
+        createdBy: trainerId,
+      })),
+      {
+        id: `trainer-queue-review-a-${suffix}`,
+        attemptId,
+        reviewerId: trainerId,
+        status: "Needs revision" as const,
+        feedback: "Revise the practice output",
+        createdAt: reviewTimestamp,
+        createdBy: trainerId,
+      },
+    ]);
 
     item = practiceItem(await requestQueue(baseUrl));
     assert(item, "Needs revision practice attempt must remain in the trainer queue");
     assert.equal(item.status, "Needs revision");
     assert.equal(item.updatedAt, reviewTimestamp.toISOString());
+    await assertLatestReviewLookupIsBounded();
+    const dashboard = await requestDashboard(baseUrl);
+    assert.equal(
+      dashboard.recentActivity.find((activity) => activity.id === attemptId)?.status,
+      "Needs revision",
+      "Dashboard queue uses the same latest assigned review state",
+    );
+    assert.ok(dashboard.reviewHistory.length <= 50, "Dashboard review history remains bounded");
+    assert.equal(
+      dashboard.reviewHistory.some((review) => review.id.startsWith("trainer-queue-unrelated-review")),
+      false,
+      "Dashboard history excludes reviews outside the trainer assignment",
+    );
 
     await db.insert(practiceReviewsTable).values({
       id: `trainer-queue-review-z-${suffix}`,
