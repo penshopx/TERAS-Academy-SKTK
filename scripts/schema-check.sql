@@ -85,6 +85,7 @@ BEGIN
         'teras_diagnostic_profile_items_provenance_check',
         'teras_diagnostic_gaps_provenance_check'
       )
+        AND connamespace = 'public'::regnamespace
         AND NOT convalidated
     )
     OR (
@@ -95,6 +96,7 @@ BEGIN
         'teras_diagnostic_profile_items_provenance_check',
         'teras_diagnostic_gaps_provenance_check'
       )
+        AND connamespace = 'public'::regnamespace
         AND convalidated
     ) <> 3 THEN
     RAISE EXCEPTION 'Diagnostic provenance reporting or validated constraints are incomplete';
