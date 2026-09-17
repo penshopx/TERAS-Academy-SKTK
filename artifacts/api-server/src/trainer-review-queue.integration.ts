@@ -3,6 +3,8 @@ import type { AddressInfo } from "node:net";
 import {
   db,
   enrollmentsTable,
+  learningActivitiesTable,
+  learningRecordLinksTable,
   peopleTable,
   personRolesTable,
   pool,
@@ -68,6 +70,21 @@ async function requestDashboard(baseUrl: string) {
   return response.json() as Promise<Dashboard>;
 }
 
+async function requestPracticeReview(
+  baseUrl: string,
+  body: { idempotencyKey: string; status: "Needs revision" | "Reviewed"; feedback: string },
+) {
+  const response = await fetch(`${baseUrl}/trainer/practice/${attemptId}/review`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (response.status !== 200) {
+    throw new Error(`POST /trainer/practice/${attemptId}/review: expected 200, got ${response.status}: ${await response.text()}`);
+  }
+  return response.json() as Promise<{ id: string; status: string; feedback: string }>;
+}
+
 function practiceItem(queue: QueueItem[]) {
   return queue.find((item) => item.kind === "Practice" && item.id === attemptId);
 }
@@ -77,6 +94,10 @@ async function run() {
     .where(eq(practiceTasksTable.moduleId, "m03"))
     .limit(1);
   assert(task, "Seeded Path A practice task is required");
+  const [activity] = await db.select().from(learningActivitiesTable)
+    .where(eq(learningActivitiesTable.pathwayId, "path-a"))
+    .limit(1);
+  assert(activity, "Seeded Path A learning activity is required");
 
   await db.insert(peopleTable).values([
     {
@@ -130,6 +151,15 @@ async function run() {
     createdAt: submittedAt,
     createdBy: learnerId,
   });
+  await db.insert(learningRecordLinksTable).values({
+    id: `trainer-queue-link-${suffix}`,
+    learnerId,
+    pathwayId: "path-a",
+    activityId: activity.id,
+    practiceAttemptId: attemptId,
+    relation: "practice-attempt",
+    createdBy: learnerId,
+  });
   await db.insert(practiceAttemptsTable).values(Array.from({ length: LARGE_HISTORY_SIZE }, (_, index) => ({
     id: `${unrelatedAttemptPrefix}-${index.toString().padStart(4, "0")}`,
     taskId: task.id,
@@ -165,31 +195,31 @@ async function run() {
     assert.equal(item.updatedAt, submittedAt.toISOString());
     assert.equal((await requestQueue(baseUrl)).some((queueItem) => queueItem.id.startsWith(unrelatedAttemptPrefix)), false);
 
-    await db.insert(practiceReviewsTable).values([
-      ...Array.from({ length: LARGE_HISTORY_SIZE }, (_, index) => ({
-        id: `trainer-queue-review-history-${suffix}-${index.toString().padStart(4, "0")}`,
-        attemptId,
-        reviewerId: trainerId,
-        status: "Needs revision" as const,
-        feedback: `Historical review round ${index}`,
-        createdAt: new Date(reviewTimestamp.getTime() - LARGE_HISTORY_SIZE + index),
-        createdBy: trainerId,
-      })),
-      {
-        id: `trainer-queue-review-a-${suffix}`,
-        attemptId,
-        reviewerId: trainerId,
-        status: "Needs revision" as const,
-        feedback: "Revise the practice output",
-        createdAt: reviewTimestamp,
-        createdBy: trainerId,
-      },
-    ]);
+    const needsRevisionBody = {
+      idempotencyKey: `trainer-queue-needs-revision-${suffix}`,
+      status: "Needs revision" as const,
+      feedback: "Revise the practice output",
+    };
+    const firstReviewResponse = await requestPracticeReview(baseUrl, needsRevisionBody);
+    const [createdReview] = await db.select().from(practiceReviewsTable)
+      .where(eq(practiceReviewsTable.idempotencyKey, needsRevisionBody.idempotencyKey));
+    assert(createdReview, "Review endpoint must persist the Needs revision review");
 
     item = practiceItem(await requestQueue(baseUrl));
     assert(item, "Needs revision practice attempt must remain in the trainer queue");
     assert.equal(item.status, "Needs revision");
-    assert.equal(item.updatedAt, reviewTimestamp.toISOString());
+    assert.equal(item.updatedAt, createdReview.createdAt.toISOString());
+
+    const queueAfterFirstReview = await requestQueue(baseUrl);
+    const retryResponse = await requestPracticeReview(baseUrl, needsRevisionBody);
+    assert.deepEqual(retryResponse, firstReviewResponse, "Idempotent retry must return the original review result");
+    assert.deepEqual(await requestQueue(baseUrl), queueAfterFirstReview, "Idempotent retry must not change the queue");
+    assert.equal(
+      (await db.select().from(practiceReviewsTable).where(eq(practiceReviewsTable.attemptId, attemptId))).length,
+      1,
+      "Idempotent retry must not append another review",
+    );
+
     await assertLatestReviewLookupIsBounded();
     const dashboard = await requestDashboard(baseUrl);
     assert.equal(
@@ -204,18 +234,14 @@ async function run() {
       "Dashboard history excludes reviews outside the trainer assignment",
     );
 
-    await db.insert(practiceReviewsTable).values({
-      id: `trainer-queue-review-z-${suffix}`,
-      attemptId,
-      reviewerId: trainerId,
+    await requestPracticeReview(baseUrl, {
+      idempotencyKey: `trainer-queue-reviewed-${suffix}`,
       status: "Reviewed",
       feedback: "Practice output accepted",
-      createdAt: reviewTimestamp,
-      createdBy: trainerId,
     });
 
     item = practiceItem(await requestQueue(baseUrl));
-    assert.equal(item, undefined, "Reviewed must win the same-timestamp ID tie and remove the practice attempt");
+    assert.equal(item, undefined, "A subsequent Reviewed review must remove the practice attempt");
   } finally {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => error ? reject(error) : resolve()),
