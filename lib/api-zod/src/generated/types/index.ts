@@ -76,6 +76,7 @@ export * from './adminReadinessExportTrendAggregateRecordGroup';
 export * from './adminReadinessExportTrendAlert';
 export * from './adminReadinessExportTrendAlertRecordGroup';
 export * from './adminReadinessExportTrendSummary';
+export * from './adminReadinessExportTrendSummaryRetentionCleanup';
 export * from './adminReadinessExportTrendThresholds';
 export * from './adminReadinessHistoryPage';
 export * from './adminReadinessRule';

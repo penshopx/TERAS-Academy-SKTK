@@ -301,6 +301,17 @@ export const readinessAuditExportRetentionCyclesTable = pgTable("teras_readiness
   day: date("day", { mode: "string" }).primaryKey(),
   claimedAt: timestamp("claimed_at", { withTimezone: true }).notNull().defaultNow(),
 });
+/** Shared anonymous health state for the cross-instance trend retention scheduler. */
+export const readinessAuditExportRetentionHealthTable = pgTable("teras_readiness_audit_export_retention_health", {
+  id: text("id").primaryKey(),
+  consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+  lastFailureCycle: date("last_failure_cycle", { mode: "string" }),
+  lastFailureAt: timestamp("last_failure_at", { withTimezone: true }),
+  lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+}, table => [
+  check("teras_readiness_audit_export_retention_health_singleton_check", sql`${table.id} = 'global'`),
+  check("teras_readiness_audit_export_retention_health_failures_check", sql`${table.consecutiveFailures} >= 0`),
+]);
 
 export const programRelations = relations(programsTable, ({ many }) => ({ modules: many(modulesTable), pathways: many(pathwaysTable) }));
 export const moduleRelations = relations(modulesTable, ({ many }) => ({ tasks: many(practiceTasksTable), assessments: many(assessmentsTable) }));

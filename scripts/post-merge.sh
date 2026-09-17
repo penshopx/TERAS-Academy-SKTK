@@ -191,6 +191,10 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0048_readiness_audit_export_idempotency.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0049_readiness_audit_export_retention_cycles.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0050_readiness_audit_export_retention_health.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0046_practice_review_latest_index.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0033_enrollment_event_context.sql

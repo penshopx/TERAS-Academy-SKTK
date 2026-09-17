@@ -4754,7 +4754,7 @@ components:
         periodDays: { type: integer, minimum: 1 }
     AdminReadinessExportTrendSummary:
       type: object
-      required: [thresholds, periodStart, periodEnd, aggregates, alerts]
+      required: [thresholds, periodStart, periodEnd, aggregates, alerts, retentionCleanup]
       properties:
         thresholds: { $ref: "#/components/schemas/AdminReadinessExportTrendThresholds" }
         periodStart: { type: string, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
@@ -4765,6 +4765,16 @@ components:
         alerts:
           type: array
           items: { $ref: "#/components/schemas/AdminReadinessExportTrendAlert" }
+        retentionCleanup:
+          type: object
+          additionalProperties: false
+          required: [alertActive, consecutiveFailures, failureThreshold, lastFailureAt, lastSuccessAt]
+          properties:
+            alertActive: { type: boolean }
+            consecutiveFailures: { type: integer, minimum: 0 }
+            failureThreshold: { type: integer, minimum: 1 }
+            lastFailureAt: { type: ["string", "null"], format: date-time }
+            lastSuccessAt: { type: ["string", "null"], format: date-time }
     ReadinessAuditPublicKeySet:
       type: object
       required: [issuer, usage, keys]

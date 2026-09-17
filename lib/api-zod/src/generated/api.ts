@@ -3838,6 +3838,9 @@ export const getAdminReadinessExportTrendsResponseAlertsItemFailedCountMin = 0;
 export const getAdminReadinessExportTrendsResponseAlertsItemFailureRatioMin = 0;
 export const getAdminReadinessExportTrendsResponseAlertsItemFailureRatioMax = 1;
 
+export const getAdminReadinessExportTrendsResponseRetentionCleanupConsecutiveFailuresMin = 0;
+
+
 
 
 export const GetAdminReadinessExportTrendsResponse = zod.object({
@@ -3864,7 +3867,14 @@ export const GetAdminReadinessExportTrendsResponse = zod.object({
   "failedCount": zod.int().min(getAdminReadinessExportTrendsResponseAlertsItemFailedCountMin),
   "failureRatio": zod.number().min(getAdminReadinessExportTrendsResponseAlertsItemFailureRatioMin).max(getAdminReadinessExportTrendsResponseAlertsItemFailureRatioMax),
   "explanation": zod.string()
-}))
+})),
+  "retentionCleanup": zod.object({
+  "alertActive": zod.boolean(),
+  "consecutiveFailures": zod.int().min(getAdminReadinessExportTrendsResponseRetentionCleanupConsecutiveFailuresMin),
+  "failureThreshold": zod.int().min(1),
+  "lastFailureAt": zod.coerce.date().nullable(),
+  "lastSuccessAt": zod.coerce.date().nullable()
+})
 })
 
 

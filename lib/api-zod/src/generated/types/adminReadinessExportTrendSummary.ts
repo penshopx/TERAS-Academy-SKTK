@@ -7,6 +7,7 @@
  */
 import type { AdminReadinessExportTrendAggregate } from './adminReadinessExportTrendAggregate';
 import type { AdminReadinessExportTrendAlert } from './adminReadinessExportTrendAlert';
+import type { AdminReadinessExportTrendSummaryRetentionCleanup } from './adminReadinessExportTrendSummaryRetentionCleanup';
 import type { AdminReadinessExportTrendThresholds } from './adminReadinessExportTrendThresholds';
 
 export interface AdminReadinessExportTrendSummary {
@@ -17,4 +18,5 @@ export interface AdminReadinessExportTrendSummary {
   periodEnd: string;
   aggregates: AdminReadinessExportTrendAggregate[];
   alerts: AdminReadinessExportTrendAlert[];
+  retentionCleanup: AdminReadinessExportTrendSummaryRetentionCleanup;
 }

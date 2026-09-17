@@ -5,10 +5,14 @@ import {
   readinessAuditExportAggregatesTable,
   readinessAuditExportAttemptsTable,
   readinessAuditExportRetentionCyclesTable,
+  readinessAuditExportRetentionHealthTable,
 } from "@workspace/db";
 import { createIntegrationTestApp } from "./integration-test-app";
 import {
   pruneReadinessExportTrendAggregates,
+  getReadinessExportTrendRetentionStatus,
+  recordReadinessExportTrendRetentionFailure,
+  recordReadinessExportTrendRetentionSuccess,
   READINESS_EXPORT_TREND_RETENTION_DAYS,
   readinessExportTrendRetentionCutoff,
 } from "./lib/readiness-export-trend-retention";
@@ -55,6 +59,7 @@ async function run() {
   const baselineRetentionCycles = await db.select()
     .from(readinessAuditExportRetentionCyclesTable)
     .where(inArray(readinessAuditExportRetentionCyclesTable.day, [today, nextRetentionCycleDay]));
+  const baselineRetentionHealth = await db.select().from(readinessAuditExportRetentionHealthTable);
   const server = await new Promise<ReturnType<typeof app.listen>>(resolve => {
     const listener = app.listen(0, () => resolve(listener));
   });
@@ -82,6 +87,7 @@ async function run() {
       .where(inArray(readinessAuditExportAggregatesTable.day, [today, ...fixtureDays]));
     await db.delete(readinessAuditExportRetentionCyclesTable)
       .where(inArray(readinessAuditExportRetentionCyclesTable.day, [today, nextRetentionCycleDay]));
+    await db.delete(readinessAuditExportRetentionHealthTable);
     await db.insert(readinessAuditExportAggregatesTable).values([
       { day: fixturePastDay, recordGroup: "1.000–4.999 record", outcome: "failed", count: 99 },
       { day: fixtureFutureDay, recordGroup: "1.000–4.999 record", outcome: "succeeded", count: 99 },
@@ -111,6 +117,22 @@ async function run() {
     assert(retainedFixtures.some(row => row.day === activeFixtureDay), "The active seven-day period must remain");
     const nextCycleCleanup = await pruneReadinessExportTrendAggregates(nextRetentionCycle);
     assert.equal(nextCycleCleanup.executed, true, "A new UTC cycle must be eligible to execute");
+
+    const failureDays = ["2097-01-01", "2097-01-02", "2097-01-03"];
+    for (const day of failureDays) {
+      await Promise.all([
+        recordReadinessExportTrendRetentionFailure(new Date(`${day}T01:00:00.000Z`)),
+        recordReadinessExportTrendRetentionFailure(new Date(`${day}T02:00:00.000Z`)),
+      ]);
+    }
+    const sharedAlarm = await getReadinessExportTrendRetentionStatus();
+    assert.equal(sharedAlarm.consecutiveFailures, 3, "Concurrent instances must count one failure per UTC cycle");
+    assert.equal(sharedAlarm.alertActive, true, "The shared alarm must activate at the configured threshold");
+    const recoveredAt = new Date("2097-01-04T01:00:00.000Z");
+    await db.transaction(tx => recordReadinessExportTrendRetentionSuccess(recoveredAt, tx));
+    const sharedRecovery = await getReadinessExportTrendRetentionStatus();
+    assert.equal(sharedRecovery.alertActive, false, "One successful cleanup must clear the alarm for every reader");
+    assert.equal(sharedRecovery.lastSuccessAt, recoveredAt.toISOString(), "Shared health must retain the latest success time");
 
     assert((await request(null)).status === 401, "Unauthenticated GET must be rejected");
     assert((await post(null, { outcome: "failed", recordCount: 1_000 })).status === 401, "Unauthenticated POST must be rejected");
@@ -183,7 +205,8 @@ async function run() {
     const response = await request("admin");
     assert(response.status === 200, "Admin GET must succeed");
     const summary = await response.json() as any;
-    assert.deepEqual(Object.keys(summary).sort(), ["aggregates", "alerts", "periodEnd", "periodStart", "thresholds"], "Summary must expose only its contract fields");
+    assert.deepEqual(Object.keys(summary).sort(), ["aggregates", "alerts", "periodEnd", "periodStart", "retentionCleanup", "thresholds"], "Summary must expose only its contract fields");
+    assert.deepEqual(Object.keys(summary.retentionCleanup).sort(), ["alertActive", "consecutiveFailures", "failureThreshold", "lastFailureAt", "lastSuccessAt"], "Cleanup monitoring must expose only anonymous operational fields");
     assert.deepEqual(summary.thresholds, {
       minimumRecordCount: 1_000,
       minimumSampleSize: 5,
@@ -226,9 +249,13 @@ async function run() {
       .where(inArray(readinessAuditExportAttemptsTable.day, [today, ...fixtureDays]));
     await db.delete(readinessAuditExportRetentionCyclesTable)
       .where(inArray(readinessAuditExportRetentionCyclesTable.day, [today, nextRetentionCycleDay]));
+    await db.delete(readinessAuditExportRetentionHealthTable);
     if (baselineRows.length) await db.insert(readinessAuditExportAggregatesTable).values(baselineRows);
     if (baselineRetentionCycles.length) {
       await db.insert(readinessAuditExportRetentionCyclesTable).values(baselineRetentionCycles);
+    }
+    if (baselineRetentionHealth.length) {
+      await db.insert(readinessAuditExportRetentionHealthTable).values(baselineRetentionHealth);
     }
   }
 }

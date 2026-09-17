@@ -44,6 +44,7 @@ import { supabaseEmailIsVerified, supabaseIdentity } from "../lib/supabase-auth"
 import { allowsSuperAdminMfa } from "@workspace/db/super-admin-mfa-policy";
 import { readinessAuditSigner } from "../lib/readiness-audit-signing";
 import { safeReminderFailureReason } from "../lib/trainer-follow-up-notifications";
+import { getReadinessExportTrendRetentionStatus } from "../lib/readiness-export-trend-retention";
 import {
   claimExistingSuperAdminIdentity,
   createManagedUser,
@@ -708,6 +709,7 @@ router.get("/admin/readiness-history/export-trends", async (req, res): Promise<v
     periodEnd,
     aggregates,
     alerts,
+    retentionCleanup: await getReadinessExportTrendRetentionStatus(),
   }));
 });
 

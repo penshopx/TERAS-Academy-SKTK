@@ -2999,6 +2999,18 @@ export interface AdminReadinessExportTrendThresholds {
   periodDays: number;
 }
 
+export type AdminReadinessExportTrendSummaryRetentionCleanup = {
+  alertActive: boolean;
+  /** @minimum 0 */
+  consecutiveFailures: number;
+  /** @minimum 1 */
+  failureThreshold: number;
+  /** @nullable */
+  lastFailureAt: string | null;
+  /** @nullable */
+  lastSuccessAt: string | null;
+};
+
 export interface AdminReadinessExportTrendSummary {
   thresholds: AdminReadinessExportTrendThresholds;
   /** @pattern ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ */
@@ -3007,6 +3019,7 @@ export interface AdminReadinessExportTrendSummary {
   periodEnd: string;
   aggregates: AdminReadinessExportTrendAggregate[];
   alerts: AdminReadinessExportTrendAlert[];
+  retentionCleanup: AdminReadinessExportTrendSummaryRetentionCleanup;
 }
 
 export type ReadinessAuditPublicKeySetIssuer = typeof ReadinessAuditPublicKeySetIssuer[keyof typeof ReadinessAuditPublicKeySetIssuer];
