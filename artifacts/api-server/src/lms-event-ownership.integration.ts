@@ -145,19 +145,77 @@ try {
   await client.query(ownershipMigration);
   await client.query(ownershipMigration);
 
-  await client.query(`
-    INSERT INTO teras_activity_completion_events
-      (id, activity_id, learner_id, enrollment_id, pathway_id, status, actor_id)
-    VALUES
-      ('context-legacy-mismatch', 'ownership-activity-b', 'ownership-learner-a',
-       'ownership-enrollment-a', 'ownership-pathway-b', 'completed', 'ownership-actor')
-  `);
-  await assert.rejects(
-    client.query(contextMigration),
-    /Cannot enforce enrollment event context: program or pathway mismatch in teras_activity_completion_events/,
-  );
-  await client.query("ROLLBACK");
-  await client.query("DELETE FROM teras_activity_completion_events WHERE id = 'context-legacy-mismatch'");
+  const contextPreflightCases = [
+    {
+      table: "teras_activity_completion_events",
+      insert: `
+        INSERT INTO teras_activity_completion_events
+          (id, activity_id, learner_id, enrollment_id, pathway_id, status, actor_id)
+        VALUES
+          ('context-legacy-mismatch', 'ownership-activity-b', 'ownership-learner-a',
+           'ownership-enrollment-a', 'ownership-pathway-b', 'completed', 'ownership-actor')
+      `,
+    },
+    {
+      table: "teras_outcome_verification_events",
+      insert: `
+        INSERT INTO teras_outcome_verification_events
+          (id, outcome_id, activity_id, learner_id, enrollment_id, pathway_id,
+           verifier_id, result, reason)
+        VALUES
+          ('context-legacy-mismatch', 'ownership-outcome-b', 'ownership-activity-a',
+           'ownership-learner-a', 'ownership-enrollment-a', 'ownership-pathway-a',
+           'ownership-verifier', 'verified', 'legacy outcome context mismatch')
+      `,
+    },
+    {
+      table: "teras_readiness_transfer_events",
+      insert: `
+        INSERT INTO teras_readiness_transfer_events
+          (id, learner_id, enrollment_id, program_id, pathway_id, source_context, triggered_by)
+        VALUES
+          ('context-legacy-mismatch', 'ownership-learner-a', 'ownership-enrollment-a',
+           'ownership-program-b', 'ownership-pathway-a', '{}'::jsonb, 'ownership-actor')
+      `,
+    },
+    {
+      table: "teras_learning_transition_events",
+      insert: `
+        INSERT INTO teras_learning_transition_events
+          (id, activity_id, learner_id, enrollment_id, program_id, pathway_id,
+           from_state, to_state, actor_id, actor_role, entity_reference, reason, idempotency_key)
+        VALUES
+          ('context-legacy-mismatch', 'ownership-activity-b', 'ownership-learner-a',
+           'ownership-enrollment-a', 'ownership-program-a', 'ownership-pathway-a',
+           'assigned', 'started', 'ownership-actor', 'learner', 'ownership-activity-b',
+           'legacy activity context mismatch', 'context-legacy-mismatch')
+      `,
+    },
+    {
+      table: "teras_readiness_events",
+      insert: `
+        INSERT INTO teras_readiness_events
+          (id, enrollment_id, pathway_id, gate_id, status, score)
+        VALUES
+          ('context-legacy-mismatch', 'ownership-enrollment-a', 'ownership-pathway-a',
+           'ownership-gate-b', 'Developing', 50)
+      `,
+    },
+  ] as const;
+
+  for (const preflightCase of contextPreflightCases) {
+    await client.query(preflightCase.insert);
+    await assert.rejects(
+      client.query(contextMigration),
+      new RegExp(
+        `Cannot enforce enrollment event context: program or pathway mismatch in ${preflightCase.table}`,
+      ),
+    );
+    await client.query("ROLLBACK");
+    await client.query(
+      `DELETE FROM ${preflightCase.table} WHERE id = 'context-legacy-mismatch'`,
+    );
+  }
   await client.query(contextMigration);
   await client.query(contextMigration);
 
