@@ -465,7 +465,7 @@ try {
       'ownership-race-program-' || race_id,
       'ownership-race-pathway-base-' || race_id,
       'active'
-    FROM generate_series(1, 10) AS race_id
+    FROM generate_series(1, 20) AS race_id
   `);
   await client.query(`
     INSERT INTO teras_learning_activities
@@ -479,7 +479,7 @@ try {
       'Race base activity ' || race_id,
       'Concurrent original pathway context',
       1
-    FROM generate_series(6, 10) AS race_id
+    FROM generate_series(6, 20) AS race_id
   `);
   await client.query(`
     INSERT INTO teras_learning_activities
@@ -493,7 +493,7 @@ try {
       'Race activity ' || race_id,
       'Concurrent pathway context',
       1
-    FROM generate_series(1, 10) AS race_id
+    FROM generate_series(1, 20) AS race_id
   `);
   await client.query(`
     INSERT INTO teras_learning_outcomes
@@ -504,7 +504,7 @@ try {
       'Race outcome ' || race_id,
       'review',
       1
-    FROM generate_series(1, 10) AS race_id
+    FROM generate_series(1, 20) AS race_id
   `);
   await client.query(`
     INSERT INTO teras_learning_outcomes
@@ -515,7 +515,7 @@ try {
       'Race base outcome ' || race_id,
       'review',
       1
-    FROM generate_series(6, 10) AS race_id
+    FROM generate_series(6, 20) AS race_id
   `);
   await client.query(`
     INSERT INTO teras_readiness_gates
@@ -528,7 +528,7 @@ try {
       'RACE-' || race_id,
       'Race gate ' || race_id,
       'Concurrent pathway requirement'
-    FROM generate_series(1, 10) AS race_id
+    FROM generate_series(1, 20) AS race_id
   `);
   await client.query(`
     INSERT INTO teras_readiness_gates
@@ -541,7 +541,7 @@ try {
       'RACE-BASE-' || race_id,
       'Race base gate ' || race_id,
       'Concurrent original pathway requirement'
-    FROM generate_series(6, 10) AS race_id
+    FROM generate_series(6, 20) AS race_id
   `);
 
   const concurrentEventCases = [
@@ -781,6 +781,123 @@ try {
       gate_id: eventCase.context.gateId ? gateId : null,
       selection_count: "0",
     }], `the committed ${eventCase.name} remains in its original context after the selection is rejected`);
+  }
+
+  for (const [index, eventCase] of concurrentEventCases.entries()) {
+    for (const updateKind of ["context", "created_at"] as const) {
+      const raceId = index + (updateKind === "context" ? 11 : 16);
+      const eventId = `context-update-${updateKind}-${eventCase.table}`;
+      const enrollmentId = `ownership-race-enrollment-${raceId}`;
+      const learnerId = `ownership-race-learner-${raceId}`;
+      const programId = `ownership-race-program-${raceId}`;
+      const originalPathwayId = `ownership-race-pathway-base-${raceId}`;
+      const laterPathwayId = `ownership-race-pathway-latest-${raceId}`;
+      const selectionId = `ownership-update-selection-${raceId}`;
+      const originalActivityId = `ownership-race-base-activity-${raceId}`;
+      const originalOutcomeId = `ownership-race-base-outcome-${raceId}`;
+      const originalGateId = `ownership-race-base-gate-${raceId}`;
+      const laterActivityId = `ownership-race-activity-${raceId}`;
+      const laterOutcomeId = `ownership-race-outcome-${raceId}`;
+      const laterGateId = `ownership-race-gate-${raceId}`;
+
+      await client.query(
+        `INSERT INTO ${eventCase.table} (${eventCase.columns})
+         VALUES (${eventCase.values})`,
+        eventCase.argumentIndexes.map(argumentIndex =>
+          [
+            eventId,
+            originalActivityId,
+            learnerId,
+            enrollmentId,
+            originalPathwayId,
+            originalOutcomeId,
+            programId,
+            originalGateId,
+          ][argumentIndex]
+        ),
+      );
+      const beforeUpdate = await client.query<{ event: Record<string, unknown> }>(
+        `SELECT to_jsonb(event) AS event FROM ${eventCase.table} event WHERE id = $1`,
+        [eventId],
+      );
+
+      await pathwayClient.query("BEGIN");
+      await pathwayClient.query(
+        `INSERT INTO teras_enrollment_pathway_events
+           (id, enrollment_id, pathway_id, program_id, sequence)
+         VALUES ($1, $2, $3, $4, 1)`,
+        [selectionId, enrollmentId, laterPathwayId, programId],
+      );
+
+      await eventClient.query("BEGIN");
+      const contextAssignments = eventCase.table === "teras_activity_completion_events"
+        ? "activity_id = $3, pathway_id = $2, created_at = created_at"
+        : eventCase.table === "teras_outcome_verification_events"
+          ? "outcome_id = $4, activity_id = $3, pathway_id = $2, created_at = created_at"
+          : eventCase.table === "teras_readiness_transfer_events"
+            ? "pathway_id = $2, created_at = created_at"
+            : eventCase.table === "teras_learning_transition_events"
+              ? "activity_id = $3, pathway_id = $2, created_at = created_at"
+              : "gate_id = $3, pathway_id = $2, created_at = created_at";
+      const updateSql = updateKind === "created_at"
+        ? `UPDATE ${eventCase.table}
+           SET created_at = clock_timestamp()
+           WHERE id = $1`
+        : `UPDATE ${eventCase.table}
+           SET ${contextAssignments}
+           WHERE id = $1`;
+      const contextConstraint = eventCase.table === "teras_readiness_events"
+        ? "teras_readiness_events_enrollment_context_guard"
+        : `${eventCase.table.replace(/_events$/, "")}_enrollment_context_guard`;
+      const updateValues = updateKind === "created_at"
+        ? [eventId]
+        : eventCase.table === "teras_activity_completion_events"
+          ? [eventId, laterPathwayId, laterActivityId]
+          : eventCase.table === "teras_outcome_verification_events"
+            ? [eventId, laterPathwayId, laterActivityId, laterOutcomeId]
+            : eventCase.table === "teras_readiness_transfer_events"
+              ? [eventId, laterPathwayId]
+              : eventCase.table === "teras_learning_transition_events"
+                ? [eventId, laterPathwayId, laterActivityId]
+                : [eventId, laterPathwayId, laterGateId];
+      const concurrentUpdate = assert.rejects(
+        eventClient.query(updateSql, updateValues),
+        (error: unknown) => {
+          if (!(error instanceof Error)) return false;
+          const databaseError = error as Error & { code?: string; constraint?: string };
+          return databaseError.code === "23503"
+            && databaseError.constraint === contextConstraint;
+        },
+        `the concurrent ${eventCase.name} ${updateKind} update must use pathway history after the lock`,
+      );
+      await waitForEnrollmentLockWait(
+        "lms-event-ownership-event-race",
+        `${eventCase.name} ${updateKind} update did not wait for the enrollment row lock`,
+      );
+      await pathwayClient.query("COMMIT");
+      await concurrentUpdate;
+      await eventClient.query("ROLLBACK");
+
+      const afterUpdate = await client.query<{
+        event: Record<string, unknown>;
+        selection_count: string;
+      }>(
+        `SELECT
+           to_jsonb(event) AS event,
+           count(selection.id)::text AS selection_count
+         FROM ${eventCase.table} event
+         LEFT JOIN teras_enrollment_pathway_events selection
+           ON selection.enrollment_id = event.enrollment_id
+         WHERE event.id = $1
+         GROUP BY event.id`,
+        [eventId],
+      );
+      assert.deepEqual(
+        afterUpdate.rows,
+        [{ event: beforeUpdate.rows[0]!.event, selection_count: "1" }],
+        `the rejected ${eventCase.name} ${updateKind} update must not change the committed event or pathway history`,
+      );
+    }
   }
 
   await client.query(contextMigration);
