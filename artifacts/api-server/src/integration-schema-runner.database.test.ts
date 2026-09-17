@@ -576,42 +576,50 @@ test("the next harness run reaps a schema orphaned by forced termination without
   }
 });
 
-test("a normally failing child command still removes its empty disposable schema", {
+test("a normally failing child command under a restricted CI role still removes its disposable schema", {
   skip: !databaseUrl,
 }, async () => {
-  const client = new Client({ connectionString: databaseUrl });
+  const admin = new Client({ connectionString: databaseUrl });
   const contractPrefix = "schema_runner_failure";
   const publicTable = "teras_schema_runner_failure_contract";
-  await client.connect();
+  await admin.connect();
   try {
-    await client.query(`
+    await admin.query(`
       CREATE TABLE IF NOT EXISTS public.${publicTable} (
         id integer PRIMARY KEY
       )
     `);
-    await client.query(`TRUNCATE public.${publicTable}`);
-    await client.query(`INSERT INTO public.${publicTable} (id) VALUES (1)`);
+    await admin.query(`TRUNCATE public.${publicTable}`);
+    await admin.query(`INSERT INTO public.${publicTable} (id) VALUES (1)`);
 
-    await assert.rejects(
-      runIsolatedIntegrationTest({
-        schemaPrefix: contractPrefix,
-        testFile: "./src/fixtures/integration-schema-runner-failure.fixture.ts",
-      }),
-      /failed with exit code 1/,
-    );
+    await withNoCreateDbRole(admin, async (roleDatabaseUrl) => {
+      const previousDatabaseUrl = process.env.DATABASE_URL;
+      process.env.DATABASE_URL = roleDatabaseUrl;
+      try {
+        await assert.rejects(
+          runIsolatedIntegrationTest({
+            schemaPrefix: contractPrefix,
+            testFile: "./src/fixtures/integration-schema-runner-failure.fixture.ts",
+          }),
+          /failed with exit code 1/,
+        );
 
-    const remainingSchemas = await client.query<{ schema_name: string }>(
-      `
-        SELECT schema_name
-        FROM information_schema.schemata
-        WHERE schema_name LIKE $1 ESCAPE '\\'
-      `,
-      [`${contractPrefix.replaceAll("_", "\\_")}_%`],
-    );
-    assert.deepEqual(remainingSchemas.rows, []);
+        const remainingSchemas = await admin.query<{ schema_name: string }>(
+          `
+            SELECT schema_name
+            FROM information_schema.schemata
+            WHERE schema_name LIKE $1 ESCAPE '\\'
+          `,
+          [`${contractPrefix.replaceAll("_", "\\_")}_%`],
+        );
+        assert.deepEqual(remainingSchemas.rows, []);
+      } finally {
+        process.env.DATABASE_URL = previousDatabaseUrl;
+      }
+    });
   } finally {
-    await client.query(`DROP TABLE IF EXISTS public.${publicTable}`);
-    await client.end();
+    await admin.query(`DROP TABLE IF EXISTS public.${publicTable}`);
+    await admin.end();
   }
 });
 
