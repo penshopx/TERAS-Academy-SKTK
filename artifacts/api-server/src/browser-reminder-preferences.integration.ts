@@ -85,8 +85,20 @@ async function main() {
       quietHoursStart?: string | null;
       quietHoursEnd?: string | null;
     }> = [];
+    let failNextPreferenceUpdate = true;
     await page.route("**/api/trainer/reminder-preferences", async route => {
-      if (route.request().method() === "PUT") submitted.push(route.request().postDataJSON());
+      if (route.request().method() === "PUT") {
+        submitted.push(route.request().postDataJSON());
+        if (failNextPreferenceUpdate) {
+          failNextPreferenceUpdate = false;
+          await route.fulfill({
+            status: 503,
+            contentType: "application/json",
+            body: JSON.stringify({ message: "Reminder preferences are temporarily unavailable." }),
+          });
+          return;
+        }
+      }
       await route.continue();
     });
 
@@ -105,18 +117,37 @@ async function main() {
 
     await page.getByRole("button", { name: "Save reminder preferences" }).click();
     await page.getByTestId("confirm-full-day-quiet-hours").click();
-    await page.getByText("Reminder preferences saved", { exact: true }).waitFor();
-    const fullDaySubmission = submitted.at(0);
+    await page.getByText("Preferences not saved", { exact: true }).waitFor();
+    const deliveryStatus = page.getByTestId("trainer-reminder-delivery-status");
+    await deliveryStatus.getByText("Delivery active", { exact: true }).waitFor();
+    if ((await deliveryStatus.textContent())?.includes("Delivery paused")) {
+      throw new Error("A failed full-day pause changed the visible delivery status.");
+    }
     if (
-      !fullDaySubmission
-      || submitted.at(1) !== undefined
+      await page.getByLabel("Quiet hours start").inputValue() !== "20:00"
+      || await page.getByLabel("Quiet hours end").inputValue() !== "20:00"
+    ) {
+      throw new Error("A failed full-day pause discarded the trainer's entered times.");
+    }
+
+    await page.getByRole("button", { name: "Save reminder preferences" }).click();
+    await page.getByTestId("confirm-full-day-quiet-hours").click();
+    await page.getByText("Reminder preferences saved", { exact: true }).waitFor();
+    const failedFullDaySubmission = submitted.at(0);
+    const fullDaySubmission = submitted.at(1);
+    if (
+      !failedFullDaySubmission
+      || !fullDaySubmission
+      || submitted.at(2) !== undefined
+      || failedFullDaySubmission.confirmFullDayQuietHours !== true
+      || failedFullDaySubmission.quietHoursStart !== "20:00"
+      || failedFullDaySubmission.quietHoursEnd !== "20:00"
       || fullDaySubmission.confirmFullDayQuietHours !== true
       || fullDaySubmission.quietHoursStart !== "20:00"
       || fullDaySubmission.quietHoursEnd !== "20:00"
     ) {
       throw new Error(`Full-day quiet hours used an unexpected mutation payload: ${JSON.stringify(submitted)}`);
     }
-    const deliveryStatus = page.getByTestId("trainer-reminder-delivery-status");
     await deliveryStatus.getByText("Delivery paused", { exact: true }).waitFor();
     await deliveryStatus.getByText("Quiet hours are active.", { exact: true }).waitFor();
     if ((await deliveryStatus.textContent())?.includes("Delivery resumes")) {
@@ -129,10 +160,10 @@ async function main() {
     if (await page.getByRole("alertdialog").isVisible()) {
       throw new Error("A normal quiet-hours interval opened the full-day confirmation dialog.");
     }
-    const normalSubmission = submitted.at(1);
+    const normalSubmission = submitted.at(2);
     if (
       !normalSubmission
-      || submitted.at(2) !== undefined
+      || submitted.at(3) !== undefined
       || normalSubmission.confirmFullDayQuietHours !== false
       || normalSubmission.quietHoursStart !== "20:00"
       || normalSubmission.quietHoursEnd !== "21:00"
