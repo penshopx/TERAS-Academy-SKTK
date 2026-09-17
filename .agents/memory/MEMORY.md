@@ -48,3 +48,4 @@
 - [Passport full-history parity](passport-full-history-parity.md) — full exports must traverse the same cursor pages as the visible Passport contract, then concatenate them unchanged.
 - [Drizzle index ordering parity](drizzle-index-ordering-parity.md) — clean schema pushes can preserve a different NULL ordering than authoritative SQL migrations.
 - [Webhook secret rotation](webhook-secret-rotation.md) — identify signing keys separately from signature algorithms and expire retired keys at receiver-controlled deadlines.
+- [PostgreSQL trigger fixtures](postgres-trigger-fixtures.md) — CREATE TRIGGER predicates cannot use bind parameters; prefer isolated, scoped triggers over interpolated DDL.

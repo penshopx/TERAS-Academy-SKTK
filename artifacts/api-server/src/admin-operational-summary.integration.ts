@@ -8,7 +8,7 @@ import {
   practiceTasksTable, programsTable, reassessmentLinksTable, remediationActivitiesTable,
   remediationEventsTable, remediationPlansTable,
 } from "@workspace/db";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 const suffix = crypto.randomUUID();
 const id = (name: string) => `admin-summary-${name}-${suffix}`;
@@ -25,6 +25,7 @@ const ids = {
   inactiveReassessment: id("inactive-reassessment"), pendingAfterRemediation: id("pending-after-remediation"),
   trainer: id("trainer"), framework: id("framework"), template: id("template"), session: id("session"),
   profile: id("profile"), recommendation: id("recommendation"), followUp: id("follow-up"), failedDelivery: id("failed-delivery"),
+  auditFailureDelivery: id("audit-failure-delivery"),
   failedNotification: id("failed-notification"), sentWebhookNotification: id("sent-webhook-notification"), admin: id("admin"), secondAdmin: id("second-admin"),
 };
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
@@ -164,6 +165,50 @@ async function run() {
     assert(profileAfterSummary.currentState === "practice", "Operational summary must not change diagnostic status");
     assert(deliveryAfterSummary.status === "permanently_failed", "Operational summary must not change reminder or readiness-related status");
 
+    await db.insert(diagnosticFollowUpReminderDeliveriesTable).values({
+      id: ids.auditFailureDelivery, followUpId: ids.followUp, trainerId: ids.trainer, channel: "email", reminderKind: "overdue",
+      destination: `trainer-${suffix}@example.test`, status: "permanently_failed", attemptCount: 3,
+      lastAttemptAt: new Date("2030-01-09T04:00:00Z"), failureReason: "forced audit rollback fixture",
+    });
+    await db.execute(sql`
+      CREATE FUNCTION reject_admin_resolution_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        RAISE EXCEPTION 'forced resolve audit failure';
+      END
+      $$
+    `);
+    await db.execute(sql`
+      CREATE TRIGGER reject_admin_resolution_audit
+      BEFORE INSERT ON teras_admin_audit_events
+      FOR EACH ROW
+      WHEN (
+        NEW.action = 'resolve'
+        AND NEW.entity_type = 'trainer_reminder_escalation'
+      )
+      EXECUTE FUNCTION reject_admin_resolution_audit()
+    `);
+    const auditFailureResponse = await fetch(
+      `http://127.0.0.1:${address.port}/api/admin/reminder-escalations/${ids.auditFailureDelivery}/resolution`,
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: "Must roll back with the audit failure." }) },
+    );
+    assert(auditFailureResponse.status >= 500 && auditFailureResponse.status !== 201, "Audit insert failure must produce an API failure instead of 201");
+    const rolledBackResolutions = await db.select().from(diagnosticFollowUpReminderResolutionsTable)
+      .where(eq(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, ids.auditFailureDelivery));
+    assert(rolledBackResolutions.length === 0, "Audit insert failure must roll back the resolution");
+    const rolledBackAudits = await db.select().from(adminAuditEventsTable).where(and(
+      eq(adminAuditEventsTable.action, "resolve"),
+      eq(adminAuditEventsTable.entityType, "trainer_reminder_escalation"),
+      eq(adminAuditEventsTable.entityId, ids.auditFailureDelivery),
+    ));
+    assert(rolledBackAudits.length === 0, "Audit insert failure must not leave a partial audit event");
+    const [deliveryAfterAuditFailure] = await db.select().from(diagnosticFollowUpReminderDeliveriesTable)
+      .where(eq(diagnosticFollowUpReminderDeliveriesTable.id, ids.auditFailureDelivery));
+    assert(deliveryAfterAuditFailure.escalationResolvedAt === null, "Audit insert failure must roll back the delivery resolution marker");
+    await db.execute(sql`DROP TRIGGER reject_admin_resolution_audit ON teras_admin_audit_events`);
+    await db.execute(sql`DROP FUNCTION reject_admin_resolution_audit()`);
+    await db.delete(diagnosticFollowUpReminderDeliveriesTable)
+      .where(eq(diagnosticFollowUpReminderDeliveriesTable.id, ids.auditFailureDelivery));
+
     const resolutionUrl = `http://127.0.0.1:${address.port}/api/admin/reminder-escalations/${ids.failedDelivery}/resolution`;
     const [firstResolutionResponse, secondResolutionResponse, concurrentSummaryResponse] = await Promise.all([
       fetch(`${resolutionUrl}?actor=second`, {
@@ -244,9 +289,11 @@ async function run() {
     assert(completedRemediationCounts.reassessment === baselineCounts.reassessment + 1, "Pending reassessment must remain queued after remediation completes");
     assert(completedRemediationCounts.assessment === baselineCounts.assessment + 1, "Pending reassessment attempt must remain in the assessment queue");
   } finally {
-    await db.delete(diagnosticFollowUpReminderResolutionsTable).where(inArray(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, [ids.failedDelivery]));
+    await db.execute(sql`DROP TRIGGER IF EXISTS reject_admin_resolution_audit ON teras_admin_audit_events`);
+    await db.execute(sql`DROP FUNCTION IF EXISTS reject_admin_resolution_audit()`);
+    await db.delete(diagnosticFollowUpReminderResolutionsTable).where(inArray(diagnosticFollowUpReminderResolutionsTable.reminderDeliveryId, [ids.failedDelivery, ids.auditFailureDelivery]));
     await db.delete(diagnosticFollowUpFailureNotificationsTable).where(inArray(diagnosticFollowUpFailureNotificationsTable.reminderDeliveryId, [ids.failedDelivery]));
-    await db.delete(diagnosticFollowUpReminderDeliveriesTable).where(inArray(diagnosticFollowUpReminderDeliveriesTable.id, [ids.failedDelivery]));
+    await db.delete(diagnosticFollowUpReminderDeliveriesTable).where(inArray(diagnosticFollowUpReminderDeliveriesTable.id, [ids.failedDelivery, ids.auditFailureDelivery]));
     await db.delete(diagnosticRecommendationFollowUpsTable).where(inArray(diagnosticRecommendationFollowUpsTable.id, [ids.followUp]));
     await db.delete(diagnosticRecommendationsTable).where(inArray(diagnosticRecommendationsTable.id, [ids.recommendation]));
     await db.delete(diagnosticProfilesTable).where(inArray(diagnosticProfilesTable.id, [ids.profile]));
