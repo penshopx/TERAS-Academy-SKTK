@@ -39,9 +39,16 @@ const retentionCutoffDay = readinessExportTrendRetentionCutoff(retentionNow);
 const olderThanRetention = new Date(`${retentionCutoffDay}T00:00:00.000Z`);
 olderThanRetention.setUTCDate(olderThanRetention.getUTCDate() - 1);
 const expiredRetentionDay = olderThanRetention.toISOString().slice(0, 10);
+const newerThanRetention = new Date(`${retentionCutoffDay}T00:00:00.000Z`);
+newerThanRetention.setUTCDate(newerThanRetention.getUTCDate() + 1);
+const retainedAfterCutoffDay = newerThanRetention.toISOString().slice(0, 10);
 const activePeriodDay = new Date(`${today}T00:00:00.000Z`);
 activePeriodDay.setUTCDate(activePeriodDay.getUTCDate() - 6);
 const activeFixtureDay = activePeriodDay.toISOString().slice(0, 10);
+const expiredAttemptKey = crypto.randomUUID();
+const boundaryAttemptKey = crypto.randomUUID();
+const afterBoundaryAttemptKey = crypto.randomUUID();
+const activeRetryAttemptKey = crypto.randomUUID();
 
 const app = createIntegrationTestApp(request => {
   const role = request.get("x-test-role");
@@ -52,10 +59,20 @@ const app = createIntegrationTestApp(request => {
 });
 
 async function run() {
-  const fixtureDays = [fixturePastDay, fixtureFutureDay, expiredRetentionDay, retentionCutoffDay, activeFixtureDay];
+  const fixtureDays = [
+    fixturePastDay,
+    fixtureFutureDay,
+    expiredRetentionDay,
+    retentionCutoffDay,
+    retainedAfterCutoffDay,
+    activeFixtureDay,
+  ];
   const baselineRows = await db.select()
     .from(readinessAuditExportAggregatesTable)
     .where(inArray(readinessAuditExportAggregatesTable.day, [today, ...fixtureDays]));
+  const baselineAttempts = await db.select()
+    .from(readinessAuditExportAttemptsTable)
+    .where(inArray(readinessAuditExportAttemptsTable.day, [today, ...fixtureDays]));
   const baselineRetentionCycles = await db.select()
     .from(readinessAuditExportRetentionCyclesTable)
     .where(inArray(readinessAuditExportRetentionCyclesTable.day, [today, nextRetentionCycleDay]));
@@ -85,6 +102,8 @@ async function run() {
     // Isolate this test's current UTC day, then restore it in finally.
     await db.delete(readinessAuditExportAggregatesTable)
       .where(inArray(readinessAuditExportAggregatesTable.day, [today, ...fixtureDays]));
+    await db.delete(readinessAuditExportAttemptsTable)
+      .where(inArray(readinessAuditExportAttemptsTable.day, [today, ...fixtureDays]));
     await db.delete(readinessAuditExportRetentionCyclesTable)
       .where(inArray(readinessAuditExportRetentionCyclesTable.day, [today, nextRetentionCycleDay]));
     await db.delete(readinessAuditExportRetentionHealthTable);
@@ -94,6 +113,12 @@ async function run() {
       { day: expiredRetentionDay, recordGroup: "5.000–9.999 record", outcome: "succeeded", count: 7 },
       { day: retentionCutoffDay, recordGroup: "5.000–9.999 record", outcome: "succeeded", count: 8 },
       { day: activeFixtureDay, recordGroup: "10.000+ record", outcome: "succeeded", count: 9 },
+    ]);
+    await db.insert(readinessAuditExportAttemptsTable).values([
+      { attemptKey: expiredAttemptKey, day: expiredRetentionDay },
+      { attemptKey: boundaryAttemptKey, day: retentionCutoffDay },
+      { attemptKey: afterBoundaryAttemptKey, day: retainedAfterCutoffDay },
+      { attemptKey: activeRetryAttemptKey, day: activeFixtureDay },
     ]);
 
     assert(READINESS_EXPORT_TREND_RETENTION_DAYS > 7, "Retention must exceed the active reporting period");
@@ -110,11 +135,28 @@ async function run() {
     assert.equal(afterCommitCleanup.executed, false, "A later invocation in the claimed UTC cycle must skip");
     assert(cleanup.cutoffDay === retentionCutoffDay && cleanup.deletedRows >= 2,
       "Cleanup must report at least the fixture rows strictly older than the retention cutoff");
+    assert(cleanup.deletedAttemptKeys >= 1,
+      "Cleanup must report deletion of retry keys strictly older than the retention cutoff");
     const retainedFixtures = await db.select().from(readinessAuditExportAggregatesTable)
       .where(inArray(readinessAuditExportAggregatesTable.day, [expiredRetentionDay, retentionCutoffDay, activeFixtureDay]));
     assert(!retainedFixtures.some(row => row.day === expiredRetentionDay), "Expired retention rows must be deleted");
     assert(retainedFixtures.some(row => row.day === retentionCutoffDay), "The retention boundary day must remain");
     assert(retainedFixtures.some(row => row.day === activeFixtureDay), "The active seven-day period must remain");
+    const retainedAttemptKeys = await db.select().from(readinessAuditExportAttemptsTable)
+      .where(inArray(readinessAuditExportAttemptsTable.attemptKey, [
+        expiredAttemptKey,
+        boundaryAttemptKey,
+        afterBoundaryAttemptKey,
+        activeRetryAttemptKey,
+      ]));
+    assert(!retainedAttemptKeys.some(row => row.attemptKey === expiredAttemptKey),
+      "Retry keys before the retention boundary must be deleted");
+    assert(retainedAttemptKeys.some(row => row.attemptKey === boundaryAttemptKey),
+      "A retry key exactly on the retention boundary must remain");
+    assert(retainedAttemptKeys.some(row => row.attemptKey === afterBoundaryAttemptKey),
+      "A retry key after the retention boundary must remain");
+    assert(retainedAttemptKeys.some(row => row.attemptKey === activeRetryAttemptKey),
+      "Retry protection for the active reporting period must remain");
     const nextCycleCleanup = await pruneReadinessExportTrendAggregates(nextRetentionCycle);
     assert.equal(nextCycleCleanup.executed, true, "A new UTC cycle must be eligible to execute");
 
@@ -155,6 +197,11 @@ async function run() {
 
     assert((await post("admin", { outcome: "failed", recordCount: 999 })).status === 204, "Small samples must be accepted and ignored");
     assert((await post("admin", { outcome: "started", recordCount: 1_000 })).status === 204, "Started outcomes must be accepted and ignored");
+    assert((await post("admin", {
+      attemptKey: activeRetryAttemptKey,
+      outcome: "succeeded",
+      recordCount: 10_000,
+    })).status === 204, "A retry protected by an active key must succeed without recounting");
     assert((await db.select().from(readinessAuditExportAggregatesTable).where(eq(readinessAuditExportAggregatesTable.day, today))).length === 0, "Ignored inputs must not create aggregate rows");
 
     const boundaryWrites = [
@@ -251,6 +298,7 @@ async function run() {
       .where(inArray(readinessAuditExportRetentionCyclesTable.day, [today, nextRetentionCycleDay]));
     await db.delete(readinessAuditExportRetentionHealthTable);
     if (baselineRows.length) await db.insert(readinessAuditExportAggregatesTable).values(baselineRows);
+    if (baselineAttempts.length) await db.insert(readinessAuditExportAttemptsTable).values(baselineAttempts);
     if (baselineRetentionCycles.length) {
       await db.insert(readinessAuditExportRetentionCyclesTable).values(baselineRetentionCycles);
     }
