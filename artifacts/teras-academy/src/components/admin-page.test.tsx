@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { adminErrorMessage, filterQueueItems, hasPermanentReminderEscalations, isAdminForbidden, isAdminMfaRequired, queueStateFromSearch, shouldEnableAdminQueries, validateQueueFilters } from "../pages/admin";
+import { adminErrorMessage, filterQueueItems, getReminderDeliveryRefetchInterval, hasPermanentReminderEscalations, isAdminForbidden, isAdminMfaRequired, queueStateFromSearch, reminderDeliveryPollingInterval, shouldEnableAdminQueries, validateQueueFilters } from "../pages/admin";
 
 test("admin conflict errors provide an actionable accessible message", () => {
   assert.equal(
@@ -87,6 +87,38 @@ test("only open permanent trainer reminder failures activate the admin alarm", (
     targetAt: "2030-01-10T00:00:00.000Z", lastAttemptAt: "2030-01-09T03:00:00.000Z", reason: "Layanan email tidak dapat menyelesaikan pengiriman.",
     emailNotification: null, webhookNotification: null, status: "resolved", resolution: { id: "resolution-1", reminderDeliveryId: "delivery-2", note: "Sudah dihubungi", resolvedByPersonId: "admin-1", resolvedAt: "2030-01-09T05:00:00.000Z" },
   }] }), false);
+});
+
+test("admin summary polls while a reminder notification delivery is still in progress", () => {
+  const reminder = {
+    id: "delivery-1", trainerId: "trainer-1", trainerName: "Trainer Satu", target: "Inspeksi inverter",
+    targetAt: "2030-01-10T00:00:00.000Z", lastAttemptAt: "2030-01-09T03:00:00.000Z", reason: "Pengiriman belum selesai.",
+    emailNotification: { status: "sent" as const, attemptedAt: "2030-01-09T03:00:00.000Z", sentAt: "2030-01-09T03:00:01.000Z", reason: null },
+    webhookNotification: { status: "pending" as const, attemptedAt: null, sentAt: null, reason: null },
+    status: "open" as const, resolution: null,
+  };
+
+  assert.equal(getReminderDeliveryRefetchInterval({ failedTrainerReminders: [reminder] }), reminderDeliveryPollingInterval);
+  assert.equal(getReminderDeliveryRefetchInterval({
+    failedTrainerReminders: [{
+      ...reminder,
+      webhookNotification: { ...reminder.webhookNotification, status: "sending" as const },
+    }],
+  }), reminderDeliveryPollingInterval);
+});
+
+test("admin summary stops polling after every reminder notification reaches a final status", () => {
+  const reminder = {
+    id: "delivery-1", trainerId: "trainer-1", trainerName: "Trainer Satu", target: "Inspeksi inverter",
+    targetAt: "2030-01-10T00:00:00.000Z", lastAttemptAt: "2030-01-09T03:00:00.000Z", reason: "Pengiriman selesai diproses.",
+    emailNotification: { status: "sent" as const, attemptedAt: "2030-01-09T03:00:00.000Z", sentAt: "2030-01-09T03:00:01.000Z", reason: null },
+    webhookNotification: { status: "failed" as const, attemptedAt: "2030-01-09T03:00:00.000Z", sentAt: null, reason: "Endpoint tidak tersedia." },
+    status: "open" as const, resolution: null,
+  };
+
+  assert.equal(getReminderDeliveryRefetchInterval({ failedTrainerReminders: [reminder] }), false);
+  assert.equal(getReminderDeliveryRefetchInterval({ failedTrainerReminders: [] }), false);
+  assert.equal(getReminderDeliveryRefetchInterval(undefined), false);
 });
 
 test("admin summary renders every safe permanent-failure detail for the manager", async () => {

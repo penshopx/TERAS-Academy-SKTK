@@ -38,6 +38,16 @@ const roles = ["trainer", "assessor", "learner"] as const;
 const userSchema = z.object({ name: z.string().min(1, "Nama wajib diisi"), email: z.string().email("Email tidak valid").or(z.literal("")), organization: z.string(), authProvider: z.string().min(1, "Provider autentikasi wajib diisi"), authSubject: z.string(), roles: z.array(z.enum(roles)).min(1, "Pilih minimal satu peran") });
 type UserForm = z.infer<typeof userSchema>;
 const queryOptions = { staleTime: 30_000, refetchOnMount: "always" as const };
+export const reminderDeliveryPollingInterval = 5_000;
+
+export function getReminderDeliveryRefetchInterval(summary?: Pick<AdminOperationalSummary, "failedTrainerReminders">) {
+  const hasDeliveryInProgress = summary?.failedTrainerReminders.some(item =>
+    [item.emailNotification, item.webhookNotification].some(notification =>
+      notification?.status === "pending" || notification?.status === "sending"
+    )
+  ) ?? false;
+  return hasDeliveryInProgress ? reminderDeliveryPollingInterval : false;
+}
 
 export function adminErrorMessage(error: unknown) {
   const candidate = error as { status?: number; data?: { error?: string }; message?: string };
@@ -237,7 +247,14 @@ export default function Admin() {
   const competencies = useListAdminCompetencyFrameworks({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getListAdminCompetencyFrameworksQueryKey() } });
   const readinessRules = useListAdminReadinessRules({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getListAdminReadinessRulesQueryKey() } });
   const provenanceExceptions = useListAdminDiagnosticProvenanceExceptions({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getListAdminDiagnosticProvenanceExceptionsQueryKey() } });
-  const summary = useGetAdminOperationalSummary<AdminOperationalSummary>({ query: { ...queryOptions, enabled: adminQueriesEnabled, queryKey: getGetAdminOperationalSummaryQueryKey() } });
+  const summary = useGetAdminOperationalSummary<AdminOperationalSummary>({
+    query: {
+      ...queryOptions,
+      enabled: adminQueriesEnabled,
+      queryKey: getGetAdminOperationalSummaryQueryKey(),
+      refetchInterval: query => getReminderDeliveryRefetchInterval(query.state.data),
+    },
+  });
   const createUser = useCreateAdminUser(); const rolesMutation = useReplaceAdminUserRoles(); const updateUser = useUpdateAdminUser();
   const createAccessRequest = useCreateAdminAccessRequest();
   const approveRequest = useApproveAdminAccessRequest(); const rejectRequest = useRejectAdminAccessRequest();
