@@ -24,5 +24,7 @@ export interface TrainerReminderPreferences {
   /** @nullable */
   nextDeliveryAt: Date | null;
   /** @nullable */
+  configurationIssue: string | null;
+  /** @nullable */
   updatedAt: Date | null;
 }

@@ -38,6 +38,7 @@ test("marks overdue follow-ups and exposes status and target filters", () => {
     quietHoursEnd: "20:00",
     deliveryStatus: "paused_quiet_hours",
     nextDeliveryAt: null,
+    configurationIssue: null,
     updatedAt: "2026-09-12T12:00:00.000Z",
   });
   queryClient.setQueryData(getGetTrainerReminderPreferenceHistoryQueryKey(), [{

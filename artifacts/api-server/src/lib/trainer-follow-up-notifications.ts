@@ -84,7 +84,10 @@ type ReminderPreferences = {
 export type ReminderDeliveryAvailability = {
   deliveryStatus: "active" | "paused_quiet_hours" | "disabled";
   nextDeliveryAt: Date | null;
+  configurationIssue: string | null;
 };
+
+const INVALID_TIME_ZONE_MESSAGE = "The saved time zone is invalid. Choose a valid IANA time zone to resume reminder delivery.";
 
 export function isValidIanaTimeZone(timeZone: string) {
   if (/^[+-]\d{2}(?::?\d{2})?$/.test(timeZone)) return false;
@@ -98,6 +101,7 @@ export function isValidIanaTimeZone(timeZone: string) {
 
 export function isWithinQuietHours(now: Date, preferences: Pick<ReminderPreferences, "timeZone" | "quietHoursStart" | "quietHoursEnd">) {
   if (!preferences.quietHoursStart || !preferences.quietHoursEnd) return false;
+  if (!isValidIanaTimeZone(preferences.timeZone)) return false;
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: preferences.timeZone,
     hour: "2-digit",
@@ -117,8 +121,11 @@ export function reminderDeliveryAvailability(
   now: Date,
   preferences: ReminderPreferences,
 ): ReminderDeliveryAvailability {
-  if (!preferences.emailEnabled) return { deliveryStatus: "disabled", nextDeliveryAt: null };
-  if (!isWithinQuietHours(now, preferences)) return { deliveryStatus: "active", nextDeliveryAt: null };
+  if (!isValidIanaTimeZone(preferences.timeZone)) {
+    return { deliveryStatus: "disabled", nextDeliveryAt: null, configurationIssue: INVALID_TIME_ZONE_MESSAGE };
+  }
+  if (!preferences.emailEnabled) return { deliveryStatus: "disabled", nextDeliveryAt: null, configurationIssue: null };
+  if (!isWithinQuietHours(now, preferences)) return { deliveryStatus: "active", nextDeliveryAt: null, configurationIssue: null };
 
   const nextMinute = new Date(now);
   nextMinute.setUTCSeconds(0, 0);
@@ -126,10 +133,10 @@ export function reminderDeliveryAvailability(
   for (let offset = 0; offset <= 48 * 60; offset += 1) {
     const candidate = new Date(nextMinute.getTime() + offset * 60_000);
     if (!isWithinQuietHours(candidate, preferences)) {
-      return { deliveryStatus: "paused_quiet_hours", nextDeliveryAt: candidate };
+      return { deliveryStatus: "paused_quiet_hours", nextDeliveryAt: candidate, configurationIssue: null };
     }
   }
-  return { deliveryStatus: "paused_quiet_hours", nextDeliveryAt: null };
+  return { deliveryStatus: "paused_quiet_hours", nextDeliveryAt: null, configurationIssue: null };
 }
 
 async function latestReminderPreferences(trainerId: string): Promise<ReminderPreferences> {
@@ -425,7 +432,7 @@ export async function dispatchTrainerFollowUpReminders(
     if (!trainer?.email || trainer.status !== "active" || !recommendation || !learner || !followUp.targetAt) continue;
     if (!currentScopes.get(trainer.id)?.has(`${profile.learnerId}:${profile.pathwayId}`)) continue;
     const preferences = await latestReminderPreferences(trainer.id);
-    if (!preferences.emailEnabled || isWithinQuietHours(now, preferences)) continue;
+    if (!preferences.emailEnabled || !isValidIanaTimeZone(preferences.timeZone) || isWithinQuietHours(now, preferences)) continue;
 
     const deliveryId = `follow-up-reminder-${crypto.randomUUID()}`;
     await db.insert(diagnosticFollowUpReminderDeliveriesTable).values({

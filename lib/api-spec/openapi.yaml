@@ -2935,7 +2935,7 @@ components:
         note: { type: string, minLength: 1, maxLength: 500 }
     TrainerReminderPreferences:
       type: object
-      required: [emailEnabled, timeZone, quietHoursStart, quietHoursEnd, deliveryStatus, nextDeliveryAt, updatedAt]
+      required: [emailEnabled, timeZone, quietHoursStart, quietHoursEnd, deliveryStatus, nextDeliveryAt, configurationIssue, updatedAt]
       properties:
         emailEnabled: { type: boolean }
         timeZone: { type: string }
@@ -2943,6 +2943,7 @@ components:
         quietHoursEnd: { type: ["string", "null"], pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
         deliveryStatus: { type: string, enum: [active, paused_quiet_hours, disabled] }
         nextDeliveryAt: { type: ["string", "null"], format: date-time }
+        configurationIssue: { type: ["string", "null"] }
         updatedAt: { type: ["string", "null"], format: date-time }
     TrainerReminderPreferencesInput:
       type: object

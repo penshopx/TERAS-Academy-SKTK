@@ -15,6 +15,22 @@ test("reminder preferences reject unrecognized IANA time zones", () => {
   assert.equal(isValidIanaTimeZone("-2359"), false);
 });
 
+test("legacy invalid reminder time zones return a controlled repair response", () => {
+  const preferences = {
+    emailEnabled: true,
+    timeZone: "Invalid/Legacy_Zone",
+    quietHoursStart: "20:00",
+    quietHoursEnd: "07:00",
+  };
+
+  assert.equal(isWithinQuietHours(new Date("2026-09-12T14:00:00Z"), preferences), false);
+  assert.deepEqual(reminderDeliveryAvailability(new Date("2026-09-12T14:00:00Z"), preferences), {
+    deliveryStatus: "disabled",
+    nextDeliveryAt: null,
+    configurationIssue: "The saved time zone is invalid. Choose a valid IANA time zone to resume reminder delivery.",
+  });
+});
+
 test("saving an invalid reminder time zone returns a clear validation response before persistence", async () => {
   const server = app.listen(0);
   try {
@@ -81,6 +97,7 @@ test("delivery availability exposes the next local opening for cross-midnight qu
   assert.deepEqual(reminderDeliveryAvailability(new Date("2026-09-12T14:00:30Z"), preferences), {
     deliveryStatus: "paused_quiet_hours",
     nextDeliveryAt: new Date("2026-09-12T24:00:00Z"),
+    configurationIssue: null,
   });
 });
 
@@ -95,6 +112,7 @@ test("delivery availability keeps the configured local opening across spring DST
   assert.deepEqual(reminderDeliveryAvailability(new Date("2026-03-08T06:30:00Z"), preferences), {
     deliveryStatus: "paused_quiet_hours",
     nextDeliveryAt: new Date("2026-03-08T11:00:00Z"),
+    configurationIssue: null,
   });
   assert.equal(isWithinQuietHours(new Date("2026-03-08T10:59:00Z"), preferences), true);
   assert.equal(isWithinQuietHours(new Date("2026-03-08T11:00:00Z"), preferences), false);
@@ -111,6 +129,7 @@ test("delivery availability keeps the configured local opening across fall DST",
   assert.deepEqual(reminderDeliveryAvailability(new Date("2026-11-01T05:30:00Z"), preferences), {
     deliveryStatus: "paused_quiet_hours",
     nextDeliveryAt: new Date("2026-11-01T12:00:00Z"),
+    configurationIssue: null,
   });
   assert.equal(isWithinQuietHours(new Date("2026-11-01T11:59:00Z"), preferences), true);
   assert.equal(isWithinQuietHours(new Date("2026-11-01T12:00:00Z"), preferences), false);
@@ -121,10 +140,12 @@ test("delivery availability distinguishes active and disabled delivery", () => {
   assert.deepEqual(reminderDeliveryAvailability(new Date("2026-09-12T05:00:00Z"), { ...preferences, emailEnabled: true }), {
     deliveryStatus: "active",
     nextDeliveryAt: null,
+    configurationIssue: null,
   });
   assert.deepEqual(reminderDeliveryAvailability(new Date("2026-09-12T14:00:00Z"), { ...preferences, emailEnabled: false }), {
     deliveryStatus: "disabled",
     nextDeliveryAt: null,
+    configurationIssue: null,
   });
 });
 
@@ -139,5 +160,6 @@ test("equal quiet-hours times remain a full-day pause with no next delivery", ()
   assert.deepEqual(reminderDeliveryAvailability(new Date("2026-09-12T05:00:00Z"), preferences), {
     deliveryStatus: "paused_quiet_hours",
     nextDeliveryAt: null,
+    configurationIssue: null,
   });
 });

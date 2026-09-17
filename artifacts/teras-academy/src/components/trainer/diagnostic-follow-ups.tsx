@@ -108,7 +108,9 @@ function ReminderPreferences() {
             {availability.deliveryStatus === "active" ? "Delivery active" : availability.deliveryStatus === "disabled" ? "Delivery inactive" : "Delivery paused"}
           </Badge>
           <span className="text-muted-foreground">
-            {availability.deliveryStatus === "active"
+            {availability.configurationIssue
+              ? availability.configurationIssue
+              : availability.deliveryStatus === "active"
               ? `Email reminders may be sent now (${availability.timeZone}).`
               : availability.deliveryStatus === "disabled"
                 ? "Email reminders are turned off."
