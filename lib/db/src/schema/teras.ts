@@ -296,6 +296,11 @@ export const readinessAuditExportAttemptsTable = pgTable("teras_readiness_audit_
 }, table => [
   index("teras_readiness_audit_export_attempts_day_idx").on(table.day),
 ]);
+/** Durable UTC-day claims ensure trend retention is measured once across API instances. */
+export const readinessAuditExportRetentionCyclesTable = pgTable("teras_readiness_audit_export_retention_cycles", {
+  day: date("day", { mode: "string" }).primaryKey(),
+  claimedAt: timestamp("claimed_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const programRelations = relations(programsTable, ({ many }) => ({ modules: many(modulesTable), pathways: many(pathwaysTable) }));
 export const moduleRelations = relations(modulesTable, ({ many }) => ({ tasks: many(practiceTasksTable), assessments: many(assessmentsTable) }));

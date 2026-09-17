@@ -1,5 +1,10 @@
 import { lt } from "drizzle-orm";
-import { db, readinessAuditExportAggregatesTable, readinessAuditExportAttemptsTable } from "@workspace/db";
+import {
+  db,
+  readinessAuditExportAggregatesTable,
+  readinessAuditExportAttemptsTable,
+  readinessAuditExportRetentionCyclesTable,
+} from "@workspace/db";
 import { logger } from "./logger";
 
 /** Daily aggregates are kept for 90 complete UTC days; the current day is additional. */
@@ -13,26 +18,45 @@ export function readinessExportTrendRetentionCutoff(now = new Date()) {
 
 export async function pruneReadinessExportTrendAggregates(now = new Date()) {
   const cutoffDay = readinessExportTrendRetentionCutoff(now);
-  const { deletedAggregates, deletedAttempts } = await db.transaction(async tx => {
+  return db.transaction(async tx => {
+    const cycleDay = now.toISOString().slice(0, 10);
+    const claimed = await tx.insert(readinessAuditExportRetentionCyclesTable)
+      .values({ day: cycleDay })
+      .onConflictDoNothing()
+      .returning({ day: readinessAuditExportRetentionCyclesTable.day });
+    if (claimed.length === 0) {
+      return {
+        cutoffDay,
+        cycleDay,
+        executed: false as const,
+        deletedRows: 0,
+        deletedAttemptKeys: 0,
+      };
+    }
     const deletedAggregates = await tx.delete(readinessAuditExportAggregatesTable)
       .where(lt(readinessAuditExportAggregatesTable.day, cutoffDay))
       .returning({ day: readinessAuditExportAggregatesTable.day });
     const deletedAttempts = await tx.delete(readinessAuditExportAttemptsTable)
       .where(lt(readinessAuditExportAttemptsTable.day, cutoffDay))
       .returning({ day: readinessAuditExportAttemptsTable.day });
-    return { deletedAggregates, deletedAttempts };
+    await tx.delete(readinessAuditExportRetentionCyclesTable)
+      .where(lt(readinessAuditExportRetentionCyclesTable.day, cutoffDay));
+    return {
+      cutoffDay,
+      cycleDay,
+      executed: true as const,
+      deletedRows: deletedAggregates.length,
+      deletedAttemptKeys: deletedAttempts.length,
+    };
   });
-  return {
-    cutoffDay,
-    deletedRows: deletedAggregates.length,
-    deletedAttemptKeys: deletedAttempts.length,
-  };
 }
 
 export function startReadinessExportTrendRetentionScheduler() {
   if (process.env.NODE_ENV === "test") return;
   const run = () => pruneReadinessExportTrendAggregates().then(
-    result => logger.info(result, "Readiness export trend retention cleanup completed"),
+    result => result.executed
+      ? logger.info(result, "Readiness export trend retention cleanup completed")
+      : logger.info({ cutoffDay: result.cutoffDay, cycleDay: result.cycleDay }, "Readiness export trend retention cleanup skipped; this UTC cycle was already claimed"),
     error => logger.error({ err: error }, "Readiness export trend retention cleanup failed"),
   );
   const initial = setTimeout(run, 30_000);

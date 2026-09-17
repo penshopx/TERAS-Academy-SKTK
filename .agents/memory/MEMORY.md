@@ -50,3 +50,4 @@
 - [Webhook secret rotation](webhook-secret-rotation.md) — identify signing keys separately from signature algorithms and expire retired keys at receiver-controlled deadlines.
 - [PostgreSQL trigger fixtures](postgres-trigger-fixtures.md) — CREATE TRIGGER predicates cannot use bind parameters; prefer isolated, scoped triggers over interpolated DDL.
 - [Concurrent expected rejections](concurrent-expected-rejections.md) — attach rejection assertions when starting an expected-failing query, before releasing the lock that triggers it.
+- [Scheduled cleanup cycle claims](scheduled-cleanup-cycle-claims.md) — use durable UTC-cycle claims; transaction locks alone only prevent overlapping scheduler runs.
