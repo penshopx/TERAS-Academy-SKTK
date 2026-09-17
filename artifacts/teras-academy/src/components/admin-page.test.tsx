@@ -5,7 +5,7 @@ import { JSDOM } from "jsdom";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
-import { adminErrorMessage, filterQueueItems, getReminderDeliveryRefetchInterval, hasPermanentReminderEscalations, isAdminForbidden, isAdminMfaRequired, queueStateFromSearch, ReminderEscalationHistory, reminderDeliveryPollingInterval, shouldEnableAdminQueries, validateQueueFilters } from "../pages/admin";
+import { adminErrorMessage, filterQueueItems, getReminderDeliveryRefetchInterval, hasPermanentReminderEscalations, isAdminForbidden, isAdminMfaRequired, queueStateFromSearch, ReminderEscalationHistory, reminderDeliveryPollingInterval, reminderEscalationStateFromSearch, shouldEnableAdminQueries, validateQueueFilters } from "../pages/admin";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
 Object.assign(globalThis, {
@@ -15,7 +15,10 @@ Object.assign(globalThis, {
   MutationObserver: dom.window.MutationObserver,
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  window.history.replaceState({}, "", "/");
+});
 
 test("admin conflict errors provide an actionable accessible message", () => {
   assert.equal(
@@ -186,6 +189,8 @@ test("reminder escalation filters and pagination drive API requests and rendered
   fireEvent.click(view.getByTestId("button-load-more-reminder-escalations"));
   await waitFor(() => assert.ok(view.getByTestId("reminder-escalation-three")));
   assert.deepEqual(requests[1], { status: "open", limit: 25, offset: 2 });
+  assert.equal(window.location.search, "?escalationStatus=open&escalationOffset=2");
+  const sharedSearch = window.location.search;
   assert.equal(view.getAllByTestId("reminder-escalation-two").length, 1);
   assert.equal(view.queryByTestId("button-load-more-reminder-escalations"), null);
   assert.match(view.getByText(/Menampilkan 3 dari 3 eskalasi terbuka/).textContent ?? "", /3 dari 3/);
@@ -193,6 +198,7 @@ test("reminder escalation filters and pagination drive API requests and rendered
   fireEvent.click(view.getByTestId("filter-reminder-escalations-resolved"));
   await waitFor(() => assert.ok(view.getByTestId("reminder-escalation-resolved-one")));
   assert.deepEqual(requests[2], { status: "resolved", limit: 25, offset: 0 });
+  assert.equal(window.location.search, "?escalationStatus=resolved");
   assert.equal(view.queryByTestId("reminder-escalation-one"), null);
   assert.match(view.getByTestId("reminder-escalation-total").textContent ?? "", /7 total/);
   assert.match(view.getByText(/Menampilkan 1 dari 4 eskalasi selesai/).textContent ?? "", /1 dari 4/);
@@ -201,6 +207,62 @@ test("reminder escalation filters and pagination drive API requests and rendered
   await waitFor(() => assert.ok(view.getByTestId("reminder-escalation-one")));
   assert.equal(view.getByTestId("filter-reminder-escalations-open").getAttribute("aria-pressed"), "true");
   assert.equal(view.getByTestId("filter-reminder-escalations-resolved").getAttribute("aria-pressed"), "false");
+
+  view.unmount();
+  window.history.replaceState({}, "", `/admin${sharedSearch}`);
+  const sharedView = render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <ReminderEscalationHistory enabled onResolve={() => undefined} loadPage={loadPage} />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => assert.ok(sharedView.getByTestId("reminder-escalation-three")));
+  assert.ok(sharedView.getByTestId("reminder-escalation-one"));
+  assert.equal(sharedView.getAllByTestId("reminder-escalation-two").length, 1);
+  assert.deepEqual(requests.slice(-2), [
+    { status: "open", limit: 25, offset: 0 },
+    { status: "open", limit: 25, offset: 2 },
+  ]);
+});
+
+test("shared reminder escalation links restore status and page without changing audit details", async () => {
+  window.history.replaceState({}, "", "/admin?escalationStatus=resolved&escalationOffset=25");
+  const resolution = { id: "resolution-1", reminderDeliveryId: "resolved-one", note: "Sudah dihubungi", resolvedByPersonId: "admin-1", resolvedAt: "2030-01-09T05:00:00.000Z" };
+  const requests: Array<{ status?: string; offset?: number }> = [];
+  const loadPage = async (params?: { status?: "open" | "resolved"; limit?: number; offset?: number }) => {
+    requests.push(params ?? {});
+    return {
+      items: params?.offset === 25
+        ? [{ ...escalation("resolved-one", "resolved"), resolution }]
+        : [escalation("resolved-zero", "resolved")],
+      pagination: { offset: params?.offset ?? 0, limit: 25, returned: params?.offset === 0 ? 25 : 1, total: 26, hasMore: params?.offset === 0 },
+      counts: { open: 3, resolved: 4, total: 7 },
+    };
+  };
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <ReminderEscalationHistory enabled onResolve={() => undefined} loadPage={loadPage} />
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => assert.ok(view.getByTestId("reminder-resolution-resolved-one")));
+  assert.deepEqual(requests, [
+    { status: "resolved", limit: 25, offset: 0 },
+    { status: "resolved", limit: 25, offset: 25 },
+  ]);
+  assert.ok(view.getByTestId("reminder-escalation-resolved-zero"));
+  assert.match(view.getByTestId("reminder-escalation-total").textContent ?? "", /7 total/);
+  assert.match(view.getByTestId("reminder-resolution-resolved-one").textContent ?? "", /Sudah dihubungi/);
+
+  window.history.pushState({}, "", "/admin?escalationStatus=open");
+  window.dispatchEvent(new window.PopStateEvent("popstate"));
+  await waitFor(() => assert.equal(view.getByTestId("filter-reminder-escalations-open").getAttribute("aria-pressed"), "true"));
+  assert.deepEqual(requests[2], { status: "open", limit: 25, offset: 0 });
+});
+
+test("invalid reminder escalation URL state falls back safely", () => {
+  assert.deepEqual(reminderEscalationStateFromSearch("?escalationStatus=unknown&escalationOffset=-1"), { status: "open", offset: 0 });
+  assert.deepEqual(reminderEscalationStateFromSearch("?escalationStatus=resolved&escalationOffset=50"), { status: "resolved", offset: 50 });
 });
 
 test("admin summary renders every safe permanent-failure detail for the manager", async () => {

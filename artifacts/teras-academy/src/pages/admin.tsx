@@ -473,6 +473,29 @@ type ReminderEscalationPage = {
   counts: { open: number; resolved: number; total: number };
 };
 
+export type ReminderEscalationUrlState = {
+  status: ReminderEscalationStatusFilter;
+  offset: number;
+};
+
+export function reminderEscalationStateFromSearch(search: string): ReminderEscalationUrlState {
+  const params = new URLSearchParams(search);
+  const status = params.get("escalationStatus");
+  const offset = Number(params.get("escalationOffset"));
+  return {
+    status: status === "resolved" ? "resolved" : "open",
+    offset: Number.isSafeInteger(offset) && offset >= 0 ? offset : 0,
+  };
+}
+
+export function updateReminderEscalationUrl(state: ReminderEscalationUrlState) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("escalationStatus", state.status);
+  if (state.offset > 0) url.searchParams.set("escalationOffset", String(state.offset));
+  else url.searchParams.delete("escalationOffset");
+  window.history.pushState({}, "", url);
+}
+
 export function reminderEscalationQueryParams(status: ReminderEscalationStatusFilter, offset = 0) {
   return { status, limit: reminderEscalationPageSize, offset };
 }
@@ -495,7 +518,13 @@ export function ReminderEscalationHistory({ enabled, onResolve, loadPage = listA
   onResolve: (item: AdminReminderEscalation) => void;
   loadPage?: typeof listAdminReminderEscalations;
 }) {
-  const [status, setStatus] = useState<ReminderEscalationStatusFilter>("open");
+  const [urlState, setUrlState] = useState<ReminderEscalationUrlState>(() => reminderEscalationStateFromSearch(window.location.search));
+  const { status, offset } = urlState;
+  useEffect(() => {
+    const restoreFromUrl = () => setUrlState(reminderEscalationStateFromSearch(window.location.search));
+    window.addEventListener("popstate", restoreFromUrl);
+    return () => window.removeEventListener("popstate", restoreFromUrl);
+  }, []);
   const history = useInfiniteQuery({
     queryKey: getListAdminReminderEscalationsQueryKey(reminderEscalationQueryParams(status)),
     queryFn: ({ pageParam }) => loadPage(reminderEscalationQueryParams(status, pageParam)),
@@ -505,9 +534,33 @@ export function ReminderEscalationHistory({ enabled, onResolve, loadPage = listA
     staleTime: queryOptions.staleTime,
     refetchOnMount: queryOptions.refetchOnMount,
   });
-  const items = mergeReminderEscalationPages(history.data?.pages);
+  const loadedPages = history.data?.pages ?? [];
+  const displayedPages = loadedPages.filter(page => page.pagination.offset <= offset);
+  const displayedLastPage = displayedPages.at(-1);
+  useEffect(() => {
+    const loadedLastPage = loadedPages.at(-1);
+    if (!enabled || history.isFetchingNextPage || !loadedLastPage || loadedLastPage.pagination.offset >= offset || !loadedLastPage.pagination.hasMore) return;
+    void history.fetchNextPage();
+  }, [enabled, history, loadedPages, offset]);
+  const items = mergeReminderEscalationPages(displayedPages);
   const counts = history.data?.pages[0]?.counts;
   const filteredTotal = history.data?.pages[0]?.pagination.total ?? 0;
+  const selectStatus = (nextStatus: ReminderEscalationStatusFilter) => {
+    if (nextStatus === status && offset === 0) return;
+    const nextState = { status: nextStatus, offset: 0 };
+    updateReminderEscalationUrl(nextState);
+    setUrlState(nextState);
+  };
+  const loadNextPage = async () => {
+    const displayedPageIndex = loadedPages.findIndex(page => page.pagination.offset === displayedLastPage?.pagination.offset);
+    const cachedNextPage = displayedPageIndex >= 0 ? loadedPages[displayedPageIndex + 1] : undefined;
+    const result = cachedNextPage ? undefined : await history.fetchNextPage();
+    const nextPage = cachedNextPage ?? result?.data?.pages.at(-1);
+    if (!nextPage || nextPage.pagination.offset <= offset) return;
+    const nextState = { status, offset: nextPage.pagination.offset };
+    updateReminderEscalationUrl(nextState);
+    setUrlState(nextState);
+  };
 
   return <section aria-labelledby="reminder-escalation-history-title" data-testid="admin-reminder-escalation-history">
     <Card>
@@ -525,7 +578,7 @@ export function ReminderEscalationHistory({ enabled, onResolve, loadPage = listA
             size="sm"
             variant={status === "open" ? "default" : "outline"}
             aria-pressed={status === "open"}
-            onClick={() => setStatus("open")}
+            onClick={() => selectStatus("open")}
             data-testid="filter-reminder-escalations-open"
           >
             Terbuka ({counts?.open ?? "—"})
@@ -535,7 +588,7 @@ export function ReminderEscalationHistory({ enabled, onResolve, loadPage = listA
             size="sm"
             variant={status === "resolved" ? "default" : "outline"}
             aria-pressed={status === "resolved"}
-            onClick={() => setStatus("resolved")}
+            onClick={() => selectStatus("resolved")}
             data-testid="filter-reminder-escalations-resolved"
           >
             Selesai ({counts?.resolved ?? "—"})
@@ -559,7 +612,7 @@ export function ReminderEscalationHistory({ enabled, onResolve, loadPage = listA
               {item.status === "open" && <Button size="sm" onClick={() => onResolve(item)} data-testid={`button-resolve-history-reminder-${item.id}`}>Tandai ditangani</Button>}
             </div>
           </article>)}</div>
-          {history.hasNextPage && <div className="mt-4 flex justify-center"><Button type="button" variant="outline" onClick={() => history.fetchNextPage()} disabled={history.isFetchingNextPage} data-testid="button-load-more-reminder-escalations">{history.isFetchingNextPage ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Memuat…</> : "Muat halaman berikutnya"}</Button></div>}
+          {displayedLastPage?.pagination.hasMore && <div className="mt-4 flex justify-center"><Button type="button" variant="outline" onClick={loadNextPage} disabled={history.isFetchingNextPage} data-testid="button-load-more-reminder-escalations">{history.isFetchingNextPage ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Memuat…</> : "Muat halaman berikutnya"}</Button></div>}
         </State>
       </CardContent>
     </Card>

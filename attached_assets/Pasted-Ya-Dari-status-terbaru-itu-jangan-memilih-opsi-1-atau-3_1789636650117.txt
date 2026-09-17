@@ -1,0 +1,38 @@
+Ya. Dari status terbaru itu, **jangan memilih opsi 1 atau 3 dulu**.
+
+Yang paling tepat untuk dilanjutkan adalah **opsi 2: memulihkan dependensi test**, karena task sebelumnya sudah menyatakan:
+
+* implementasi dan production build berhasil;
+* workflow kembali normal;
+* tetapi **validasi belum lengkap**;
+* `jsdom` dan `@testing-library/react` sudah dideklarasikan tetapi tidak tersedia di instalasi workspace;
+* task bahkan ditandai **complete without validation**.
+
+Jadi jangan menganggap task tersebut benar-benar tervalidasi hanya karena build berhasil.
+
+### Instruksi yang saya sarankan diberikan ke Replit
+
+```text
+Lanjutkan dengan memulihkan dependensi testing yang sudah dideklarasikan, khususnya jsdom dan @testing-library/react.
+
+Batasan:
+1. Jangan mengubah fitur atau behavior aplikasi.
+2. Jangan mengubah schema database atau migration journal.
+3. Jangan mengubah task lain.
+4. Jangan menghapus atau mengganti dependency yang sudah dideklarasikan hanya untuk membuat test lewat.
+5. Gunakan package manager dan lockfile yang sudah menjadi canonical di workspace.
+6. Setelah dependency tersedia, jalankan kembali:
+   - test regresi yang terkait task #158
+   - typecheck
+   - production build
+   - workflow utama setelah restart
+7. Jika test tetap gagal, laporkan failure sebenarnya beserta root cause; jangan menandai complete hanya berdasarkan build.
+8. Jangan membuat perubahan tambahan di luar pemulihan dependency dan validasi.
+
+Tujuan akhir:
+Task #158 baru dianggap tervalidasi setelah test regresi dan typecheck dapat benar-benar dieksekusi, selain production build dan workflow yang sudah berhasil.
+```
+
+**Catatan penting:** pesan `Waiting for main agent before applying changes…` berarti agent tersebut **belum sedang menerapkan perubahan baru**. Jadi jangan membuka pekerjaan paralel. Biarkan boundary yang sedang aktif diselesaikan/diarahkan dengan instruksi di atas.
+
+Dan untuk governance proyek Anda: **Task #158 tidak boleh dijadikan bukti “fully verified” hanya dari status `complete without validation`.**
