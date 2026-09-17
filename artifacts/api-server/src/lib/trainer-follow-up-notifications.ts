@@ -10,7 +10,7 @@ import {
 } from "@workspace/db";
 import { ReplitConnectors } from "@replit/connectors-sdk";
 import { and, asc, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
-import { createHmac } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { logger } from "./logger";
 import { workspaceAssignmentContexts } from "./teras";
 
@@ -70,9 +70,17 @@ export type SignedWebhookRequest = {
   headers: {
     "Content-Type": "application/json";
     "Idempotency-Key": string;
+    "X-Teras-Webhook-Key-Id": string;
     "X-Teras-Webhook-Timestamp": string;
     "X-Teras-Webhook-Signature": string;
   };
+};
+export type WebhookSigningKey = {
+  id: string;
+  secret: string;
+};
+export type WebhookVerificationKey = WebhookSigningKey & {
+  acceptUntil?: Date;
 };
 type ReminderPreferences = {
   emailEnabled: boolean;
@@ -205,10 +213,11 @@ async function sendPermanentFailureNotification(input: PermanentFailureNotificat
 
 export function createSignedPermanentFailureWebhookRequest(
   input: Omit<PermanentFailureFallbackInput, "url">,
-  secret: string,
+  signingKey: WebhookSigningKey,
   timestamp: Date,
 ): SignedWebhookRequest {
-  if (!secret) throw new Error("TERAS_OPERATIONS_FALLBACK_WEBHOOK_SECRET is not configured");
+  if (!signingKey.id.trim()) throw new Error("Webhook signing key id is not configured");
+  if (!signingKey.secret) throw new Error("TERAS_OPERATIONS_FALLBACK_WEBHOOK_SECRET is not configured");
   if (!Number.isFinite(timestamp.getTime())) throw new Error("Webhook timestamp is invalid");
 
   const body = JSON.stringify({
@@ -220,7 +229,7 @@ export function createSignedPermanentFailureWebhookRequest(
     idempotencyKey: input.idempotencyKey,
   });
   const timestampSeconds = Math.floor(timestamp.getTime() / 1_000).toString();
-  const signature = createHmac("sha256", secret)
+  const signature = createHmac("sha256", signingKey.secret)
     .update(`${timestampSeconds}.${body}`, "utf8")
     .digest("hex");
 
@@ -229,16 +238,39 @@ export function createSignedPermanentFailureWebhookRequest(
     headers: {
       "Content-Type": "application/json",
       "Idempotency-Key": input.idempotencyKey,
+      "X-Teras-Webhook-Key-Id": signingKey.id,
       "X-Teras-Webhook-Timestamp": timestampSeconds,
       "X-Teras-Webhook-Signature": `v1=${signature}`,
     },
   };
 }
 
+export function verifySignedPermanentFailureWebhookRequest(
+  request: Pick<SignedWebhookRequest, "body" | "headers">,
+  verificationKeys: WebhookVerificationKey[],
+  now: Date,
+) {
+  if (!Number.isFinite(now.getTime())) throw new Error("Webhook verification time is invalid");
+  const keyId = request.headers["X-Teras-Webhook-Key-Id"];
+  const key = verificationKeys.find(candidate => candidate.id === keyId);
+  if (!key?.secret || (key.acceptUntil && now.getTime() > key.acceptUntil.getTime())) return false;
+
+  const signature = request.headers["X-Teras-Webhook-Signature"];
+  if (!signature.startsWith("v1=")) return false;
+  const suppliedDigest = signature.slice(3);
+  if (!/^[a-f0-9]{64}$/.test(suppliedDigest)) return false;
+  const expectedDigest = createHmac("sha256", key.secret)
+    .update(`${request.headers["X-Teras-Webhook-Timestamp"]}.${request.body}`, "utf8")
+    .digest("hex");
+  return timingSafeEqual(Buffer.from(suppliedDigest, "hex"), Buffer.from(expectedDigest, "hex"));
+}
+
 async function sendPermanentFailureFallback(input: PermanentFailureFallbackInput) {
   const secret = process.env.TERAS_OPERATIONS_FALLBACK_WEBHOOK_SECRET;
+  const keyId = process.env.TERAS_OPERATIONS_FALLBACK_WEBHOOK_KEY_ID;
   if (!secret) throw new Error("TERAS_OPERATIONS_FALLBACK_WEBHOOK_SECRET is not configured");
-  const request = createSignedPermanentFailureWebhookRequest(input, secret, new Date());
+  if (!keyId) throw new Error("TERAS_OPERATIONS_FALLBACK_WEBHOOK_KEY_ID is not configured");
+  const request = createSignedPermanentFailureWebhookRequest(input, { id: keyId, secret }, new Date());
   const response = await fetch(input.url, {
     method: "POST",
     headers: request.headers,
