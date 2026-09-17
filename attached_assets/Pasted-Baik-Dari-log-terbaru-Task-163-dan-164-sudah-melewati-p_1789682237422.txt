@@ -1,0 +1,51 @@
+Baik. Dari log terbaru, **Task #163 dan #164 sudah melewati post-merge setup**, dan sekarang **Task #165 sedang menjadi task aktif**.
+
+### Posisi saat ini
+
+| Task     | Status              | Keterangan                                                                       |
+| -------- | ------------------- | -------------------------------------------------------------------------------- |
+| **#163** | Completed           | Post-merge recovery berhasil: setup, reconciliation, seluruh typecheck PASS      |
+| **#164** | Completed           | Retention cleanup dikoordinasikan agar hanya dihitung sekali saat multi-instance |
+| **#165** | **Working / aktif** | Memberi peringatan bila cleanup riwayat tren terus gagal                         |
+
+Untuk **#165**, ruang lingkupnya tepat sebagai hardening operasional:
+
+> Cleanup tetap tidak boleh menjatuhkan server, tetapi kegagalan yang berulang harus menghasilkan sinyal yang dapat diketahui pengelola.
+
+### Yang perlu dijaga
+
+Jangan memperluas task #165 menjadi perubahan besar. Validasi yang seharusnya dicari:
+
+1. **Success path** tetap normal.
+2. **Satu kegagalan** tidak membuat server gagal/startup crash.
+3. **Kegagalan berulang** menghasilkan warning/operational signal.
+4. Warning tidak menjadi spam tanpa batas.
+5. Cleanup tetap aman dan idempoten.
+6. Mekanisme koordinasi multi-instance dari **#164 tidak rusak**.
+7. Typecheck, test terkait, build, dan workflow tetap PASS.
+8. Tidak ada perubahan schema/migration yang tidak diperlukan.
+
+### Instruksi untuk agent
+
+Anda bisa kirim:
+
+```text
+Lanjutkan Task #165 sesuai scope semula.
+
+Fokus hanya pada operational warning ketika cleanup riwayat tren gagal berulang.
+
+Acceptance criteria:
+- Cleanup yang berhasil tetap berjalan seperti baseline.
+- Kegagalan cleanup tidak menjatuhkan API/server.
+- Kegagalan berulang menghasilkan sinyal operasional yang jelas dan dapat ditindaklanjuti.
+- Hindari warning spam yang tidak terkendali; gunakan mekanisme yang konsisten dengan logging/observability yang sudah ada.
+- Pertahankan koordinasi single-execution multi-instance dari Task #164.
+- Jangan mengubah schema, migration journal, atau subsystem lain tanpa kebutuhan langsung.
+- Jalankan test terkait, typecheck, production build, dan workflow reconciliation.
+- Jika validasi environment gagal, laporkan penyebabnya dan jangan menandai task sebagai fully validated hanya berdasarkan build.
+- Jangan menyentuh Task #164 atau task lain yang belum menjadi assignment.
+
+Selesaikan dan laporkan evidence implementasi serta hasil validasi.
+```
+
+**Jangan membuka Task #166 secara paralel** selama #165 masih aktif. Tunggu sampai #165 memberikan status completion dan evidence validasi.
