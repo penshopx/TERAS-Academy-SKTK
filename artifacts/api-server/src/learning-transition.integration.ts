@@ -1,5 +1,12 @@
 import {
   assessmentAttemptsTable,
+  diagnosticGapsTable,
+  diagnosticProfilesTable,
+  diagnosticRecommendationsTable,
+  diagnosticSessionsTable,
+  diagnosticTemplatesTable,
+  competencyFrameworksTable,
+  competencyUnitsTable,
   db,
   enrollmentPathwayEventsTable,
   evidenceReviewsTable,
@@ -43,6 +50,13 @@ const fixtureIds = {
   rolledBackPractice: `${fixturePrefix}-practice-rollback`,
   rolledBackEvidence: `${fixturePrefix}-evidence-rollback`,
   rolledBackReview: `${fixturePrefix}-review-rollback`,
+  diagnosticSession: `${fixturePrefix}-diagnostic-session`,
+  diagnosticProfile: `${fixturePrefix}-diagnostic-profile`,
+  diagnosticGap: `${fixturePrefix}-diagnostic-gap`,
+  diagnosticRecommendation: `${fixturePrefix}-diagnostic-recommendation`,
+  diagnosticTemplate: `${fixturePrefix}-diagnostic-template`,
+  diagnosticFramework: `${fixturePrefix}-diagnostic-framework`,
+  diagnosticUnit: `${fixturePrefix}-diagnostic-unit`,
 };
 const routeRecords: {
   practiceIds: string[];
@@ -115,6 +129,13 @@ async function cleanup() {
   await db.delete(evidenceReviewsTable).where(eq(evidenceReviewsTable.id, fixtureIds.review));
   await db.delete(evidenceReviewsTable).where(eq(evidenceReviewsTable.id, fixtureIds.rolledBackReview));
   await db.delete(remediationPlansTable).where(eq(remediationPlansTable.id, fixtureIds.remediation));
+  await db.delete(diagnosticRecommendationsTable).where(eq(diagnosticRecommendationsTable.id, fixtureIds.diagnosticRecommendation));
+  await db.delete(diagnosticGapsTable).where(eq(diagnosticGapsTable.id, fixtureIds.diagnosticGap));
+  await db.delete(diagnosticProfilesTable).where(eq(diagnosticProfilesTable.id, fixtureIds.diagnosticProfile));
+  await db.delete(diagnosticSessionsTable).where(eq(diagnosticSessionsTable.id, fixtureIds.diagnosticSession));
+  await db.delete(diagnosticTemplatesTable).where(eq(diagnosticTemplatesTable.id, fixtureIds.diagnosticTemplate));
+  await db.delete(competencyUnitsTable).where(eq(competencyUnitsTable.id, fixtureIds.diagnosticUnit));
+  await db.delete(competencyFrameworksTable).where(eq(competencyFrameworksTable.id, fixtureIds.diagnosticFramework));
   await db.delete(gapsTable).where(eq(gapsTable.id, fixtureIds.gap));
   await db.delete(assessmentAttemptsTable).where(eq(assessmentAttemptsTable.id, fixtureIds.reassessment));
   await db.delete(evidenceTable).where(inArray(evidenceTable.id, [fixtureIds.evidence, fixtureIds.pathBEvidence]));
@@ -177,6 +198,86 @@ async function seedFixtures() {
     required: true,
     estimatedDurationMinutes: 1,
     status: "PUBLISHED",
+    createdBy: fixturePrefix,
+  });
+  await db.insert(competencyFrameworksTable).values({
+    id: fixtureIds.diagnosticFramework,
+    code: `${fixturePrefix}-CAPABILITY`,
+    name: "Capability Development Fixture Framework",
+    description: "Disposable generic diagnostic framework for transition integration coverage.",
+    domain: "capability-development",
+    version: fixturePrefix,
+    status: "active",
+    createdBy: fixturePrefix,
+  });
+  await db.insert(competencyUnitsTable).values({
+    id: fixtureIds.diagnosticUnit,
+    frameworkId: fixtureIds.diagnosticFramework,
+    code: `${fixturePrefix}-UNIT`,
+    title: "Generic capability practice",
+    description: "Disposable generic competency unit for transition integration coverage.",
+    status: "active",
+    sequence: 1,
+    createdBy: fixturePrefix,
+  });
+  await db.insert(diagnosticTemplatesTable).values({
+    id: fixtureIds.diagnosticTemplate,
+    frameworkId: fixtureIds.diagnosticFramework,
+    pathwayId: "path-a",
+    version: fixturePrefix,
+    name: "Capability Development Fixture Diagnostic",
+    description: "Disposable generic diagnostic template for transition integration coverage.",
+    status: "active",
+    dimensions: ["capability"],
+    createdBy: fixturePrefix,
+  });
+  await db.insert(diagnosticSessionsTable).values({
+    id: fixtureIds.diagnosticSession,
+    learnerId: "learner-demo",
+    enrollmentId: "enrollment-demo",
+    pathwayId: "path-a",
+    templateId: fixtureIds.diagnosticTemplate,
+    frameworkId: fixtureIds.diagnosticFramework,
+    status: "completed",
+    progress: 100,
+    completedAt: new Date(),
+    createdBy: fixturePrefix,
+  });
+  await db.insert(diagnosticProfilesTable).values({
+    id: fixtureIds.diagnosticProfile,
+    sessionId: fixtureIds.diagnosticSession,
+    learnerId: "learner-demo",
+    pathwayId: "path-a",
+    frameworkId: fixtureIds.diagnosticFramework,
+    frameworkVersion: fixturePrefix,
+    currentState: "Developing",
+    completedAt: new Date(),
+    createdBy: fixturePrefix,
+  });
+  await db.insert(diagnosticGapsTable).values({
+    id: fixtureIds.diagnosticGap,
+    profileId: fixtureIds.diagnosticProfile,
+    competencyUnitId: fixtureIds.diagnosticUnit,
+    frameworkId: fixtureIds.diagnosticFramework,
+    unitCode: `${fixturePrefix}-UNIT`,
+    unitTitle: "Generic capability practice",
+    diagnosis: "Fixture diagnostic gap for causal transition coverage.",
+    severity: "Moderate",
+    createdBy: fixturePrefix,
+  });
+  await db.insert(diagnosticRecommendationsTable).values({
+    id: fixtureIds.diagnosticRecommendation,
+    profileId: fixtureIds.diagnosticProfile,
+    competencyUnitId: fixtureIds.diagnosticUnit,
+    frameworkId: fixtureIds.diagnosticFramework,
+    unitCode: `${fixturePrefix}-UNIT`,
+    unitTitle: "Generic capability practice",
+    moduleId: "m03",
+    practiceTaskId: "task-m03",
+    kind: "practice",
+    title: "Complete safe isolation practice",
+    rationale: "Fixture recommendation for causal transition coverage.",
+    priority: "high",
     createdBy: fixturePrefix,
   });
   await db.insert(learningOutcomesTable).values({

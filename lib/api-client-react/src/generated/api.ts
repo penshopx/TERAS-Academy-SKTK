@@ -142,6 +142,8 @@ import type {
   TrainerDashboard,
   TrainerEvidenceReviewInput,
   TrainerPracticeReviewInput,
+  TrainerRemediationOpen,
+  TrainerRemediationOpenInput,
   TrainerReminderPreferenceRevision,
   TrainerReminderPreferences,
   TrainerReminderPreferencesInput,
@@ -2883,6 +2885,77 @@ export const useReviewEvidenceByTrainer = <TError = ErrorType<BadRequestResponse
         TContext
       > => {
       return useMutation(getReviewEvidenceByTrainerMutationOptions(options));
+    }
+
+export const getOpenTrainerRemediationUrl = () => {
+
+
+
+
+  return `/api/trainer/remediation`
+}
+
+/**
+ * @summary Open an operational remediation from a diagnostic chain
+ */
+export const openTrainerRemediation = async (trainerRemediationOpenInput: TrainerRemediationOpenInput, options?: Parameters<typeof customFetch>[1]): Promise<TrainerRemediationOpen> => {
+
+  return customFetch<TrainerRemediationOpen>(getOpenTrainerRemediationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(trainerRemediationOpenInput)
+  }
+);}
+
+
+
+
+
+export const getOpenTrainerRemediationMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof openTrainerRemediation>>, TError,{data: BodyType<TrainerRemediationOpenInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof openTrainerRemediation>>, TError,{data: BodyType<TrainerRemediationOpenInput>}, TContext> => {
+
+const mutationKey = ['openTrainerRemediation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof openTrainerRemediation>>, {data: BodyType<TrainerRemediationOpenInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  openTrainerRemediation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type OpenTrainerRemediationMutationResult = NonNullable<Awaited<ReturnType<typeof openTrainerRemediation>>>
+    export type OpenTrainerRemediationMutationBody = BodyType<TrainerRemediationOpenInput>
+    export type OpenTrainerRemediationMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>
+
+    /**
+ * @summary Open an operational remediation from a diagnostic chain
+ */
+export const useOpenTrainerRemediation = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof openTrainerRemediation>>, TError,{data: BodyType<TrainerRemediationOpenInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof openTrainerRemediation>>,
+        TError,
+        {data: BodyType<TrainerRemediationOpenInput>},
+        TContext
+      > => {
+      return useMutation(getOpenTrainerRemediationMutationOptions(options));
     }
 
 export const getReviewPracticeAttemptUrl = (attemptId: string,) => {

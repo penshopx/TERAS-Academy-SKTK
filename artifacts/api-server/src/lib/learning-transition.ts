@@ -378,6 +378,16 @@ export async function transitionLearningState(
         Object.assign(references, primaryDiagnosticChain);
       }
     }
+    // Capability Development (Path A) must always retain the originating
+    // diagnostic chain. Pre-certification remains governed by its existing
+    // contract; do not broaden this requirement across pathways.
+    if (context.pathway.purpose === "capability-development" && !diagnosticChains.length) {
+      return reject(
+        "CAUSAL_REFERENCE_INVALID",
+        "Capability Development learning requires a diagnostic profile, gap, and recommendation.",
+        storedState,
+      );
+    }
     let outcome: typeof learningOutcomesTable.$inferSelect | undefined;
     let practiceAttempt: typeof practiceAttemptsTable.$inferSelect | undefined;
     let evidence: typeof evidenceTable.$inferSelect | undefined;

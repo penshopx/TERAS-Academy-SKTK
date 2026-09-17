@@ -245,4 +245,5 @@ pnpm --filter @workspace/api-server run test:admin-management
 pnpm --filter @workspace/api-server run test:competency
 pnpm --filter @workspace/api-server run test:course-authoring
 pnpm --filter @workspace/scripts run test:solar-pv-baseline-integration
+pnpm --filter @workspace/scripts run gate:path-a-golden-journey
 pnpm run typecheck

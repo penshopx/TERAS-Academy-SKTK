@@ -5,22 +5,29 @@
  */
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
+import { eq } from "drizzle-orm";
 import {
   assessmentAttemptsTable, assessmentCriteriaTable, assessmentsTable, baselineModulesTable, contentResourcesTable, courseVersionsTable, coursesTable, db, evidenceRequirementsTable,
   competencyFrameworksTable, competencyUnitsTable, diagnosticGapsTable, diagnosticOptionsTable, diagnosticQuestionsTable,
-  diagnosticRecommendationsTable, diagnosticTemplatesTable, pathwayCompetencyUnitsTable, competencyUnitPracticeTasksTable,
-  evidenceReviewsTable, gapsTable, gapEventsTable, learningRecordLinksTable, learningTransitionEventsTable, reassessmentLinksTable, readinessEventsTable, readinessTransferEventsTable,
-  learningBaselinesTable, modulesTable, pathwayBaselineModulesTable, pathwayModuleContractsTable,
-  practiceAttemptsTable, practiceReviewsTable, remediationActivitiesTable, remediationEventsTable,
-  remediationPlansTable, practiceTasksTable, readinessGatesTable,
+    diagnosticRecommendationsTable, diagnosticTemplatesTable, pathwayCompetencyUnitsTable, competencyUnitPracticeTasksTable,
+  evidenceReviewsTable, enrollmentsTable, gapEventsTable, learningRecordLinksTable, learningTransitionEventsTable, reassessmentLinksTable, readinessEventsTable, readinessTransferEventsTable,
+  learningBaselinesTable, learningBaselineVersionsTable, modulesTable, pathwaysTable, pathwayBaselineModulesTable, pathwayModuleContractsTable,
+    practiceAttemptsTable, practiceReviewsTable, remediationActivitiesTable, remediationEventsTable,
+    practiceTasksTable, readinessGatesTable,
 } from "@workspace/db";
 import { createIntegrationTestApp } from "./integration-test-app";
 import { ObjectStorageService } from "./lib/objectStorage";
 import { workspaceAssignmentContexts } from "./lib/teras";
 
 const run = crypto.randomUUID();
+const pathAGoldenJourney = process.env.TERAS_PATH_A_GOLDEN_JOURNEY === "1";
+// Keep the existing certification-preparation fixture semantics unchanged;
+// Path A opts into its explicit purpose only in the dedicated gate.
+const pathwayPurpose = pathAGoldenJourney ? "capability-development" : "unspecified";
+const terminalPortfolio = pathAGoldenJourney ? "Capability Portfolio" : "Certification Readiness Portfolio";
 const storageScope = (process.env.TERAS_GATE_STORAGE_NAMESPACE ?? "local-test").replace(/[^a-zA-Z0-9._-]/g, "-");
 const id = (kind: string) => `gate-${run}-${kind}`;
+const secondModule = id("second-module"), secondTask = id("second-task");
 const ids = {
   admin: id("admin"), learner: id("learner"), otherLearner: id("other-learner"),
   trainer: id("trainer"), assessor: id("assessor"), otherTrainer: id("other-trainer"), otherAssessor: id("other-assessor"),
@@ -72,25 +79,76 @@ async function main() {
     // Admin owns the identities, programme, pathway, cohort and active enrollment.
     for (const [person, name, role] of [[ids.learner, "Gate Learner", "learner"], [ids.otherLearner, "Other Learner", "learner"], [ids.trainer, "Gate Instructor", "trainer"], [ids.otherTrainer, "Other Instructor", "trainer"], [ids.assessor, "Gate Validator", "assessor"], [ids.otherAssessor, "Other Validator", "assessor"]] as const)
       await expect("/admin/users", "admin", { id: person, name, initials: name.slice(0, 2), email: `${person}@test.invalid`, clerkUserId: person, organization: null, status: "active", roles: [role] });
-    await expect("/admin/programs", "admin", { id: ids.program, domain: "Gate", name: "Certification preparation", description: "run scoped", status: "active" });
+    await expect("/admin/programs", "admin", { id: ids.program, domain: "Gate", name: pathAGoldenJourney ? "Capability development" : "Certification preparation", description: "run scoped", status: "active" });
     await expect("/admin/programs", "admin", { id: ids.otherProgram, domain: "Other", name: "Other program", description: "run scoped", status: "active" });
-    await expect("/admin/pathways", "admin", { id: ids.path, programId: ids.program, name: "Preparation pathway", type: "Standard", outcome: "Internal readiness", status: "active" });
+    await expect("/admin/pathways", "admin", { id: ids.path, programId: ids.program, name: pathAGoldenJourney ? "Capability pathway" : "Preparation pathway", type: "Standard", purpose: pathAGoldenJourney ? "unspecified" : pathwayPurpose, outcome: "Internal readiness", status: "active" });
     await expect("/admin/pathways", "admin", { id: ids.otherPath, programId: ids.otherProgram, name: "Other pathway", type: "Standard", outcome: "Other", status: "active" });
+    if (pathAGoldenJourney) {
+      const earlyBaseline = id("baseline");
+      const earlyBaselineModule = id("baseline-module");
+      await db.insert(modulesTable).values([
+        { id: ids.module, programId: ids.program, pathwayId: ids.path, sequence: 1, code: "GATE", name: "Gate capability", capability: "Safe gate practice", evidence: "Observed record", learningOutcomes: [], theory: [] },
+        { id: secondModule, programId: ids.program, pathwayId: ids.path, sequence: 2, code: "SECOND", name: "Second capability", capability: "Independent second capability", evidence: "Second record", learningOutcomes: [], theory: [] },
+      ]);
+      await db.insert(practiceTasksTable).values([
+        { id: ids.task, moduleId: ids.module, title: "Gate task", description: "Practice", mode: "Observed", durationMinutes: 5, output: "Record" },
+        { id: secondTask, moduleId: secondModule, title: "Second task", description: "Separate practice", mode: "Observed", durationMinutes: 5, output: "Second record" },
+      ]);
+      await db.insert(learningBaselinesTable).values({ id: earlyBaseline, code: id("baseline-code"), name: "Gate baseline", description: "Run-scoped shared learning baseline" });
+      await db.insert(baselineModulesTable).values([
+        { id: earlyBaselineModule, baselineId: earlyBaseline, moduleId: ids.module, sequence: 1, code: "M01", name: "Gate capability", learningOutcome: "Safe gate practice", evidenceId: "E01" },
+        { id: id("second-baseline-module"), baselineId: earlyBaseline, moduleId: secondModule, sequence: 2, code: "M02", name: "Second capability", learningOutcome: "Independent second capability", evidenceId: "E02" },
+      ]);
+      await db.insert(pathwayBaselineModulesTable).values([
+        { id: id("pathway-baseline-module"), pathwayId: ids.path, baselineModuleId: earlyBaselineModule, sequence: 1 },
+        { id: id("second-pathway-baseline-module"), pathwayId: ids.path, baselineModuleId: id("second-baseline-module"), sequence: 2 },
+      ]);
+      const earlyVersion = id("baseline-version");
+      await db.insert(learningBaselineVersionsTable).values({
+        id: earlyVersion,
+        baselineId: earlyBaseline,
+        version: 1,
+        status: "PUBLISHED",
+        snapshot: {
+          baselineId: earlyBaseline,
+          modules: [
+            { id: earlyBaselineModule, baselineId: earlyBaseline, moduleId: ids.module, code: "M01", name: "Gate capability" },
+            { id: id("second-baseline-module"), baselineId: earlyBaseline, moduleId: secondModule, code: "M02", name: "Second capability" },
+          ],
+          selections: [
+            { pathwayId: ids.path, baselineModuleId: earlyBaselineModule, sequence: 1 },
+            { pathwayId: ids.path, baselineModuleId: id("second-baseline-module"), sequence: 2 },
+          ],
+        },
+        publishedAt: new Date(),
+        publishedBy: ids.trainer,
+      });
+      await db.update(learningBaselinesTable).set({ publishedVersionId: earlyVersion }).where(eq(learningBaselinesTable.id, earlyBaseline));
+    }
     await expect("/admin/cohorts", "admin", { id: ids.cohort, programId: ids.program, name: `Cohort ${run}`, status: "active", startsOn: null, endsOn: null });
-    await expect("/admin/enrollments", "admin", { id: ids.enrollment, learnerId: ids.learner, programId: ids.program, pathwayId: ids.path, trainerId: ids.trainer, assessorId: ids.assessor, cohortId: ids.cohort, status: "active" });
-    await expect("/admin/enrollments", "admin", { id: id("other-enrollment"), learnerId: ids.otherLearner, programId: ids.otherProgram, pathwayId: ids.otherPath, trainerId: ids.otherTrainer, assessorId: ids.otherAssessor, cohortId: null, status: "active" });
+    if (pathAGoldenJourney) {
+      // The enrollment is fixture authentication context; all learner journey
+      // mutations below still use the authorized production routes.
+      const baselineVersionId = id("baseline-version");
+      await db.insert(enrollmentsTable).values([
+        { id: ids.enrollment, learnerId: ids.learner, programId: ids.program, pathwayId: ids.path, trainerId: ids.trainer, assessorId: ids.assessor, cohortId: ids.cohort, status: "active", baselineVersionId, createdBy: ids.admin },
+        { id: id("other-enrollment"), learnerId: ids.otherLearner, programId: ids.otherProgram, pathwayId: ids.otherPath, trainerId: ids.otherTrainer, assessorId: ids.otherAssessor, cohortId: null, status: "active", baselineVersionId: null, createdBy: ids.admin },
+      ]);
+    } else {
+      await expect("/admin/enrollments", "admin", { id: ids.enrollment, learnerId: ids.learner, programId: ids.program, pathwayId: ids.path, trainerId: ids.trainer, assessorId: ids.assessor, cohortId: ids.cohort, status: "active" });
+      await expect("/admin/enrollments", "admin", { id: id("other-enrollment"), learnerId: ids.otherLearner, programId: ids.otherProgram, pathwayId: ids.otherPath, trainerId: ids.otherTrainer, assessorId: ids.otherAssessor, cohortId: null, status: "active" });
+    }
     const trainerAssignments = await workspaceAssignmentContexts(ids.trainer, "trainer");
     assert.equal(trainerAssignments.length, 1, "trainer fixture must have exactly one active assignment");
     assert.equal(trainerAssignments[0]?.program.id, ids.program, "trainer fixture must be assigned to the journey program");
     assert.equal(trainerAssignments[0]?.pathway.id, ids.path, "trainer fixture must be assigned to the journey pathway before authoring");
     assert.equal((await request("/admin/users", "learner")).status, 403, "cross-role admin access");
 
-    const secondModule = id("second-module"), secondTask = id("second-task");
-    await db.insert(modulesTable).values([
+    if (!pathAGoldenJourney) await db.insert(modulesTable).values([
       { id: ids.module, programId: ids.program, pathwayId: ids.path, sequence: 1, code: "GATE", name: "Gate capability", capability: "Safe gate practice", evidence: "Observed record", learningOutcomes: [], theory: [] },
       { id: secondModule, programId: ids.program, pathwayId: ids.path, sequence: 2, code: "SECOND", name: "Second capability", capability: "Independent second capability", evidence: "Second record", learningOutcomes: [], theory: [] },
     ]);
-    await db.insert(practiceTasksTable).values([
+    if (!pathAGoldenJourney) await db.insert(practiceTasksTable).values([
       { id: ids.task, moduleId: ids.module, title: "Gate task", description: "Practice", mode: "Observed", durationMinutes: 5, output: "Record" },
       { id: secondTask, moduleId: secondModule, title: "Second task", description: "Separate practice", mode: "Observed", durationMinutes: 5, output: "Second record" },
     ]);
@@ -137,16 +195,21 @@ async function main() {
 
     // The authoring API creates the full publishable hierarchy and claims managed media.
     const baselineId = id("baseline"), baselineModuleId = id("baseline-module");
-    await db.insert(learningBaselinesTable).values({ id: baselineId, code: id("baseline-code"), name: "Gate baseline", description: "Run-scoped shared learning baseline" });
+    if (!pathAGoldenJourney) await db.insert(learningBaselinesTable).values({ id: baselineId, code: id("baseline-code"), name: "Gate baseline", description: "Run-scoped shared learning baseline" });
     const secondBaselineModuleId = id("second-baseline-module");
-    await db.insert(baselineModulesTable).values([
+    if (!pathAGoldenJourney) await db.insert(baselineModulesTable).values([
       { id: baselineModuleId, baselineId, moduleId: ids.module, sequence: 1, code: "M01", name: "Gate capability", learningOutcome: "Safe gate practice", evidenceId: "E01" },
       { id: secondBaselineModuleId, baselineId, moduleId: secondModule, sequence: 2, code: "M02", name: "Second capability", learningOutcome: "Independent second capability", evidenceId: "E02" },
     ]);
-    await db.insert(pathwayBaselineModulesTable).values([
+    if (!pathAGoldenJourney) await db.insert(pathwayBaselineModulesTable).values([
       { id: id("pathway-baseline-module"), pathwayId: ids.path, baselineModuleId, sequence: 1 },
       { id: id("second-pathway-baseline-module"), pathwayId: ids.path, baselineModuleId: secondBaselineModuleId, sequence: 2 },
     ]);
+    if (pathAGoldenJourney) {
+      // Enrollment is created before the run-scoped catalogue is published.
+      // Promote the fixture pathway only after its canonical baseline exists.
+      await db.update(pathwaysTable).set({ purpose: pathwayPurpose }).where(eq(pathwaysTable.id, ids.path));
+    }
     const otherModule = id("other-module"), otherTask = id("other-task");
     await db.insert(modulesTable).values({ id: otherModule, programId: ids.otherProgram, pathwayId: ids.otherPath, sequence: 1, code: "OTHER", name: "Other capability", capability: "Other", evidence: "Other", learningOutcomes: [], theory: [] });
     await db.insert(practiceTasksTable).values({ id: otherTask, moduleId: otherModule, title: "Other task", description: "Other", mode: "Observed", durationMinutes: 5, output: "Other" });
@@ -206,7 +269,7 @@ async function main() {
     await db.insert(assessmentsTable).values({ id: ids.assessment, moduleId: ids.module, name: "Gate assessment", gateCode: "G1" });
     await db.insert(assessmentCriteriaTable).values(["valid", "relevant", "sufficient", "traceable"].map((code, index) => ({ id: id(`criterion-${code}`), assessmentId: ids.assessment, code, label: code, layer: "evidence", critical: index === 0 })));
     await db.insert(evidenceRequirementsTable).values({ id: id("requirement"), moduleId: ids.module, code: "E1", name: "Gate evidence", description: "Valid evidence", allowedTypes: ["Checklist"] });
-    await db.insert(pathwayModuleContractsTable).values({ id: id("pathway-module-contract"), pathwayId: ids.path, moduleId: ids.module, assessmentId: ids.assessment, evidenceRequirementId: id("requirement"), gateCode: "G1", assessment: "Gate assessment", evidence: "Gate evidence", output: "Readiness record", kpi: "All criteria competent", portfolio: "Certification Readiness Portfolio" });
+    await db.insert(pathwayModuleContractsTable).values({ id: id("pathway-module-contract"), pathwayId: ids.path, moduleId: ids.module, assessmentId: ids.assessment, evidenceRequirementId: id("requirement"), gateCode: "G1", assessment: "Gate assessment", evidence: "Gate evidence", output: "Readiness record", kpi: "All criteria competent", portfolio: terminalPortfolio });
     await db.insert(readinessGatesTable).values({ id: ids.gate, programId: ids.program, pathwayId: ids.path, sequence: 1, code: "G1", name: "Internal gate", requirement: "Internal preparation", assessmentMode: "Mapped", evidenceMode: "Mapped", competencyUnitId });
     const criteria = (await db.select().from(assessmentCriteriaTable)).filter(row => row.assessmentId === ids.assessment);
     const transition = (currentState: string, targetState: string, key: string, references: object = {}) => ({ currentState, targetState, learnerId: ids.learner, pathwayId: ids.path, programId: ids.program, activityId: activity.id, entityReference: key, reason: "gate journey", idempotencyKey: id(key), references });
@@ -248,10 +311,41 @@ async function main() {
     const reviewCountBeforeOther = (await db.select().from(evidenceReviewsTable)).filter(row => row.evidenceId === evidence.id).length;
     assert.equal((await request(`/trainer/evidence/${evidence.id}/review`, "trainer", { idempotencyKey: id("unassigned-review"), status: "Valid", comment: "unassigned", quality: { valid: true, relevant: true, sufficient: true, traceable: true } }, "POST", true)).status, 403);
     assert.equal((await db.select().from(evidenceReviewsTable)).filter(row => row.evidenceId === evidence.id).length, reviewCountBeforeOther);
-    const gapId = id("gap"), planId = id("remediation"), remediationActivityId = id("remediation-activity");
-    await db.insert(gapsTable).values({ id: gapId, learnerId: ids.learner, pathwayId: ids.path, moduleId: ids.module, capability: "Safe gate practice", criterion: "Sufficiency", severity: "Moderate", priority: "High", diagnosis: "Evidence requires remediation", gate: "G1", recommendedAction: "Repeat practice" });
-    await db.insert(remediationPlansTable).values({ id: planId, gapId, title: "Repeat supervised practice", description: "Complete remediation before reassessment", dueLabel: "Gate run" });
-    await db.insert(remediationActivitiesTable).values({ id: remediationActivityId, planId, title: "Supervised re-practice", description: "Repeat the practice safely", type: "Practice" });
+    const remediationEventCountBeforeAuthorization = (await db.select().from(remediationEventsTable)).length;
+    assert.equal((await request("/trainer/remediation", "learner", { diagnosticProfileId: diagnosticProfile.id, diagnosticGapId: diagnosticGap.id, diagnosticRecommendationId: diagnosticRecommendation.id, moduleId: ids.module, title: "Unauthorized", description: "no", activityTitle: "no", activityDescription: "no", activityType: "Practice", idempotencyKey: id("unauthorized-remediation") })).status, 403);
+    assert.equal((await db.select().from(remediationEventsTable)).length, remediationEventCountBeforeAuthorization, "unauthorized remediation opening must not mutate");
+    assert.equal((await request("/trainer/remediation", "assessor", { diagnosticProfileId: diagnosticProfile.id, diagnosticGapId: diagnosticGap.id, diagnosticRecommendationId: diagnosticRecommendation.id, moduleId: ids.module, title: "Wrong role", description: "no", activityTitle: "no", activityDescription: "no", activityType: "Practice", idempotencyKey: id("wrong-role-remediation") })).status, 403);
+    assert.equal((await db.select().from(remediationEventsTable)).length, remediationEventCountBeforeAuthorization, "wrong-role remediation opening must not mutate");
+    assert.equal((await request("/trainer/remediation", "trainer", { diagnosticProfileId: diagnosticProfile.id, diagnosticGapId: diagnosticGap.id, diagnosticRecommendationId: diagnosticRecommendation.id, moduleId: "wrong-module", title: "Mismatched", description: "no", activityTitle: "no", activityDescription: "no", activityType: "Practice", idempotencyKey: id("mismatched-remediation") })).status, 409);
+    assert.equal((await db.select().from(remediationEventsTable)).length, remediationEventCountBeforeAuthorization, "mismatched remediation opening must not mutate");
+    const remediationBody = {
+      diagnosticProfileId: diagnosticProfile.id,
+      diagnosticGapId: diagnosticGap.id,
+      diagnosticRecommendationId: diagnosticRecommendation.id,
+      moduleId: ids.module,
+      title: "Repeat supervised practice",
+      description: "Complete remediation before reassessment",
+      dueLabel: "Gate run",
+      activityTitle: "Supervised re-practice",
+      activityDescription: "Repeat the practice safely",
+      activityType: "Practice",
+      idempotencyKey: id("remediation-open"),
+    };
+    const remediation = await expect("/trainer/remediation", "trainer", remediationBody);
+    const { gapId, remediationPlanId: planId, remediationActivityId } = remediation;
+    const remediationRetry = await expect("/trainer/remediation", "trainer", remediationBody, 200);
+    assert.equal(remediationRetry.remediationPlanId, planId, "remediation retry must return the original plan");
+    assert.equal((await db.select().from(remediationEventsTable)).filter(row => row.activityId === remediationActivityId).length, 1, "remediation retry must not append an event");
+    assert.equal((await request("/trainer/remediation", "trainer", { ...remediationBody, title: "Conflicting reuse" })).status, 409, "conflicting remediation idempotency reuse is rejected");
+    const concurrentBody = { ...remediationBody, idempotencyKey: id("concurrent-remediation") };
+    const concurrentResponses = await Promise.all([
+      request("/trainer/remediation", "trainer", concurrentBody),
+      request("/trainer/remediation", "trainer", concurrentBody),
+    ]);
+    assert(concurrentResponses.every(response => response.status === 200 || response.status === 201), "concurrent same-key remediation requests must return 200/201");
+    const concurrentRemediations = await Promise.all(concurrentResponses.map(response => response.json() as Promise<any>));
+    assert.equal(new Set(concurrentRemediations.map(item => item.remediationPlanId)).size, 1, "concurrent same-key remediation requests must share one plan");
+    assert.equal((await db.select().from(remediationEventsTable)).filter(row => row.idempotencyKey === concurrentBody.idempotencyKey).length, 1, "concurrent same-key remediation requests must create one event");
     const evidenceReviewBody = { idempotencyKey: id("evidence-review"), status: "Needs revision", comment: "Remediate", quality: { valid: true, relevant: true, sufficient: false, traceable: true } };
     await expect(`/trainer/evidence/${evidence.id}/review`, "trainer", evidenceReviewBody, 200);
     const gapEventsAfterFirstReview = (await db.select().from(gapEventsTable)).filter(row => row.gapId === gapId).length;
@@ -377,7 +471,7 @@ async function main() {
     const passport = directPassport;
     assert.match(passport.readinessDisclaimer, /not an official competency decision or certification claim/i);
     assert.equal(passport.achievements[0].capability, "Safe gate practice");
-    assert.equal(passport.terminalPortfolio, "Certification Readiness Portfolio");
+    assert.equal(passport.terminalPortfolio, terminalPortfolio);
     assert(passport.timeline.some((step: any) => step.id === reassessmentStep.id), "passport must reuse the persisted capability timeline");
     const passportStages: Array<[string, (step: any) => boolean]> = [
       ["learning", step => step.label === "Learning: IN_PROGRESS"],
@@ -392,7 +486,7 @@ async function main() {
     for (const [stage, matches] of passportStages) {
       assertDiagnosticChain(passport.timeline.find(matches), `passport ${stage}`);
     }
-    process.stdout.write(`Certification preparation shared-state journey passed (${run})\n`);
+    process.stdout.write(`${pathAGoldenJourney ? "Path A Golden Journey" : "Certification preparation shared-state journey"} passed (${run})\n`);
   } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 }
 await main();

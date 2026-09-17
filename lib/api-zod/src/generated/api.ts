@@ -2470,6 +2470,51 @@ export const ReviewEvidenceByTrainerResponse = zod.object({
 
 
 /**
+ * @summary Open an operational remediation from a diagnostic chain
+ */
+
+
+
+
+
+
+
+
+
+export const openTrainerRemediationBodyIdempotencyKeyMin = 8;
+export const openTrainerRemediationBodyIdempotencyKeyMax = 160;
+
+
+
+export const OpenTrainerRemediationBody = zod.object({
+  "diagnosticProfileId": zod.string().min(1),
+  "diagnosticGapId": zod.string().min(1),
+  "diagnosticRecommendationId": zod.string().min(1),
+  "moduleId": zod.string().min(1),
+  "title": zod.string().min(1),
+  "description": zod.string().min(1),
+  "dueLabel": zod.string().nullish(),
+  "activityTitle": zod.string().min(1),
+  "activityDescription": zod.string().min(1),
+  "activityType": zod.string().min(1),
+  "idempotencyKey": zod.string().min(openTrainerRemediationBodyIdempotencyKeyMin).max(openTrainerRemediationBodyIdempotencyKeyMax)
+})
+
+export const OpenTrainerRemediationResponse = zod.object({
+  "gapId": zod.string(),
+  "remediationPlanId": zod.string(),
+  "remediationActivityId": zod.string(),
+  "learnerId": zod.string(),
+  "pathwayId": zod.string(),
+  "moduleId": zod.string(),
+  "diagnosticProfileId": zod.string(),
+  "diagnosticGapId": zod.string(),
+  "diagnosticRecommendationId": zod.string(),
+  "status": zod.enum(['Open'])
+})
+
+
+/**
  * @summary Record trainer feedback on a practice attempt
  */
 export const ReviewPracticeAttemptParams = zod.object({

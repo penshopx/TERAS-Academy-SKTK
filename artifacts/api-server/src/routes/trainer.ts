@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
-import { GetTrainerDashboardResponse, GetTrainerReminderPreferenceHistoryResponse, GetTrainerReminderPreferencesResponse, GetTrainerReviewQueueResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse, UpdateTrainerReminderPreferencesBody, UpdateTrainerReminderPreferencesResponse } from "@workspace/api-zod";
+import { GetTrainerDashboardResponse, GetTrainerReminderPreferenceHistoryResponse, GetTrainerReminderPreferencesResponse, GetTrainerReviewQueueResponse, OpenTrainerRemediationBody, OpenTrainerRemediationResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse, UpdateTrainerReminderPreferencesBody, UpdateTrainerReminderPreferencesResponse } from "@workspace/api-zod";
 import { db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, trainerReminderPreferencesTable } from "@workspace/db";
-import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { evidenceRecords, gapRecords, pathwayHasModule, remediationRecords, selectedBaselineModuleIds, workspaceAssignmentContexts } from "../lib/teras";
 import { authorizeWorkspaceRole } from "../lib/authorization";
 import { learningNextAction } from "../lib/learning-transition";
@@ -429,5 +429,46 @@ router.post("/trainer/evidence/:evidenceId/review", async (req, res): Promise<vo
   if (!review) throw new Error("Evidence review was not recorded");
   if (review.idempotencyFingerprint !== fingerprint) { res.status(409).json({ error: "The idempotency key was already used with a different evidence review." }); return; }
   res.json(ReviewEvidenceByTrainerResponse.parse((await evidenceRecords(evidence.learnerId, evidence.pathwayId, context.baselineVersionId)).find((item) => item.id === evidence.id)));
+});
+router.post("/trainer/remediation", async (req, res): Promise<void> => {
+  const body = OpenTrainerRemediationBody.safeParse(req.body);
+  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+  const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;
+  const input = body.data;
+  const fingerprint = reviewFingerprint({ ...input, idempotencyKey: undefined });
+  const result = await db.transaction(async tx => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.idempotencyKey}))`);
+    const [profile] = await tx.select().from(diagnosticProfilesTable).where(eq(diagnosticProfilesTable.id, input.diagnosticProfileId)).limit(1);
+    const [diagnosticGap] = await tx.select().from(diagnosticGapsTable).where(eq(diagnosticGapsTable.id, input.diagnosticGapId)).limit(1);
+    const [recommendation] = await tx.select().from(diagnosticRecommendationsTable).where(eq(diagnosticRecommendationsTable.id, input.diagnosticRecommendationId)).limit(1);
+    if (!profile || !diagnosticGap || !recommendation || profile.pathwayId === null) return { error: "Diagnostic chain not found" as const, status: 404 as const };
+    if (profile.pathwayId === null || profile.learnerId === null || diagnosticGap.profileId !== profile.id || recommendation.profileId !== profile.id ||
+      diagnosticGap.competencyUnitId !== recommendation.competencyUnitId || recommendation.moduleId !== input.moduleId) {
+      return { error: "Diagnostic references do not form one learner pathway module chain" as const, status: 409 as const };
+    }
+    const contexts = await workspaceAssignmentContexts(trainerId, "trainer");
+    const context = contexts.find(item => item.learner.id === profile.learnerId && item.pathway.id === profile.pathwayId);
+    if (!context) return { error: "Learner is outside the trainer's assigned active pathway" as const, status: 403 as const };
+    if (context.pathway.purpose !== "capability-development") return { error: "Operational remediation opening is limited to Capability Development" as const, status: 409 as const };
+    const [module] = await tx.select().from(modulesTable).where(and(eq(modulesTable.id, input.moduleId), eq(modulesTable.programId, context.program.id))).limit(1);
+    if (!module || module.pathwayId !== context.pathway.id) return { error: "Module is outside the active pathway" as const, status: 409 as const };
+    const [existing] = await tx.select().from(remediationEventsTable).where(eq(remediationEventsTable.idempotencyKey, input.idempotencyKey)).limit(1);
+    if (existing) {
+      if (existing.idempotencyFingerprint !== fingerprint) return { error: "The idempotency key was already used with a different remediation" as const, status: 409 as const };
+      const [existingActivity] = await tx.select().from(remediationActivitiesTable).where(eq(remediationActivitiesTable.id, existing.activityId)).limit(1);
+      const [existingPlan] = existingActivity ? await tx.select().from(remediationPlansTable).where(eq(remediationPlansTable.id, existingActivity.planId)).limit(1) : [];
+      const [existingGap] = existingPlan ? await tx.select().from(gapsTable).where(eq(gapsTable.id, existingPlan.gapId)).limit(1) : [];
+      return { value: { gapId: existingGap?.id, remediationPlanId: existingPlan?.id, remediationActivityId: existingActivity?.id, learnerId: profile.learnerId, pathwayId: profile.pathwayId, moduleId: input.moduleId, diagnosticProfileId: profile.id, diagnosticGapId: diagnosticGap.id, diagnosticRecommendationId: recommendation.id, status: "Open" as const }, statusCode: 200 as const };
+    }
+    const gapId = `gap-${crypto.randomUUID()}`, planId = `remediation-${crypto.randomUUID()}`, activityId = `remediation-activity-${crypto.randomUUID()}`;
+    await tx.insert(gapsTable).values({ id: gapId, learnerId: profile.learnerId, pathwayId: profile.pathwayId, moduleId: input.moduleId, capability: recommendation.title, criterion: diagnosticGap.competencyUnitId, severity: "Moderate", priority: "High", diagnosis: "Diagnostic chain requires operational remediation", gate: "Capability development", recommendedAction: input.title, createdBy: trainerId });
+    await tx.insert(remediationPlansTable).values({ id: planId, gapId, title: input.title, description: input.description, dueLabel: input.dueLabel, createdBy: trainerId });
+    await tx.insert(remediationActivitiesTable).values({ id: activityId, planId, title: input.activityTitle, description: input.activityDescription, type: input.activityType, createdBy: trainerId });
+    await tx.insert(gapEventsTable).values({ id: `gap-event-${crypto.randomUUID()}`, gapId, status: "Open", createdBy: trainerId });
+    await tx.insert(remediationEventsTable).values({ id: `remediation-event-${crypto.randomUUID()}`, activityId, status: "Open", idempotencyKey: input.idempotencyKey, idempotencyFingerprint: fingerprint, createdBy: trainerId });
+    return { value: { gapId, remediationPlanId: planId, remediationActivityId: activityId, learnerId: profile.learnerId, pathwayId: profile.pathwayId, moduleId: input.moduleId, diagnosticProfileId: profile.id, diagnosticGapId: diagnosticGap.id, diagnosticRecommendationId: recommendation.id, status: "Open" as const }, statusCode: 201 as const };
+  });
+  if ("error" in result) { res.status(result.status ?? 409).json({ error: result.error }); return; }
+  res.status(result.statusCode).json(OpenTrainerRemediationResponse.parse(result.value));
 });
 export default router;

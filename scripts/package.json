@@ -33,6 +33,7 @@
     "test:certification-preparation-release-workflow": "bash ./certification-preparation-release-workflow.test.sh",
     "test:app-storage-sidecar-smoke-contract": "bash ./app-storage-sidecar-smoke-contract.test.sh",
     "gate:certification-preparation": "bash ./certification-preparation-gate.sh",
+    "gate:path-a-golden-journey": "bash ./path-a-golden-journey-gate.sh",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

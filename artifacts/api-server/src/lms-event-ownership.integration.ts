@@ -666,19 +666,13 @@ try {
     );
 
     await pathwayClient.query("BEGIN");
-    const concurrentBackdatedSelection = pathwayClient.query(
-      `INSERT INTO teras_enrollment_pathway_events
-         (id, enrollment_id, pathway_id, program_id, sequence, created_at)
-       VALUES ($1, $2, $3, $4, 1, '2000-01-01T00:00:00Z'::timestamptz)`,
-      [selectionId, enrollmentId, laterPathwayId, programId],
-    );
-    await waitForEnrollmentLockWait(
-      "lms-event-ownership-pathway-race",
-      `${eventCase.name} did not make the pathway selection wait for the enrollment row lock`,
-    );
-    await eventClient.query("COMMIT");
-    await assert.rejects(
-      concurrentBackdatedSelection,
+    const concurrentBackdatedSelection = assert.rejects(
+      pathwayClient.query(
+        `INSERT INTO teras_enrollment_pathway_events
+           (id, enrollment_id, pathway_id, program_id, sequence, created_at)
+         VALUES ($1, $2, $3, $4, 1, '2000-01-01T00:00:00Z'::timestamptz)`,
+        [selectionId, enrollmentId, laterPathwayId, programId],
+      ),
       (error: unknown) => {
         if (!(error instanceof Error)) return false;
         const databaseError = error as Error & { code?: string; constraint?: string };
@@ -687,6 +681,12 @@ try {
       },
       `the backdated pathway selection must be rejected after the concurrent ${eventCase.name} commits`,
     );
+    await waitForEnrollmentLockWait(
+      "lms-event-ownership-pathway-race",
+      `${eventCase.name} did not make the pathway selection wait for the enrollment row lock`,
+    );
+    await eventClient.query("COMMIT");
+    await concurrentBackdatedSelection;
     await pathwayClient.query("ROLLBACK");
 
     const eventFirstAudit = await client.query<{

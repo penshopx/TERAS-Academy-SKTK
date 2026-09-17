@@ -5,6 +5,53 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+export interface TrainerRemediationOpenInput {
+  /** @minLength 1 */
+  diagnosticProfileId: string;
+  /** @minLength 1 */
+  diagnosticGapId: string;
+  /** @minLength 1 */
+  diagnosticRecommendationId: string;
+  /** @minLength 1 */
+  moduleId: string;
+  /** @minLength 1 */
+  title: string;
+  /** @minLength 1 */
+  description: string;
+  dueLabel?: string | null;
+  /** @minLength 1 */
+  activityTitle: string;
+  /** @minLength 1 */
+  activityDescription: string;
+  /** @minLength 1 */
+  activityType: string;
+  /**
+     * @minLength 8
+     * @maxLength 160
+     */
+  idempotencyKey: string;
+}
+
+export type TrainerRemediationOpenStatus = typeof TrainerRemediationOpenStatus[keyof typeof TrainerRemediationOpenStatus];
+
+
+export const TrainerRemediationOpenStatus = {
+  Open: 'Open',
+} as const;
+
+export interface TrainerRemediationOpen {
+  gapId: string;
+  remediationPlanId: string;
+  remediationActivityId: string;
+  learnerId: string;
+  pathwayId: string;
+  moduleId: string;
+  diagnosticProfileId: string;
+  diagnosticGapId: string;
+  diagnosticRecommendationId: string;
+  status: TrainerRemediationOpenStatus;
+}
+
 export interface CausalReferences {[key: string]: string[]}
 
 export interface DiagnosticSessionInput { [key: string]: unknown }
