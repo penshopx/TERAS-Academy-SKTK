@@ -17,6 +17,7 @@ import { workspaceAssignmentContexts } from "./teras";
 const DUE_SOON_DAYS = 7;
 const MAX_ATTEMPTS = 3;
 const RETRY_AFTER_MINUTES = 30;
+const WEBHOOK_REPLAY_TOLERANCE_MS = 5 * 60_000;
 
 export type ReminderKind = "due_soon" | "overdue";
 
@@ -249,8 +250,14 @@ export function verifySignedPermanentFailureWebhookRequest(
   request: Pick<SignedWebhookRequest, "body" | "headers">,
   verificationKeys: WebhookVerificationKey[],
   now: Date,
+  replayToleranceMs = WEBHOOK_REPLAY_TOLERANCE_MS,
 ) {
   if (!Number.isFinite(now.getTime())) throw new Error("Webhook verification time is invalid");
+  if (!Number.isFinite(replayToleranceMs) || replayToleranceMs < 0) throw new Error("Webhook replay tolerance is invalid");
+  const timestampSeconds = request.headers["X-Teras-Webhook-Timestamp"];
+  if (!/^\d+$/.test(timestampSeconds)) return false;
+  const timestampMs = Number(timestampSeconds) * 1_000;
+  if (!Number.isSafeInteger(timestampMs) || Math.abs(now.getTime() - timestampMs) > replayToleranceMs) return false;
   const keyId = request.headers["X-Teras-Webhook-Key-Id"];
   const key = verificationKeys.find(candidate => candidate.id === keyId);
   if (!key?.secret || (key.acceptUntil && now.getTime() > key.acceptUntil.getTime())) return false;
@@ -265,7 +272,7 @@ export function verifySignedPermanentFailureWebhookRequest(
   return timingSafeEqual(Buffer.from(suppliedDigest, "hex"), Buffer.from(expectedDigest, "hex"));
 }
 
-async function sendPermanentFailureFallback(input: PermanentFailureFallbackInput) {
+export async function sendPermanentFailureFallback(input: PermanentFailureFallbackInput) {
   const secret = process.env.TERAS_OPERATIONS_FALLBACK_WEBHOOK_SECRET;
   const keyId = process.env.TERAS_OPERATIONS_FALLBACK_WEBHOOK_KEY_ID;
   if (!secret) throw new Error("TERAS_OPERATIONS_FALLBACK_WEBHOOK_SECRET is not configured");

@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
+import { createServer } from "node:http";
 import test from "node:test";
 import {
   createSignedPermanentFailureWebhookRequest,
   dueReminderKind,
   latestFollowUps,
+  sendPermanentFailureFallback,
   verifySignedPermanentFailureWebhookRequest,
 } from "./trainer-follow-up-notifications";
 
@@ -70,8 +72,9 @@ test("secret rotation preserves payload and accepts the old key only during its 
   const transitionEndsAt = new Date("2026-09-10T13:00:00.000Z");
   const oldKey = { id: "operations-2026-08", secret: "old-secret", acceptUntil: transitionEndsAt };
   const activeKey = { id: "operations-2026-09", secret: "active-secret" };
-  const oldRequest = createSignedPermanentFailureWebhookRequest(input, oldKey, timestamp);
-  const activeRequest = createSignedPermanentFailureWebhookRequest(input, activeKey, timestamp);
+  const requestTimestamp = new Date("2026-09-10T12:59:59.000Z");
+  const oldRequest = createSignedPermanentFailureWebhookRequest(input, oldKey, requestTimestamp);
+  const activeRequest = createSignedPermanentFailureWebhookRequest(input, activeKey, requestTimestamp);
   const verificationKeys = [activeKey, oldKey];
 
   assert.equal(activeRequest.body, oldRequest.body);
@@ -87,4 +90,83 @@ test("secret rotation preserves payload and accepts the old key only during its 
     verifySignedPermanentFailureWebhookRequest(activeRequest, verificationKeys, new Date("2026-09-10T13:00:00.001Z")),
     true,
   );
+});
+
+test("fallback transport preserves signed headers and raw body while rejecting tampering and stale timestamps", async (t) => {
+  const signingKey = { id: "operations-transport-test", secret: "transport-test-secret" };
+  const input = {
+    trainerName: "Trainer Transport",
+    target: "Observed practice",
+    lastAttemptAt: new Date("2026-09-10T11:45:00.000Z"),
+    reason: "Layanan email tidak dapat menyelesaikan pengiriman.",
+    idempotencyKey: "notification-transport-123",
+  };
+  const received: Array<{ accepted: boolean; body: string }> = [];
+  const server = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on("data", chunk => chunks.push(Buffer.from(chunk)));
+    request.on("end", () => {
+      const body = Buffer.concat(chunks).toString("utf8");
+      const headers = {
+        "Content-Type": request.headers["content-type"] as "application/json",
+        "Idempotency-Key": String(request.headers["idempotency-key"] ?? ""),
+        "X-Teras-Webhook-Key-Id": String(request.headers["x-teras-webhook-key-id"] ?? ""),
+        "X-Teras-Webhook-Timestamp": String(request.headers["x-teras-webhook-timestamp"] ?? ""),
+        "X-Teras-Webhook-Signature": String(request.headers["x-teras-webhook-signature"] ?? ""),
+      };
+      const accepted = verifySignedPermanentFailureWebhookRequest(
+        { body, headers },
+        [signingKey],
+        new Date(),
+      );
+      received.push({ accepted, body });
+      response.writeHead(accepted ? 204 : 401).end();
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  t.after(() => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())));
+  const address = server.address();
+  assert(address && typeof address === "object");
+  const url = `http://127.0.0.1:${address.port}/operations`;
+
+  const previousSecret = process.env.TERAS_OPERATIONS_FALLBACK_WEBHOOK_SECRET;
+  const previousKeyId = process.env.TERAS_OPERATIONS_FALLBACK_WEBHOOK_KEY_ID;
+  process.env.TERAS_OPERATIONS_FALLBACK_WEBHOOK_SECRET = signingKey.secret;
+  process.env.TERAS_OPERATIONS_FALLBACK_WEBHOOK_KEY_ID = signingKey.id;
+  t.after(() => {
+    if (previousSecret === undefined) delete process.env.TERAS_OPERATIONS_FALLBACK_WEBHOOK_SECRET;
+    else process.env.TERAS_OPERATIONS_FALLBACK_WEBHOOK_SECRET = previousSecret;
+    if (previousKeyId === undefined) delete process.env.TERAS_OPERATIONS_FALLBACK_WEBHOOK_KEY_ID;
+    else process.env.TERAS_OPERATIONS_FALLBACK_WEBHOOK_KEY_ID = previousKeyId;
+  });
+
+  await sendPermanentFailureFallback({ ...input, url });
+  assert.deepEqual(received[0], {
+    accepted: true,
+    body: createSignedPermanentFailureWebhookRequest(input, signingKey, new Date()).body,
+  });
+
+  const currentRequest = createSignedPermanentFailureWebhookRequest(input, signingKey, new Date());
+  const tamperedResponse = await fetch(url, {
+    method: "POST",
+    headers: currentRequest.headers,
+    body: `${currentRequest.body} `,
+  });
+  assert.equal(tamperedResponse.status, 401);
+
+  const staleRequest = createSignedPermanentFailureWebhookRequest(
+    input,
+    signingKey,
+    new Date(Date.now() - 5 * 60_000 - 1_000),
+  );
+  const staleResponse = await fetch(url, {
+    method: "POST",
+    headers: staleRequest.headers,
+    body: staleRequest.body,
+  });
+  assert.equal(staleResponse.status, 401);
+  assert.deepEqual(received.map(item => item.accepted), [true, false, false]);
 });
