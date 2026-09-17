@@ -1,7 +1,21 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import test from "node:test";
-import { adminErrorMessage, filterQueueItems, getReminderDeliveryRefetchInterval, hasPermanentReminderEscalations, isAdminForbidden, isAdminMfaRequired, queueStateFromSearch, reminderDeliveryPollingInterval, shouldEnableAdminQueries, validateQueueFilters } from "../pages/admin";
+import test, { afterEach } from "node:test";
+import { JSDOM } from "jsdom";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import React from "react";
+import { adminErrorMessage, filterQueueItems, getReminderDeliveryRefetchInterval, hasPermanentReminderEscalations, isAdminForbidden, isAdminMfaRequired, queueStateFromSearch, ReminderEscalationHistory, reminderDeliveryPollingInterval, shouldEnableAdminQueries, validateQueueFilters } from "../pages/admin";
+
+const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
+Object.assign(globalThis, {
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  MutationObserver: dom.window.MutationObserver,
+});
+
+afterEach(() => cleanup());
 
 test("admin conflict errors provide an actionable accessible message", () => {
   assert.equal(
@@ -119,6 +133,74 @@ test("admin summary stops polling after every reminder notification reaches a fi
   assert.equal(getReminderDeliveryRefetchInterval({ failedTrainerReminders: [reminder] }), false);
   assert.equal(getReminderDeliveryRefetchInterval({ failedTrainerReminders: [] }), false);
   assert.equal(getReminderDeliveryRefetchInterval(undefined), false);
+});
+
+const escalation = (id: string, status: "open" | "resolved") => ({
+  id,
+  trainerId: "trainer-1",
+  trainerName: `Trainer ${id}`,
+  target: `Target ${id}`,
+  targetAt: "2030-01-10T00:00:00.000Z",
+  lastAttemptAt: "2030-01-09T03:00:00.000Z",
+  reason: `Alasan ${id}`,
+  emailNotification: null,
+  webhookNotification: null,
+  status,
+  resolution: null,
+});
+
+test("reminder escalation filters and pagination drive API requests and rendered history", async () => {
+  const firstPage = {
+    items: [escalation("one", "open"), escalation("two", "open")],
+    pagination: { offset: 0, limit: 25, returned: 2, total: 3, hasMore: true },
+    counts: { open: 3, resolved: 4, total: 7 },
+  };
+  const lastPage = {
+    items: [escalation("two", "open"), escalation("three", "open")],
+    pagination: { offset: 2, limit: 25, returned: 2, total: 3, hasMore: false },
+    counts: { open: 3, resolved: 4, total: 7 },
+  };
+  const resolvedPage = {
+    items: [escalation("resolved-one", "resolved")],
+    pagination: { offset: 0, limit: 25, returned: 1, total: 4, hasMore: true },
+    counts: { open: 3, resolved: 4, total: 7 },
+  };
+  const requests: Array<{ status?: string; limit?: number; offset?: number }> = [];
+  const loadPage = async (params?: { status?: "open" | "resolved"; limit?: number; offset?: number }) => {
+    requests.push(params ?? {});
+    if (params?.status === "resolved") return resolvedPage;
+    return params?.offset === 2 ? lastPage : firstPage;
+  };
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <ReminderEscalationHistory enabled onResolve={() => undefined} loadPage={loadPage} />
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => assert.ok(view.getByTestId("reminder-escalation-one")));
+  assert.deepEqual(requests[0], { status: "open", limit: 25, offset: 0 });
+  assert.match(view.getByTestId("reminder-escalation-total").textContent ?? "", /7 total/);
+  assert.match(view.getByText(/Menampilkan 2 dari 3 eskalasi terbuka/).textContent ?? "", /2 dari 3/);
+
+  fireEvent.click(view.getByTestId("button-load-more-reminder-escalations"));
+  await waitFor(() => assert.ok(view.getByTestId("reminder-escalation-three")));
+  assert.deepEqual(requests[1], { status: "open", limit: 25, offset: 2 });
+  assert.equal(view.getAllByTestId("reminder-escalation-two").length, 1);
+  assert.equal(view.queryByTestId("button-load-more-reminder-escalations"), null);
+  assert.match(view.getByText(/Menampilkan 3 dari 3 eskalasi terbuka/).textContent ?? "", /3 dari 3/);
+
+  fireEvent.click(view.getByTestId("filter-reminder-escalations-resolved"));
+  await waitFor(() => assert.ok(view.getByTestId("reminder-escalation-resolved-one")));
+  assert.deepEqual(requests[2], { status: "resolved", limit: 25, offset: 0 });
+  assert.equal(view.queryByTestId("reminder-escalation-one"), null);
+  assert.match(view.getByTestId("reminder-escalation-total").textContent ?? "", /7 total/);
+  assert.match(view.getByText(/Menampilkan 1 dari 4 eskalasi selesai/).textContent ?? "", /1 dari 4/);
+
+  fireEvent.click(view.getByTestId("filter-reminder-escalations-open"));
+  await waitFor(() => assert.ok(view.getByTestId("reminder-escalation-one")));
+  assert.equal(view.getByTestId("filter-reminder-escalations-open").getAttribute("aria-pressed"), "true");
+  assert.equal(view.getByTestId("filter-reminder-escalations-resolved").getAttribute("aria-pressed"), "false");
 });
 
 test("admin summary renders every safe permanent-failure detail for the manager", async () => {

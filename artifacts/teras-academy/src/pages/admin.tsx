@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import React, { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -467,21 +467,45 @@ function NotificationChannelStatus({ label, notification }: {
 type ReminderEscalationStatusFilter = "open" | "resolved";
 const reminderEscalationPageSize = 25;
 
-function ReminderEscalationHistory({ enabled, onResolve }: {
+type ReminderEscalationPage = {
+  items: AdminReminderEscalation[];
+  pagination: { offset: number; returned: number; total: number; hasMore: boolean };
+  counts: { open: number; resolved: number; total: number };
+};
+
+export function reminderEscalationQueryParams(status: ReminderEscalationStatusFilter, offset = 0) {
+  return { status, limit: reminderEscalationPageSize, offset };
+}
+
+export function nextReminderEscalationPageOffset(page: ReminderEscalationPage) {
+  return page.pagination.hasMore ? page.pagination.offset + page.pagination.returned : undefined;
+}
+
+export function mergeReminderEscalationPages(pages: ReminderEscalationPage[] = []) {
+  const seen = new Set<string>();
+  return pages.flatMap(page => page.items.filter(item => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  }));
+}
+
+export function ReminderEscalationHistory({ enabled, onResolve, loadPage = listAdminReminderEscalations }: {
   enabled: boolean;
   onResolve: (item: AdminReminderEscalation) => void;
+  loadPage?: typeof listAdminReminderEscalations;
 }) {
   const [status, setStatus] = useState<ReminderEscalationStatusFilter>("open");
   const history = useInfiniteQuery({
-    queryKey: getListAdminReminderEscalationsQueryKey({ status, limit: reminderEscalationPageSize }),
-    queryFn: ({ pageParam }) => listAdminReminderEscalations({ status, limit: reminderEscalationPageSize, offset: pageParam }),
+    queryKey: getListAdminReminderEscalationsQueryKey(reminderEscalationQueryParams(status)),
+    queryFn: ({ pageParam }) => loadPage(reminderEscalationQueryParams(status, pageParam)),
     initialPageParam: 0,
-    getNextPageParam: page => page.pagination.hasMore ? page.pagination.offset + page.pagination.returned : undefined,
+    getNextPageParam: nextReminderEscalationPageOffset,
     enabled,
     staleTime: queryOptions.staleTime,
     refetchOnMount: queryOptions.refetchOnMount,
   });
-  const items = history.data?.pages.flatMap(page => page.items) ?? [];
+  const items = mergeReminderEscalationPages(history.data?.pages);
   const counts = history.data?.pages[0]?.counts;
   const filteredTotal = history.data?.pages[0]?.pagination.total ?? 0;
 
