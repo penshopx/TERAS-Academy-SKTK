@@ -110,13 +110,39 @@ async function main() {
     await page.getByLabel("Quiet hours end").fill("20:00");
     await page.getByTestId("full-day-quiet-hours-warning").waitFor();
 
-    await page.getByRole("button", { name: "Save reminder preferences" }).click();
-    await page.getByRole("alertdialog").getByText("Pause reminders for the full 24 hours?", { exact: true }).waitFor();
-    await page.getByRole("button", { name: "Go back" }).click();
-    if (submitted.length !== 0) throw new Error("Cancelling the full-day confirmation submitted a preference change.");
+    const savePreferences = page.getByRole("button", { name: "Save reminder preferences" });
+    const fullDayDialog = page.getByRole("alertdialog");
+    const cancelFullDayPause = page.getByRole("button", { name: "Go back" });
+    const confirmFullDayPause = page.getByTestId("confirm-full-day-quiet-hours");
 
-    await page.getByRole("button", { name: "Save reminder preferences" }).click();
-    await page.getByTestId("confirm-full-day-quiet-hours").click();
+    await savePreferences.focus();
+    await page.keyboard.press("Enter");
+    await fullDayDialog.getByText("Pause reminders for the full 24 hours?", { exact: true }).waitFor();
+    if (!await fullDayDialog.evaluate(dialog => dialog.contains(dialog.ownerDocument.activeElement))) {
+      throw new Error("Opening the full-day confirmation did not move focus into the dialog.");
+    }
+    await page.keyboard.press("Escape");
+    await fullDayDialog.waitFor({ state: "hidden" });
+    await savePreferences.waitFor();
+    if (!await savePreferences.evaluate(button => button === button.ownerDocument.activeElement)) {
+      throw new Error("Cancelling the full-day confirmation did not restore focus to the save button.");
+    }
+    if (submitted.length !== 0) throw new Error("Cancelling the full-day confirmation with Escape submitted a preference change.");
+
+    await page.keyboard.press("Enter");
+    await fullDayDialog.waitFor();
+    await cancelFullDayPause.focus();
+    await page.keyboard.press("Shift+Tab");
+    if (!await fullDayDialog.evaluate(dialog => dialog.contains(dialog.ownerDocument.activeElement))) {
+      throw new Error("Shift+Tab allowed focus to leave the full-day confirmation dialog.");
+    }
+    await confirmFullDayPause.focus();
+    await page.keyboard.press("Tab");
+    if (!await fullDayDialog.evaluate(dialog => dialog.contains(dialog.ownerDocument.activeElement))) {
+      throw new Error("Tab allowed focus to leave the full-day confirmation dialog.");
+    }
+    await confirmFullDayPause.focus();
+    await page.keyboard.press("Enter");
     await page.getByText("Preferences not saved", { exact: true }).waitFor();
     const deliveryStatus = page.getByTestId("trainer-reminder-delivery-status");
     await deliveryStatus.getByText("Delivery active", { exact: true }).waitFor();
@@ -130,8 +156,10 @@ async function main() {
       throw new Error("A failed full-day pause discarded the trainer's entered times.");
     }
 
-    await page.getByRole("button", { name: "Save reminder preferences" }).click();
-    await page.getByTestId("confirm-full-day-quiet-hours").click();
+    await savePreferences.focus();
+    await page.keyboard.press("Enter");
+    await confirmFullDayPause.focus();
+    await page.keyboard.press("Enter");
     await page.getByText("Reminder preferences saved", { exact: true }).waitFor();
     const failedFullDaySubmission = submitted.at(0);
     const fullDaySubmission = submitted.at(1);
