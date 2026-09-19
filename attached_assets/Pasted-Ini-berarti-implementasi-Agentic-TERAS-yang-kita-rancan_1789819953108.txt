@@ -1,0 +1,104 @@
+Ini berarti implementasi **Agentic TERAS yang kita rancang sudah mencapai milestone yang sangat kuat**. Berdasarkan laporan yang Anda berikan, saya akan memperlakukan milestone ini sebagai **baseline baru**, bukan sebagai pekerjaan yang perlu diulang.
+
+### Status baseline
+
+```text
+TERAS Agentic Foundation
+        │
+        ├── Agent Registry              ✅
+        ├── Tool Registry               ✅
+        ├── READ / PROPOSE boundary     ✅
+        ├── Agent Run Ledger            ✅
+        ├── Evidence Envelope           ✅
+        ├── Assignment isolation        ✅
+        ├── Pathway/baseline isolation  ✅
+        ├── Deterministic rendering     ✅
+        ├── Provider fallback            ✅
+        ├── Domain non-mutation         ✅
+        ├── API / OpenAPI               ✅
+        ├── Trainer Desk integration    ✅
+        └── Adversarial verification    ✅
+
+Trainer Intelligence Agent
+        └── READ-ONLY                  ✅
+
+Path B — TERAS SKTTK
+        └── CLOSED / NOT STARTED      🔒
+```
+
+### Yang paling penting
+
+Saya melihat beberapa keputusan arsitektur yang **tepat untuk dipertahankan**:
+
+1. **LLM tidak menerima learner data mentah.**
+   `fact-*` opaque codes + deterministic rendering membuat provider tidak menjadi sumber kebenaran.
+
+2. **Agent tidak memiliki EXECUTE.**
+   Ini menjaga boundary antara intelligence dan domain mutation.
+
+3. **Canonical trainer queue dipakai bersama.**
+   Ini mencegah AI membuat “versi queue” sendiri yang bisa berbeda dari aplikasi utama.
+
+4. **Evidence grounding menjadi kontrak, bukan sekadar prompt.**
+   Ini jauh lebih kuat daripada meminta model “jawab berdasarkan data”.
+
+5. **Fallback deterministic.**
+   Provider failure tidak berubah menjadi kegagalan fungsi inti TERAS.
+
+6. **Ledger append-only dan non-identifying.**
+   Ini memberi auditability tanpa menjadikan Agentic layer sebagai tempat penyimpanan data learner.
+
+7. **Path B tidak tersentuh.**
+   Agentic foundation ini tetap berada di level arsitektur/platform dan tidak membuka SKTTK knowledge/data/schema.
+
+### Saya tidak menyarankan langsung menjalankan milestone berikutnya
+
+Dua milestone yang tersedia:
+
+* **Evidence Triage Agent read-only**
+* **Agent quality observability**
+
+Saya justru akan menempatkan **observability terlebih dahulu** sebelum menambah agent kedua.
+
+Urutan yang lebih aman:
+
+```text
+Trainer Intelligence
+        ↓
+LOCK BASELINE
+        ↓
+Agent Quality Observability
+        ↓
+Measure real runs
+        ↓
+Evaluate false grounding / leakage / fallback
+        ↓
+LOCK
+        ↓
+Evidence Triage Agent
+```
+
+Alasannya sederhana: sekarang kita sudah punya agent pertama yang benar-benar berjalan. **Sebelum memperbanyak agent, kita perlu tahu apakah agent pertama benar-benar konsisten, grounded, dan aman dalam penggunaan nyata.**
+
+### Governance checkpoint
+
+Untuk saat ini saya akan menetapkan secara konseptual:
+
+> **TERAS Agentic Foundation + Trainer Intelligence Agent = VERIFIED BASELINE.**
+
+Tidak ada kebutuhan untuk:
+
+* mengganti runtime;
+* memasang OpenClaw;
+* memasang Hermes;
+* memasang MultiClaw;
+* membuka MCP;
+* membuat multi-agent orchestration;
+* mengubah readiness engine;
+* mengubah Passport;
+* membuka Path B;
+* atau mengubah domain state.
+
+Dan **tidak perlu mengulang pekerjaan yang sudah lulus**.
+
+Milestone berikutnya, jika nanti memang ditugaskan, sebaiknya berupa **observability kualitas Agentic yang tidak membuka data learner**, baru setelah hasilnya stabil kita pertimbangkan Evidence Triage.
