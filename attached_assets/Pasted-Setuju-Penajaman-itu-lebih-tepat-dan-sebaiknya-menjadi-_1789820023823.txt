@@ -1,0 +1,50 @@
+Setuju. Penajaman itu lebih tepat dan sebaiknya menjadi **governance checkpoint resmi**.
+
+### Baseline TERAS saat ini
+
+```text
+TERAS Agentic Foundation
+        +
+Trainer Intelligence Agent
+        │
+        └── VERIFIED ARCHITECTURAL BASELINE
+                    │
+                    ▼
+          Operational Observation
+                    │
+                    ▼
+        Task #224 — Observability
+                    │
+                    ▼
+           Operational Baseline
+                    │
+                    ▼
+        Task #223 — Evidence Triage
+```
+
+### Status task
+
+| Item                                 | Status                                | Tindakan        |
+| ------------------------------------ | ------------------------------------- | --------------- |
+| Agentic Foundation                   | Verified architectural baseline       | 🔒 Pertahankan  |
+| Trainer Intelligence                 | Read-only, verified secara arsitektur | 🔒 Pertahankan  |
+| **#224 Agent Quality Observability** | Queued / belum assigned               | ⏸️ Jangan mulai |
+| **#223 Evidence Triage**             | Queued / belum assigned               | ⏸️ Jangan mulai |
+| Path B — TERAS SKTTK                 | CLOSED / NOT STARTED                  | 🔒              |
+| Readiness                            | Canonical                             | 🔒              |
+| Capability Passport                  | Canonical                             | 🔒              |
+| Hermes                               | Ditunda                               | ⏸️              |
+| OpenClaw                             | Ditunda                               | ⏸️              |
+| MultiClaw                            | Ditunda                               | ⏸️              |
+| External MCP                         | Ditunda                               | ⏸️              |
+| Multi-agent orchestration            | Ditunda                               | ⏸️              |
+
+Yang paling penting adalah kita **tidak menganggap “lulus test” sama dengan “terbukti stabil dalam operasi nyata.”**
+
+Task #224 nantinya menjadi jembatan:
+
+**architectural correctness → operational evidence → operational baseline.**
+
+Dan observability harus tetap **privacy-preserving**: mengukur perilaku agent tanpa menjadikan telemetry sebagai salinan data learner.
+
+Untuk sekarang, **tidak ada assignment baru dan tidak ada perubahan proyek yang perlu dilakukan.** Task #223/#224 tetap menunggu assignment eksplisit.
