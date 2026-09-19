@@ -1,0 +1,824 @@
+Baik. Kita **finalkan khusus untuk TERAS Academy → TERAS SKTTK**, tetapi **tanpa membuka Path B sekarang**.
+
+Yang saya sarankan adalah menjadikan rancangan berikut sebagai **arsitektur kanonik Agentic TERAS SKTTK**. Implementasi data/schema/knowledge base SKTTK tetap menunggu gate:
+
+> **“Path B — TERAS SKTTK resmi dimulai.”**
+
+---
+
+# TERAS SKTTK — Final Agentic Architecture
+
+## 1. Posisi produk
+
+TERAS SKTTK bukan AI yang memberikan keputusan sertifikasi.
+
+Posisinya:
+
+> **AI-powered competency readiness platform yang membantu tenaga teknik mempersiapkan diri, menemukan gap, menyusun remediation, mengelola evidence persiapan, dan mencapai readiness sebelum proses asesmen resmi.**
+
+Batas otoritas tetap:
+
+```text
+TERAS
+Persiapan
+   ↓
+AI Readiness Support
+   ↓
+Preparation Evidence
+   ↓
+Internal Simulation
+   ↓
+Readiness
+   ↓
+──────────────
+Asesor / LSP
+   ↓
+Asesmen & keputusan resmi
+```
+
+AI **tidak** mengeluarkan keputusan kompetensi resmi.
+
+---
+
+# 2. Arsitektur final
+
+```text
+                         USER
+                          │
+              ┌───────────┴───────────┐
+              │                       │
+          Trainee                 Trainer
+              │                       │
+              └───────────┬───────────┘
+                          ▼
+                 TERAS SKTTK UI
+                          │
+                          ▼
+                ┌─────────────────┐
+                │  AGENT GATEWAY  │
+                └────────┬────────┘
+                         ▼
+             ┌───────────────────────┐
+             │ AGENTIC CONTROL PLANE │
+             │                       │
+             │ Identity              │
+             │ Policy                │
+             │ Planning              │
+             │ Memory                │
+             │ Evidence              │
+             │ Approval              │
+             │ Execution             │
+             │ Audit                 │
+             └───────────┬───────────┘
+                         │
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+       HERMES         MULTICLAW       OPENCLAW
+      Reasoning       Orchestration   Execution
+          │              │              │
+          └──────────────┼──────────────┘
+                         ▼
+                    TOOL / MCP
+                         │
+       ┌─────────────────┼─────────────────┐
+       ▼                 ▼                 ▼
+  Learning Tools    Practice Tools   Evidence Tools
+  Diagnostic        Simulation       Preparation Evidence
+  Remediation       Feedback         Reassessment
+       │                 │                 │
+       └─────────────────┼─────────────────┘
+                         ▼
+                 TERAS DOMAIN CORE
+                         │
+       ┌─────────────────┼─────────────────┐
+       ▼                 ▼                 ▼
+   Readiness          Passport          Audit
+     Engine             │
+                         ▼
+                  Official Testing
+                 (outside TERAS)
+```
+
+---
+
+# 3. Agent yang menjadi kanonik
+
+Saya tidak akan membuat satu **“TERAS Super Agent”**.
+
+Kita buat agent berdasarkan fungsi.
+
+### 01 — TERAS Navigator Agent
+
+Tugas:
+
+* memahami posisi peserta;
+* menjelaskan journey;
+* menentukan next step;
+* menemukan aktivitas yang belum selesai.
+
+Contoh:
+
+> “Saya sudah menyelesaikan diagnostic. Apa berikutnya?”
+
+---
+
+### 02 — TERAS Diagnostic Agent
+
+Menganalisis hasil diagnostic.
+
+Output:
+
+```text
+Current capability
+Knowledge gaps
+Practice gaps
+Safety concerns
+Evidence gaps
+Recommended next action
+```
+
+Bukan keputusan sertifikasi.
+
+---
+
+### 03 — TERAS Learning Agent
+
+Membantu personalisasi pembelajaran.
+
+```text
+Diagnostic
+   ↓
+Gap
+   ↓
+Learning content
+   ↓
+Practice
+   ↓
+Feedback
+```
+
+---
+
+### 04 — TERAS Practice Agent
+
+Menyediakan simulasi dan latihan.
+
+Agent dapat:
+
+* membuat scenario;
+* memberikan pertanyaan;
+* menilai jawaban terhadap rubric internal;
+* memberikan feedback;
+* menentukan remediation.
+
+Tetapi hasilnya tetap:
+
+> **internal learning/simulation result**
+
+bukan hasil asesmen resmi.
+
+---
+
+### 05 — TERAS Evidence Agent
+
+Ini salah satu agent paling penting.
+
+Tugas:
+
+```text
+Requirement
+   ↓
+Expected preparation evidence
+   ↓
+Existing evidence
+   ↓
+Gap
+   ↓
+Evidence improvement
+```
+
+AI tidak boleh menyatakan:
+
+> “Ini adalah bukti kompetensi resmi.”
+
+Istilah kanonik:
+
+> **Preparation Evidence**
+
+---
+
+### 06 — TERAS Remediation Agent
+
+Jika peserta belum siap:
+
+```text
+Gap
+ ↓
+Root cause
+ ↓
+Remediation plan
+ ↓
+Practice
+ ↓
+Evidence
+ ↓
+Reassessment
+```
+
+Jadi remediation tidak lagi sekadar daftar materi.
+
+Ia menjadi **closed-loop improvement system**.
+
+---
+
+### 07 — TERAS Readiness Agent
+
+Menganalisis keseluruhan perjalanan.
+
+Output hanya menggunakan status yang sudah kita tetapkan:
+
+```text
+READY FOR NEXT STAGE
+
+READY WITH SUPPORT
+
+NEEDS STRENGTHENING
+
+NOT READY
+```
+
+Dan:
+
+**Safety Gate tetap menjadi blocker.**
+
+AI tidak boleh "menghaluskan" critical safety failure hanya karena skor lainnya tinggi.
+
+---
+
+### 08 — TERAS Trainer Agent
+
+Ini penting karena TERAS bukan hanya trainee-facing.
+
+Trainer mendapatkan:
+
+```text
+Trainer Queue
+   ↓
+Pending Reviews
+   ↓
+AI Pre-analysis
+   ↓
+Trainer Review
+   ↓
+Trainer Decision
+   ↓
+Feedback
+   ↓
+Trainee
+```
+
+AI membantu trainer, tetapi **trainer tetap memiliki authority atas review internal**.
+
+---
+
+### 09 — TERAS Progress Agent
+
+Menganalisis perjalanan:
+
+```text
+Diagnostic
+Learning
+Practice
+Evidence
+Feedback
+Remediation
+Reassessment
+Readiness
+```
+
+Kemudian menjawab:
+
+> “Apa yang berubah sejak diagnostic pertama?”
+
+---
+
+# 4. Agentic Readiness Loop
+
+Ini saya anggap sebagai **signature architecture** TERAS.
+
+```text
+        DIAGNOSTIC
+             ↓
+           GAP
+             ↓
+         LEARNING
+             ↓
+          PRACTICE
+             ↓
+          EVIDENCE
+             ↓
+         FEEDBACK
+             ↓
+        REMEDIATION
+             ↓
+       REASSESSMENT
+             ↓
+          READINESS
+             │
+       ┌─────┴─────┐
+       │           │
+   NEXT STAGE    REPEAT
+```
+
+AI berada **di seluruh loop**, tetapi tidak mengambil alih governance.
+
+---
+
+# 5. Agent Memory
+
+Memory TERAS harus dipisahkan.
+
+### Working Memory
+
+Hanya untuk satu aktivitas.
+
+### Journey Memory
+
+Perjalanan peserta:
+
+```text
+diagnostic history
+learning history
+practice history
+feedback history
+remediation history
+reassessment history
+```
+
+### Learning Memory
+
+Pola pembelajaran peserta.
+
+### Trainer Context
+
+Konteks review trainer.
+
+### Knowledge Base
+
+Materi resmi yang digunakan TERAS.
+
+**Jangan mencampur semuanya menjadi satu memory AI.**
+
+---
+
+# 6. Evidence Architecture
+
+Setiap rekomendasi AI harus dapat ditelusuri.
+
+Contoh:
+
+```text
+AI Recommendation
+       ↓
+Reason
+       ↓
+Knowledge Source
+       ↓
+Learning Activity
+       ↓
+Evidence
+       ↓
+Readiness Impact
+```
+
+Jadi:
+
+> AI mengatakan X
+
+harus dapat dijawab:
+
+> **“Berdasarkan apa?”**
+
+---
+
+# 7. Tool layer
+
+Agent tidak langsung mengakses database.
+
+Gunakan tool contract.
+
+Contoh:
+
+```text
+get_user_journey()
+get_diagnostic_result()
+get_learning_progress()
+get_practice_history()
+get_preparation_evidence()
+get_trainer_reviews()
+get_remediation_plan()
+get_reassessment()
+get_readiness()
+```
+
+Untuk action:
+
+```text
+create_learning_plan()
+create_practice_session()
+request_trainer_review()
+create_remediation_plan()
+schedule_reassessment()
+```
+
+Tool write harus melewati policy.
+
+---
+
+# 8. Permission model
+
+Saya akan menetapkan tiga level.
+
+### READ
+
+AI boleh membaca.
+
+### PROPOSE
+
+AI boleh membuat rekomendasi/draft.
+
+### EXECUTE
+
+AI boleh melakukan tindakan yang secara eksplisit diizinkan.
+
+Contoh:
+
+| Action                             | AI                    |
+| ---------------------------------- | --------------------- |
+| Membaca progress                   | READ                  |
+| Menjelaskan gap                    | READ                  |
+| Membuat learning recommendation    | PROPOSE               |
+| Membuat draft remediation          | PROPOSE               |
+| Mengirim review ke trainer         | EXECUTE dengan policy |
+| Mengubah hasil trainer             | **DENY**              |
+| Mengubah readiness resmi           | **DENY**              |
+| Mengeluarkan keputusan sertifikasi | **DENY**              |
+
+---
+
+# 9. Human-in-the-loop
+
+Untuk TERAS, kita tetapkan:
+
+```text
+AI
+ ↓
+Recommendation
+ ↓
+Human Review
+ ↓
+Action
+```
+
+Khusus trainer:
+
+```text
+AI analysis
+      ↓
+Trainer review
+      ↓
+Trainer feedback
+      ↓
+Recorded
+```
+
+AI tidak boleh diam-diam menggantikan trainer.
+
+---
+
+# 10. AI Audit Trail
+
+Setiap Agent Run memiliki:
+
+```text
+agent_id
+run_id
+user
+objective
+context
+knowledge_sources
+tools_called
+recommendation
+policy_decision
+human_approval
+action
+result
+timestamp
+```
+
+Dengan demikian jika ada masalah:
+
+> **kita dapat merekonstruksi apa yang terjadi.**
+
+---
+
+# 11. Hermes / MultiClaw / OpenClaw
+
+Pembagian final yang saya rekomendasikan:
+
+### Hermes
+
+**Reasoning + memory + skills**
+
+```text
+“Bagaimana memahami masalah ini?”
+```
+
+### MultiClaw
+
+**Orchestration**
+
+```text
+“Agent mana yang harus mengerjakan bagian ini?”
+```
+
+### OpenClaw
+
+**Execution / integration**
+
+```text
+“Tool/action apa yang harus dijalankan?”
+```
+
+Tetapi TERAS tidak bergantung secara struktural pada ketiganya.
+
+Kalau runtime berubah, domain architecture TERAS tetap.
+
+---
+
+# 12. Supervisor pattern
+
+Contoh:
+
+> “Saya ingin tahu kenapa saya belum READY FOR NEXT STAGE.”
+
+Supervisor Agent:
+
+```text
+                  SUPERVISOR
+                      │
+       ┌──────────────┼──────────────┐
+       ▼              ▼              ▼
+ Diagnostic       Evidence       Practice
+   Agent            Agent          Agent
+       │              │              │
+       └──────────────┼──────────────┘
+                      ▼
+              Readiness Agent
+                      │
+                      ▼
+                Explanation
+                      │
+                      ▼
+              Next Action
+```
+
+Ini jauh lebih kuat daripada satu LLM yang membaca semua tabel sekaligus.
+
+---
+
+# 13. Safety Gate
+
+Ini **tidak boleh diserahkan kepada LLM saja**.
+
+```text
+Safety Gate
+    ↓
+Deterministic Rule Engine
+    ↓
+BLOCK / PASS
+    ↓
+AI Explanation
+```
+
+AI boleh menjelaskan.
+
+AI **tidak boleh mengoverride blocker**.
+
+Ini mempertahankan prinsip TERAS yang sudah kita bangun.
+
+---
+
+# 14. Official certification boundary
+
+Kita kunci tiga lapisan:
+
+```text
+TERAS
+│
+├── Learning
+├── Practice
+├── Preparation Evidence
+├── Internal Simulation
+├── Remediation
+└── Readiness
+        │
+        ▼
+   OFFICIAL PROCESS
+        │
+        ├── Assessor
+        ├── LSP
+        └── Official decision
+```
+
+Tidak boleh ada Agent yang menghasilkan:
+
+* keputusan sertifikasi;
+* status kompeten resmi;
+* kewenangan bekerja;
+* sertifikat;
+* official competency record.
+
+---
+
+# 15. Capability Passport
+
+AI boleh membantu menyusun perjalanan Passport.
+
+Tetapi:
+
+> **Capability Passport = journey record, bukan certificate.**
+
+Agent dapat mengatakan:
+
+> “Berikut riwayat capability development Anda.”
+
+Bukan:
+
+> “Anda telah tersertifikasi.”
+
+---
+
+# 16. Agent Evaluation
+
+Sebelum agent production, kita wajib mempunyai test suite:
+
+```text
+Agent Tests
+├── factuality
+├── evidence grounding
+├── policy compliance
+├── permission boundary
+├── hallucination
+├── tool correctness
+├── idempotency
+├── safety gate
+├── audit completeness
+└── regression
+```
+
+Ini harus menjadi bagian dari development lifecycle.
+
+---
+
+# 17. Roadmap final TERAS Agentic
+
+Saya akan kunci menjadi:
+
+### T-A1
+
+**Agentic Control Plane**
+
+### T-A2
+
+**TERAS Agent Registry**
+
+### T-A3
+
+**Tool / MCP Gateway**
+
+### T-A4
+
+**Agent Permission & Policy Engine**
+
+### T-A5
+
+**Agent Run & Audit Ledger**
+
+### T-A6
+
+**TERAS Knowledge & Evidence Grounding**
+
+### T-A7
+
+**TERAS Memory Architecture**
+
+### T-A8
+
+**Supervisor / Multi-Agent Orchestration**
+
+### T-A9
+
+**TERAS Navigator Agent**
+
+### T-A10
+
+**Diagnostic + Learning Agent**
+
+### T-A11
+
+**Practice + Remediation Agent**
+
+### T-A12
+
+**Preparation Evidence Agent**
+
+### T-A13
+
+**Trainer Review Agent**
+
+### T-A14
+
+**Readiness Agent**
+
+### T-A15
+
+**Agent Evaluation & Safety Hardening**
+
+---
+
+# 18. Yang belum kita lakukan
+
+Ini sangat penting mengingat governance kita.
+
+**Belum:**
+
+* membuat schema SKTTK;
+* memasukkan knowledge base SKTTK;
+* memasukkan data kompetensi SKTTK;
+* membuat mapping unit kompetensi SKTTK;
+* memasukkan regulasi/domain corpus SKTTK;
+* mengaktifkan SKTTK agents;
+* mengubah Path B menjadi aktif.
+
+Semua itu tetap:
+
+> **PATH B — CLOSED / NOT STARTED**
+
+Arsitektur di atas adalah **blueprint platform**, bukan pembukaan Path B.
+
+---
+
+# 19. Gate untuk membuka Path B
+
+Ketika nanti Anda secara eksplisit mengatakan:
+
+> **“Path B — TERAS SKTTK resmi dimulai.”**
+
+baru kita menjalankan urutan:
+
+```text
+PATH B OPEN
+      ↓
+SKTTK Domain Model
+      ↓
+Knowledge Architecture
+      ↓
+Competency Structure
+      ↓
+Learning / Practice Mapping
+      ↓
+Evidence Model
+      ↓
+Readiness Rules
+      ↓
+SKTTK Agents
+      ↓
+Validation
+      ↓
+Production
+```
+
+Dengan demikian kita **tidak mencampur pekerjaan platform dengan data domain SKTTK**.
+
+---
+
+## Kesimpulan final
+
+Saya akan menjadikan prinsip berikut sebagai **North Star TERAS Agentic**:
+
+> **TERAS tidak menggunakan AI untuk menggantikan asesor, trainer, atau LSP. TERAS menggunakan AI untuk mempercepat pembelajaran, memperjelas gap, memperbaiki evidence persiapan, mengorkestrasi remediation, dan meningkatkan readiness secara dapat diaudit.**
+
+Dan secara teknis:
+
+> **TERAS Core = source of truth.**
+> **Agentic Control Plane = intelligence & orchestration.**
+> **Hermes = reasoning/memory runtime.**
+> **MultiClaw = multi-agent orchestration.**
+> **OpenClaw = execution/integration runtime.**
+> **MCP = standardized tool boundary.**
+> **Policy Engine = guardrail.**
+> **Human = authority.**
+> **Audit = accountability.**
+
+**Untuk sekarang tidak ada perubahan pada Task #168 dan tidak ada implementasi Path B.** Blueprint ini menjadi rancangan target yang dapat kita gunakan setelah boundary aktif selesai.

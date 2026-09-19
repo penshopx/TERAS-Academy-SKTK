@@ -1,0 +1,895 @@
+Ya. Kalau dipertajam, saya akan mengubah konsepnya dari **“memasang AI Agent”** menjadi **membangun Agentic Operating Layer** di atas NEXUS-FM dan nantinya TERAS.
+
+Ada satu koreksi strategis dari pembahasan sebelumnya: **jangan mengikat arsitektur terlalu dini ke Hermes, OpenClaw, atau MultiClaw.** Ketiganya sebaiknya diperlakukan sebagai *runtime/orchestration components* yang bisa diganti. Core kita harus tetap milik aplikasi.
+
+## 1. Arsitektur target
+
+```text
+                    HUMAN / MANAGER / PROFESSIONAL
+                               │
+                               ▼
+                    ┌──────────────────────┐
+                    │    NEXUS / TERAS UI  │
+                    └──────────┬───────────┘
+                               │
+                               ▼
+                 ┌──────────────────────────┐
+                 │     AGENT GATEWAY         │
+                 │ identity • session • ACL  │
+                 └────────────┬─────────────┘
+                              │
+                 ┌────────────▼─────────────┐
+                 │    AGENTIC CONTROL PLANE  │
+                 │                            │
+                 │ Planner                    │
+                 │ Policy                     │
+                 │ Approval                   │
+                 │ Execution                  │
+                 │ Audit                      │
+                 │ Memory                     │
+                 │ Evaluation                 │
+                 └────────────┬─────────────┘
+                              │
+               ┌──────────────┼──────────────┐
+               ▼              ▼              ▼
+            HERMES         MULTICLAW       OPENCLAW
+          Reasoning       Orchestration    Execution
+               │              │              │
+               └──────────────┼──────────────┘
+                              ▼
+                       MCP / Tool Gateway
+                              │
+       ┌──────────────────────┼──────────────────────┐
+       ▼                      ▼                      ▼
+ Facility Tools         Asset Tools          Compliance Tools
+ Maintenance Tools      Document Tools       Vendor Tools
+       │                      │                      │
+       └──────────────────────┼──────────────────────┘
+                              ▼
+                       NEXUS DOMAIN CORE
+                              │
+                         PostgreSQL
+                              │
+                         Audit/Event
+```
+
+**AI tidak berada di bawah database sebagai sumber kebenaran.**
+
+Sebaliknya:
+
+> **Database = fakta.**
+> **Agent = reasoning.**
+> **Policy = batas.**
+> **Tool = kemampuan.**
+> **Human = authority untuk tindakan kritis.**
+
+---
+
+# 2. Kita perlu membedakan 5 jenis AI
+
+Ini penting supaya tidak semua disebut "agent".
+
+### A. Insight Agent
+
+Hanya membaca.
+
+Contoh:
+
+> “Apa masalah terbesar fasilitas bulan ini?”
+
+Tidak boleh mengubah data.
+
+---
+
+### B. Analyst Agent
+
+Membaca banyak sumber dan melakukan analisis.
+
+Contoh:
+
+> “Analisis mengapa biaya maintenance meningkat 18%.”
+
+Output:
+
+```text
+Evidence
+↓
+Pattern
+↓
+Hypothesis
+↓
+Confidence
+↓
+Recommendation
+```
+
+---
+
+### C. Planner Agent
+
+Mengubah masalah menjadi rencana.
+
+Contoh:
+
+> “Susun rencana maintenance pompa.”
+
+Output:
+
+```text
+Task 1
+Task 2
+Task 3
+Required parts
+Required vendor
+Estimated duration
+Risk
+Dependencies
+```
+
+Belum menjalankan apa pun.
+
+---
+
+### D. Executor Agent
+
+Memiliki tool untuk melakukan tindakan.
+
+Misalnya:
+
+```text
+create_work_order()
+notify_vendor()
+schedule_inspection()
+generate_document()
+```
+
+Tetapi executor **tidak otomatis berarti bebas melakukan semuanya**.
+
+---
+
+### E. Supervisor Agent
+
+Ini yang menarik untuk MultiClaw.
+
+Supervisor:
+
+```text
+Problem
+ ↓
+decompose
+ ↓
+delegate
+ ↓
+monitor
+ ↓
+validate
+ ↓
+reconcile
+ ↓
+final result
+```
+
+Misalnya:
+
+> “Siapkan rekomendasi untuk fasilitas A.”
+
+Supervisor mendelegasikan:
+
+```text
+Facility Agent
+Asset Agent
+Maintenance Agent
+Finance Agent
+Compliance Agent
+```
+
+Kemudian menggabungkan hasilnya.
+
+---
+
+# 3. Jangan membuat agent berdasarkan teknologi
+
+Kesalahan umum:
+
+> “Kita punya Hermes Agent.”
+
+Lebih baik:
+
+> “Kita punya Maintenance Agent.”
+
+Teknologi berada di belakangnya.
+
+Misalnya:
+
+```text
+Maintenance Agent
+        │
+        ├── reasoning → Hermes
+        ├── delegation → MultiClaw
+        ├── execution → OpenClaw
+        └── tools → MCP
+```
+
+Kalau suatu hari Hermes diganti model lain, **Maintenance Agent tetap ada**.
+
+Ini membuat architecture kita tahan lama.
+
+---
+
+# 4. Agent Registry
+
+Kita perlu database/configuration resmi:
+
+```text
+agents
+-----
+id
+name
+domain
+description
+version
+status
+runtime
+model
+policy_profile
+memory_scope
+max_execution_level
+created_at
+updated_at
+```
+
+Contoh:
+
+```text
+maintenance-agent
+asset-agent
+inspection-agent
+compliance-agent
+document-agent
+vendor-agent
+finance-agent
+project-agent
+```
+
+Nantinya bahkan bisa:
+
+```text
+agent_version = 1.3
+policy_version = 2.1
+toolset_version = 4
+```
+
+Jadi setiap keputusan agent dapat direkonstruksi.
+
+---
+
+# 5. Tool Registry
+
+Ini jauh lebih penting daripada sekadar chatbot.
+
+Contoh:
+
+```text
+tools
+-----
+get_asset
+get_asset_history
+get_inspection
+get_incident
+get_work_order
+create_work_order
+update_work_order
+search_document
+generate_report
+notify_vendor
+```
+
+Setiap tool memiliki:
+
+```text
+tool
+├── input schema
+├── output schema
+├── permission
+├── risk level
+├── audit requirement
+├── approval requirement
+└── idempotency rule
+```
+
+Misalnya:
+
+```text
+get_asset
+risk = READ_ONLY
+approval = NO
+
+create_work_order
+risk = WRITE
+approval = MAYBE
+
+close_work_order
+risk = HIGH
+approval = YES
+```
+
+---
+
+# 6. Ini membawa kita ke Agent Permission Engine
+
+Jangan menggunakan:
+
+```text
+if user.isAdmin
+```
+
+saja.
+
+Kita perlu:
+
+```text
+Can Agent X
+perform Tool Y
+on Resource Z
+under Context C?
+```
+
+Contoh:
+
+```text
+Maintenance Agent
++
+create_work_order
++
+Facility A
++
+user = Facility Manager
++
+risk = medium
+```
+
+Policy engine menghasilkan:
+
+```text
+ALLOW
+```
+
+Tetapi:
+
+```text
+Maintenance Agent
++
+approve vendor payment
+```
+
+hasil:
+
+```text
+DENY
+```
+
+atau:
+
+```text
+REQUIRES_HUMAN_APPROVAL
+```
+
+---
+
+# 7. Human Approval menjadi bagian native
+
+Saya ingin setiap tindakan penting mempunyai:
+
+```text
+PROPOSED
+   ↓
+REVIEW
+   ↓
+APPROVED
+   ↓
+EXECUTING
+   ↓
+EXECUTED
+   ↓
+VERIFIED
+```
+
+Bukan:
+
+```text
+AI → langsung database
+```
+
+Contoh:
+
+> AI menemukan AHU abnormal.
+
+AI membuat:
+
+**Recommendation**
+
+> Inspeksi AHU-03 dalam 24 jam.
+
+Manager:
+
+**Approve**
+
+Baru executor menjalankan.
+
+---
+
+# 8. Agent Run Ledger
+
+Ini akan menjadi salah satu komponen terpenting.
+
+Setiap agent run:
+
+```text
+agent_run
+----------
+run_id
+agent_id
+user_id
+session_id
+objective
+input_context
+plan
+tools_called
+approval_events
+execution_result
+evidence_refs
+policy_decisions
+model_version
+status
+started_at
+completed_at
+```
+
+Status:
+
+```text
+PLANNED
+AUTHORIZED
+RUNNING
+WAITING_APPROVAL
+COMPLETED
+FAILED
+CANCELLED
+PARTIAL
+```
+
+Dengan ini kita bisa menjawab:
+
+> **“Kenapa AI melakukan tindakan tersebut?”**
+
+Bukan sekadar:
+
+> “Karena AI menyarankan.”
+
+---
+
+# 9. Agent Event Stream
+
+Saya juga melihat peluang besar untuk menggunakan event-driven architecture.
+
+```text
+InspectionCompleted
+        ↓
+IncidentDetected
+        ↓
+MaintenanceAgentTriggered
+        ↓
+RecommendationCreated
+        ↓
+ApprovalRequested
+        ↓
+Approved
+        ↓
+WorkOrderCreated
+        ↓
+VendorNotified
+        ↓
+WorkCompleted
+        ↓
+VerificationCompleted
+```
+
+Agent menjadi **event consumer**, bukan polling database terus-menerus.
+
+Ini jauh lebih scalable.
+
+---
+
+# 10. Dari sini muncul "Autonomous Workflow"
+
+Contohnya:
+
+### Scenario: preventive maintenance
+
+```text
+Scheduler
+   ↓
+Maintenance Agent
+   ↓
+find overdue assets
+   ↓
+risk analysis
+   ↓
+prioritize
+   ↓
+generate work orders
+   ↓
+approval
+   ↓
+execution
+   ↓
+verification
+   ↓
+close
+```
+
+Manusia hanya masuk ketika policy mengatakan:
+
+> **Human-in-the-loop required.**
+
+---
+
+# 11. Tetapi kita juga perlu "Agent Evaluation"
+
+Ini sering dilupakan.
+
+Jangan mengukur AI hanya:
+
+> “Jawabannya bagus.”
+
+Kita perlu:
+
+```text
+Agent Quality
+├── factual accuracy
+├── tool accuracy
+├── policy compliance
+├── hallucination rate
+├── execution success
+├── unnecessary action rate
+├── approval accuracy
+└── recovery rate
+```
+
+Contoh:
+
+```text
+Agent suggested wrong asset
+→ FAIL
+
+Agent attempted unauthorized action
+→ CRITICAL FAIL
+
+Agent correctly detected missing evidence
+→ PASS
+```
+
+Ini bisa menjadi **Agent QA system**.
+
+---
+
+# 12. Memory harus dibagi 4
+
+Saya tidak ingin satu "memory" besar.
+
+### Working Memory
+
+Hanya untuk satu run.
+
+### Session Memory
+
+Konteks percakapan.
+
+### Domain Memory
+
+Pola operasional.
+
+Contoh:
+
+> “Pompa P-03 memiliki riwayat vibrasi tinggi.”
+
+### Institutional Knowledge
+
+Dokumen resmi:
+
+* SOP
+* manual
+* regulation
+* policy
+* contract.
+
+Tetapi:
+
+**institutional knowledge ≠ agent memory.**
+
+Dokumen resmi tetap memiliki source/version.
+
+---
+
+# 13. RAG juga harus memiliki evidence
+
+Jangan:
+
+> AI membaca PDF → menjawab.
+
+Harus:
+
+```text
+Question
+ ↓
+Retriever
+ ↓
+Documents
+ ↓
+Relevant passages
+ ↓
+Evidence IDs
+ ↓
+LLM reasoning
+ ↓
+Answer
+```
+
+Dengan:
+
+```text
+source
+document_version
+page
+section
+retrieved_at
+```
+
+Sehingga jawaban dapat diaudit.
+
+---
+
+# 14. Ini sangat cocok dengan NEXUS Digital Twin / BIM 7D
+
+Ini menurut saya salah satu peluang paling besar.
+
+Bayangkan agent memiliki konteks:
+
+```text
+Building
+ ├── Floor
+ │    ├── Room
+ │    └── Asset
+ │          ├── Sensor
+ │          ├── Maintenance
+ │          ├── Inspection
+ │          └── Cost
+```
+
+Kemudian user berkata:
+
+> “Cari aset yang paling berisiko menyebabkan downtime gedung.”
+
+Agent tidak mencari tabel secara terpisah.
+
+Ia melakukan:
+
+```text
+Digital Twin Context
+        ↓
+Asset Criticality
+        ↓
+Inspection
+        ↓
+Incident
+        ↓
+Maintenance History
+        ↓
+Failure Pattern
+        ↓
+Risk Model
+        ↓
+Recommendation
+```
+
+**Itu sudah jauh lebih dekat ke AI-native facility management.**
+
+---
+
+# 15. Kemudian kita dapat membuat "Facility Autopilot"
+
+Bukan autopilot tanpa kendali manusia.
+
+Tetapi:
+
+### **Autopilot with Policy Boundaries**
+
+Contoh:
+
+```text
+GREEN
+read / analyze / summarize
+→ autonomous
+
+YELLOW
+create draft / schedule / notify
+→ policy-controlled
+
+ORANGE
+create work order / vendor action
+→ approval
+
+RED
+financial / safety / compliance critical action
+→ mandatory human approval
+```
+
+Ini sangat mudah dipahami oleh pengguna.
+
+---
+
+# 16. Hubungan dengan Gustafta
+
+Di ekosistem yang lebih besar:
+
+```text
+             GUSTAFTA
+                 │
+        ┌────────┴─────────┐
+        ▼                  ▼
+     NEXUS              TERAS
+  Building Ops       Competency Readiness
+        │                  │
+        └────────┬─────────┘
+                 ▼
+          AGENTIC CONTROL
+                 │
+        ┌────────┼────────┐
+        ▼        ▼        ▼
+      Hermes  MultiClaw OpenClaw
+```
+
+Tetapi saya akan **menahan integrasi SKTTK** sampai Path B resmi dibuka.
+
+Kita dapat membangun *platform capability* tanpa memasukkan SKTTK domain knowledge.
+
+---
+
+# 17. Roadmap task yang saya sarankan
+
+Bukan langsung membuat 20 task.
+
+Saya akan membuat **7 architectural milestones**.
+
+### A1 — Agentic Foundation
+
+Agent identity + registry + lifecycle.
+
+### A2 — Tool & MCP Gateway
+
+Standardized tools.
+
+### A3 — Policy & Permission Engine
+
+RBAC/ABAC + risk level + approval.
+
+### A4 — Agent Run & Audit Ledger
+
+Full traceability.
+
+### A5 — Memory + Knowledge Architecture
+
+Working/session/domain/institutional separation.
+
+### A6 — Multi-Agent Orchestration
+
+Supervisor → workers → reconciliation.
+
+### A7 — First Production Agent
+
+Saya akan memilih **Maintenance/Facility Insight Agent** sebagai pilot, bukan langsung autonomous executor.
+
+Kenapa?
+
+Karena kita dapat menguji seluruh architecture:
+
+```text
+Read
+→ Reason
+→ Evidence
+→ Recommendation
+→ Audit
+```
+
+tanpa langsung membawa risiko write actions.
+
+---
+
+# 18. Baru kemudian Agentic Automation
+
+Setelah A1–A7 stabil:
+
+```text
+Agent v1
+READ ONLY
+     ↓
+Agent v2
+RECOMMEND
+     ↓
+Agent v3
+DRAFT ACTION
+     ↓
+Agent v4
+APPROVAL-BASED EXECUTION
+     ↓
+Agent v5
+LIMITED AUTONOMY
+```
+
+**Jangan langsung v5.**
+
+---
+
+# 19. Dan ini mengubah cara kita mengerjakan Task berikutnya
+
+Mulai sekarang, setiap task besar sebaiknya kita tanyakan 7 pertanyaan:
+
+```text
+1. Apakah pekerjaan ini akan dibaca Agent?
+2. Apakah pekerjaan ini akan menjadi Tool?
+3. Apakah pekerjaan ini menghasilkan Event?
+4. Apakah Agent perlu Evidence?
+5. Apakah action membutuhkan Approval?
+6. Apakah action harus Idempotent?
+7. Apakah aktivitasnya harus masuk Agent Audit?
+```
+
+Kalau jawabannya ya, kita desain dari awal supaya **agent-ready**.
+
+Bukan nanti setelah aplikasi selesai baru dipaksa diberi AI.
+
+---
+
+## 20. Target akhirnya
+
+Saya membayangkan NEXUS bukan lagi:
+
+> **Integrated Facility Management System**
+
+tetapi:
+
+> **Agentic Integrated Facility Operations System**
+
+dengan manusia tetap sebagai authority.
+
+Dan TERAS bukan sekadar:
+
+> **Learning + Readiness System**
+
+tetapi nantinya:
+
+> **Agentic Competency Readiness System**
+
+dengan batas resmi tetap dijaga.
+
+Yang paling penting, **AI bukan pusat otoritas**.
+
+```text
+             HUMAN AUTHORITY
+                    ▲
+                    │
+              APPROVAL/POLICY
+                    ▲
+                    │
+              AGENTIC LAYER
+                    ▲
+                    │
+              DOMAIN SYSTEM
+                    ▲
+                    │
+                 DATA
+```
+
+Itu menurut saya fondasi yang akan membuat pekerjaan task-task berikutnya jauh lebih bernilai: **kita tidak hanya menambah fitur satu per satu, tetapi setiap fitur mulai dipersiapkan menjadi bagian dari mesin operasional yang dapat dipahami, diaudit, dan suatu hari dapat diorkestrasi oleh banyak agent.**
+
+Dan **belum ada alasan mengubah Task #168 sekarang**. Saya akan menempatkan rancangan Agentic Control Plane ini sebagai **candidate architecture setelah boundary #168 selesai**, bukan menyisipkannya ke pekerjaan agent lain.
