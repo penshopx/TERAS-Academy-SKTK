@@ -2296,6 +2296,34 @@ export const GetTrainerDashboardResponse = zod.object({
 
 
 /**
+ * @summary Generate a read-only, grounded trainer intelligence analysis
+ */
+export const CreateTrainerIntelligenceRunResponse = zod.object({
+  "runId": zod.string(),
+  "status": zod.enum(['PLANNED', 'RUNNING', 'COMPLETED', 'FAILED', 'PARTIAL']),
+  "agentId": zod.string(),
+  "agentVersion": zod.string(),
+  "policyDecision": zod.enum(['ALLOW_READ', 'ALLOW_PROPOSE', 'REQUIRES_APPROVAL', 'DENY']),
+  "asOf": zod.coerce.date(),
+  "claims": zod.array(zod.object({
+  "claim": zod.string(),
+  "evidenceRefs": zod.array(zod.string()),
+  "confidence": zod.enum(['high', 'medium', 'low']),
+  "grounding": zod.enum(['grounded', 'partially_grounded', 'insufficient'])
+})),
+  "limitations": zod.array(zod.string()),
+  "recommendedActions": zod.array(zod.object({
+  "action": zod.string(),
+  "evidenceRefs": zod.array(zod.string())
+})),
+  "sourceRefs": zod.array(zod.string()),
+  "advisoryNotice": zod.string(),
+  "provider": zod.string().nullable(),
+  "model": zod.string().nullable()
+})
+
+
+/**
  * @summary Get the current trainer email reminder preferences
  */
 export const getTrainerReminderPreferencesResponseQuietHoursStartRegExp = new RegExp('^([01][0-9]|2[0-3]):[0-5][0-9]$');

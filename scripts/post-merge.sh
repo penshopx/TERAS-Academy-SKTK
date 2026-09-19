@@ -127,6 +127,10 @@ if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_people') IS
     -f lib/db/migrations/0038_learning_resource_progress_context.sql
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0039_baseline_versioned_publishing.sql
+  # Reconcile the additive agent run ledger before schema evaluation on
+  # existing installations; the migration is safe to replay below.
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0051_agent_run_ledger.sql
 fi
 if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_content_resources') IS NOT NULL")" = "t" ]; then
   TERAS_MIGRATION_ACTOR=post-merge-upgrade \
@@ -216,6 +220,10 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0038_learning_resource_progress_context.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0039_baseline_versioned_publishing.sql
+# Append-only, privacy-safe agent run ledger. This is idempotent and is
+# applied in the common pass so both existing and new installations agree.
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0051_agent_run_ledger.sql
 pnpm --filter @workspace/scripts run seed
 if [ "$(pnpm --silent --filter @workspace/scripts run demo:fixtures-enabled)" = "1" ]; then
   pnpm --filter @workspace/scripts run seed:demo
@@ -245,6 +253,8 @@ pnpm --filter @workspace/api-server run test:pathway-isolation
 pnpm --filter @workspace/api-server run test:safety-blockers
 pnpm --filter @workspace/api-server run test:lms-event-ownership
 pnpm --filter @workspace/api-server run test:causal-link-ownership
+pnpm --filter @workspace/api-server run test:agentic-contracts
+pnpm --filter @workspace/api-server run test:agentic-integration
 pnpm --filter @workspace/api-server run test:admin-management
 pnpm --filter @workspace/api-server run test:competency
 pnpm --filter @workspace/api-server run test:course-authoring

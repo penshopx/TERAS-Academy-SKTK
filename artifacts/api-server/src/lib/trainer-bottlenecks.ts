@@ -1,9 +1,10 @@
 import {
   assessmentAttemptsTable, db, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, pool,
   learningTransitionEventsTable, practiceAttemptsTable, practiceReviewsTable, readinessEventsTable, reassessmentLinksTable,
-  remediationActivitiesTable, remediationEventsTable, remediationPlansTable,
+  remediationActivitiesTable, remediationEventsTable, remediationPlansTable, practiceTasksTable, modulesTable,
 } from "@workspace/db";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
+import { selectedBaselineModuleIds, workspaceAssignmentContexts } from "./teras";
 
 export const bottleneckStages = ["Learning", "Practice", "Feedback", "Evidence", "Remediation", "Reassessment", "Readiness"] as const;
 export type BottleneckStage = typeof bottleneckStages[number];
@@ -80,6 +81,46 @@ export function practiceQueueState(
   const latest = reviews.get(attempt.id);
   const status = latest?.status ?? attempt.status;
   return status === "Reviewed" ? null : { status, updatedAt: latest?.createdAt ?? attempt.createdAt };
+}
+
+/** Canonical, assignment/pathway/baseline-scoped practice queue source.
+ * Consumers may add display limits only after using pendingByContext for counts. */
+export async function scopedPracticeQueue(trainerId: string) {
+  const contexts = await workspaceAssignmentContexts(trainerId, "trainer");
+  const [tasks, modules, selectedByContext] = await Promise.all([
+    db.select().from(practiceTasksTable),
+    db.select().from(modulesTable),
+    Promise.all(contexts.map((context) => selectedBaselineModuleIds(context.pathway.id, context.baselineVersionId))),
+  ]);
+  const taskIdsByContext = contexts.map((context, index) => {
+    const selected = selectedByContext[index]!;
+    const moduleIds = new Set(modules
+      .filter((module) => (module.pathwayId === context.pathway.id || selected.has(module.id)) && module.programId === context.program.id)
+      .map((module) => module.id));
+    return new Set(tasks.filter((task) => moduleIds.has(task.moduleId)).map((task) => task.id));
+  });
+  const attemptScopes = contexts.flatMap((context, index) => {
+    const taskIds = [...taskIdsByContext[index]!];
+    return taskIds.length ? [and(
+      eq(practiceAttemptsTable.learnerId, context.learner.id),
+      eq(practiceAttemptsTable.pathwayId, context.pathway.id),
+      // Do not cap here: aggregate counts must include every eligible attempt.
+      inArray(practiceAttemptsTable.taskId, taskIds),
+    )] : [];
+  });
+  const attempts = attemptScopes.length ? await db.select().from(practiceAttemptsTable).where(or(...attemptScopes)) : [];
+  const latestReviews = latestPracticeReviews(await latestPracticeReviewRows(attempts.map((attempt) => attempt.id)));
+  const pendingByContext = contexts.map((context, index) => {
+    const selected = selectedByContext[index]!;
+    const moduleIds = new Set(modules
+      .filter((module) => (module.pathwayId === context.pathway.id || selected.has(module.id)) && module.programId === context.program.id)
+      .map((module) => module.id));
+    return attempts.filter((attempt) => attempt.learnerId === context.learner.id
+      && attempt.pathwayId === context.pathway.id
+      && moduleIds.has(tasks.find((task) => task.id === attempt.taskId)?.moduleId ?? "")
+      && practiceQueueState(attempt, latestReviews));
+  });
+  return { contexts, tasks, modules, selectedByContext, attempts, latestReviews, pendingByContext };
 }
 
 export type BottleneckData = {

@@ -1,13 +1,14 @@
 import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
-import { GetTrainerDashboardResponse, GetTrainerReminderPreferenceHistoryResponse, GetTrainerReminderPreferencesResponse, GetTrainerReviewQueueResponse, OpenTrainerRemediationBody, OpenTrainerRemediationResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse, UpdateTrainerReminderPreferencesBody, UpdateTrainerReminderPreferencesResponse } from "@workspace/api-zod";
+import { CreateTrainerIntelligenceRunResponse, GetTrainerDashboardResponse, GetTrainerReminderPreferenceHistoryResponse, GetTrainerReminderPreferencesResponse, GetTrainerReviewQueueResponse, OpenTrainerRemediationBody, OpenTrainerRemediationResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse, UpdateTrainerReminderPreferencesBody, UpdateTrainerReminderPreferencesResponse } from "@workspace/api-zod";
 import { db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, trainerReminderPreferencesTable } from "@workspace/db";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
-import { evidenceRecords, gapRecords, pathwayHasModule, remediationRecords, selectedBaselineModuleIds, workspaceAssignmentContexts } from "../lib/teras";
+import { evidenceRecords, gapRecords, pathwayHasModule, remediationRecords, workspaceAssignmentContexts } from "../lib/teras";
 import { authorizeWorkspaceRole } from "../lib/authorization";
 import { learningNextAction } from "../lib/learning-transition";
-import { latestPracticeReviewRows, latestPracticeReviews, practiceQueueState, recentPracticeReviewRows, trainerBottlenecks } from "../lib/trainer-bottlenecks";
+import { latestPracticeReviewRows, latestPracticeReviews, practiceQueueState, recentPracticeReviewRows, scopedPracticeQueue, trainerBottlenecks } from "../lib/trainer-bottlenecks";
 import { isValidIanaTimeZone, reminderDeliveryAvailability } from "../lib/trainer-follow-up-notifications";
+import { createTrainerIntelligenceRun } from "../lib/trainer-intelligence";
 
 const router: IRouter = Router();
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
@@ -65,40 +66,15 @@ async function appendModuleRevisionState(tx: Parameters<Parameters<typeof db.tra
 }
 
 async function queue(trainerId: string) {
-  const contexts = await workspaceAssignmentContexts(trainerId, "trainer");
-  const [tasks, modules, selectedByContext] = await Promise.all([
-    db.select().from(practiceTasksTable),
-    db.select().from(modulesTable),
-    Promise.all(contexts.map((context) => selectedBaselineModuleIds(context.pathway.id, context.baselineVersionId))),
-  ]);
-  const taskIdsByContext = contexts.map((context, index) => {
-    const selected = selectedByContext[index];
-    const moduleIds = new Set(modules
-      .filter((module) => (module.pathwayId === context.pathway.id || selected.has(module.id)) && module.programId === context.program.id)
-      .map((module) => module.id));
-    return new Set(tasks.filter((task) => moduleIds.has(task.moduleId)).map((task) => task.id));
-  });
-  const attemptScopes = contexts.flatMap((context, index) => {
-    const taskIds = [...taskIdsByContext[index]];
-    return taskIds.length ? [and(
-      eq(practiceAttemptsTable.learnerId, context.learner.id),
-      eq(practiceAttemptsTable.pathwayId, context.pathway.id),
-      inArray(practiceAttemptsTable.taskId, taskIds),
-    )] : [];
-  });
-  const attempts = attemptScopes.length
-    ? await db.select().from(practiceAttemptsTable).where(or(...attemptScopes))
-    : [];
-  const reviews = await latestPracticeReviewRows(attempts.map((attempt) => attempt.id));
-  const latestReviews = latestPracticeReviews(reviews);
+  const { contexts, tasks, modules, selectedByContext, attempts, latestReviews, pendingByContext } = await scopedPracticeQueue(trainerId);
   const items = await Promise.all(contexts.map(async (context, index) => {
-    const selected = selectedByContext[index];
+    const selected = selectedByContext[index]!;
     const pathwayModules = modules.filter((module) => (module.pathwayId === context.pathway.id || selected.has(module.id)) && module.programId === context.program.id);
-    const moduleIds = new Set(pathwayModules.map((module) => module.id));
+    const pendingAttempts = pendingByContext[index]!;
     const evidence = await evidenceRecords(context.learner.id, context.pathway.id, context.baselineVersionId);
     return [
       ...evidence.filter((item) => item.status !== "Valid").map((item) => ({ id: item.id, kind: "Evidence", learnerId: context.learner.id, learnerName: context.learner.name, moduleName: item.moduleName, pathwayId: context.pathway.id, pathwayName: context.pathway.name, title: item.title, status: item.status, priority: item.moduleId === "m03" ? "Critical" : "High", updatedAt: item.submittedAt })),
-      ...attempts.filter((attempt) => attempt.learnerId === context.learner.id && attempt.pathwayId === context.pathway.id && moduleIds.has(tasks.find((task) => task.id === attempt.taskId)?.moduleId ?? "") && practiceQueueState(attempt, latestReviews)).map((attempt) => {
+      ...pendingAttempts.map((attempt) => {
         const state = practiceQueueState(attempt, latestReviews)!;
         return { id: attempt.id, kind: "Practice", learnerId: context.learner.id, learnerName: context.learner.name, moduleName: pathwayModules.find((module) => module.id === tasks.find((task) => task.id === attempt.taskId)?.moduleId)?.name ?? "Module", pathwayId: context.pathway.id, pathwayName: context.pathway.name, title: "Practice attempt", status: state.status, priority: "Normal", updatedAt: state.updatedAt };
       }),
@@ -233,6 +209,12 @@ router.get("/trainer/dashboard", async (req, res): Promise<void> => {
     .slice(0, TRAINER_REVIEW_HISTORY_LIMIT);
   const [bottlenecks, diagnosticFollowUpItems] = await Promise.all([trainerBottlenecks(contexts), diagnosticFollowUps(contexts)]);
   res.json(GetTrainerDashboardResponse.parse({ trainer, assignedLearnerCount: new Set(contexts.map((context) => context.learner.id)).size, pendingFeedbackCount: items.filter((item) => item.kind === "Practice").length, pendingEvidenceCount: scoped.flatMap((item) => item.evidence).filter((item) => item.status === "Under review").length, activeRemediationCount: scoped.flatMap((item) => item.plans).filter((item) => item.status !== "Completed").length, blockedLearnerCount: new Set(contexts.filter((context, index) => scoped[index]!.gaps.some((gap) => gap.severity === "Critical" && gap.status !== "Resolved")).map((context) => context.learner.id)).size, bottlenecks, diagnosticFollowUps: diagnosticFollowUpItems, recentActivity: items, reviewHistory }));
+});
+router.post("/trainer/intelligence/runs", async (req, res): Promise<void> => {
+  const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;
+  if (req.body && Object.keys(req.body).length > 0) { res.status(400).json({ error: "Trainer intelligence accepts no request fields." }); return; }
+  const result = await createTrainerIntelligenceRun(trainerId);
+  res.json(CreateTrainerIntelligenceRunResponse.parse(result));
 });
 router.get("/trainer/reminder-preferences", async (req, res): Promise<void> => {
   const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;

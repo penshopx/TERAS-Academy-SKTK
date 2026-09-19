@@ -313,11 +313,36 @@ export const readinessAuditExportRetentionHealthTable = pgTable("teras_readiness
   check("teras_readiness_audit_export_retention_health_failures_check", sql`${table.consecutiveFailures} >= 0`),
 ]);
 
+/** Append-only, privacy-safe trace of agent analysis runs. Raw prompts and learner context are never stored. */
+export const agentRunsTable = pgTable("teras_agent_runs", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  agentVersion: text("agent_version").notNull(),
+  actorPersonId: text("actor_person_id").references(() => peopleTable.id),
+  objective: text("objective").notNull(),
+  policyDecision: text("policy_decision").notNull(),
+  toolRefs: text("tool_refs").array().notNull().default([]),
+  evidenceRefs: text("evidence_refs").array().notNull().default([]),
+  provider: text("provider"),
+  model: text("model"),
+  status: text("status").notNull(),
+  resultSummary: jsonb("result_summary"),
+  resultHash: text("result_hash"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+}, table => [
+  index("teras_agent_runs_actor_created_idx").on(table.actorPersonId, table.createdAt.desc(), table.id.desc()),
+  index("teras_agent_runs_agent_created_idx").on(table.agentId, table.createdAt.desc(), table.id.desc()),
+  check("teras_agent_runs_policy_check", sql`${table.policyDecision} IN ('ALLOW_READ','ALLOW_PROPOSE','REQUIRES_APPROVAL','DENY')`),
+  check("teras_agent_runs_status_check", sql`${table.status} IN ('PLANNED','RUNNING','COMPLETED','FAILED','PARTIAL')`),
+]);
+
 export const programRelations = relations(programsTable, ({ many }) => ({ modules: many(modulesTable), pathways: many(pathwaysTable) }));
 export const moduleRelations = relations(modulesTable, ({ many }) => ({ tasks: many(practiceTasksTable), assessments: many(assessmentsTable) }));
 
 export const insertReadinessAuditExportAggregatesSchema = createInsertSchema(readinessAuditExportAggregatesTable);
-const tables = { peopleTable, personRolesTable, adminAccessRequestsTable, programsTable, pathwaysTable, cohortsTable, modulesTable, practiceTasksTable, evidenceRequirementsTable, assessmentsTable, assessmentCriteriaTable, enrollmentsTable, adminAuditEventsTable, knowledgeArticlesTable, knowledgeNotFoundTopicsTable, enrollmentPathwayEventsTable, practiceAttemptsTable, practiceReviewsTable, evidenceTable, evidenceReviewsTable, assessmentAttemptsTable, criterionObservationsTable, gapsTable, gapEventsTable, remediationPlansTable, remediationActivitiesTable, remediationEventsTable, readinessGatesTable, readinessEventsTable };
+const tables = { peopleTable, personRolesTable, adminAccessRequestsTable, programsTable, pathwaysTable, cohortsTable, modulesTable, practiceTasksTable, evidenceRequirementsTable, assessmentsTable, assessmentCriteriaTable, enrollmentsTable, adminAuditEventsTable, knowledgeArticlesTable, knowledgeNotFoundTopicsTable, enrollmentPathwayEventsTable, practiceAttemptsTable, practiceReviewsTable, evidenceTable, evidenceReviewsTable, assessmentAttemptsTable, criterionObservationsTable, gapsTable, gapEventsTable, remediationPlansTable, remediationActivitiesTable, remediationEventsTable, readinessGatesTable, readinessEventsTable, agentRunsTable };
 export const insertSchemas = Object.fromEntries(Object.entries(tables).map(([name, table]) => [name, createInsertSchema(table).omit({ createdAt: true })]));
 export type Person = typeof peopleTable.$inferSelect;
 export type Program = typeof programsTable.$inferSelect;

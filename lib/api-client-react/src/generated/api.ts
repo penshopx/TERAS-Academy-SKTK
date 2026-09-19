@@ -141,6 +141,7 @@ import type {
   RoleAssignmentInput,
   TrainerDashboard,
   TrainerEvidenceReviewInput,
+  TrainerIntelligenceRun,
   TrainerPracticeReviewInput,
   TrainerRemediationOpen,
   TrainerRemediationOpenInput,
@@ -2440,6 +2441,77 @@ export function useGetTrainerDashboard<TData = Awaited<ReturnType<typeof getTrai
 
 
 
+
+export const getCreateTrainerIntelligenceRunUrl = () => {
+
+
+
+
+  return `/api/trainer/intelligence/runs`
+}
+
+/**
+ * @summary Generate a read-only, grounded trainer intelligence analysis
+ */
+export const createTrainerIntelligenceRun = async ( options?: Parameters<typeof customFetch>[1]): Promise<TrainerIntelligenceRun> => {
+
+  return customFetch<TrainerIntelligenceRun>(getCreateTrainerIntelligenceRunUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCreateTrainerIntelligenceRunMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTrainerIntelligenceRun>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTrainerIntelligenceRun>>, TError,void, TContext> => {
+
+const mutationKey = ['createTrainerIntelligenceRun'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTrainerIntelligenceRun>>, void> = () => {
+
+
+          return  createTrainerIntelligenceRun(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTrainerIntelligenceRunMutationResult = NonNullable<Awaited<ReturnType<typeof createTrainerIntelligenceRun>>>
+
+    export type CreateTrainerIntelligenceRunMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | ErrorResponse>
+
+    /**
+ * @summary Generate a read-only, grounded trainer intelligence analysis
+ */
+export const useCreateTrainerIntelligenceRun = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTrainerIntelligenceRun>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTrainerIntelligenceRun>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getCreateTrainerIntelligenceRunMutationOptions(options));
+    }
 
 export const getGetTrainerReminderPreferencesUrl = () => {
 

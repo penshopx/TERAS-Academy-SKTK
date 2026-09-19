@@ -507,6 +507,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TrainerDashboard"
+  /trainer/intelligence/runs:
+    post:
+      operationId: createTrainerIntelligenceRun
+      tags: [trainer]
+      summary: Generate a read-only, grounded trainer intelligence analysis
+      responses:
+        "200":
+          description: Grounded advisory analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainerIntelligenceRun"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { description: Server failure, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
   /trainer/reminder-preferences:
     get:
       operationId: getTrainerReminderPreferences
@@ -4906,6 +4922,38 @@ components:
           items:
             $ref: "#/components/schemas/TrainerReviewHistoryEvent"
       required: [trainer, assignedLearnerCount, pendingFeedbackCount, pendingEvidenceCount, activeRemediationCount, blockedLearnerCount, diagnosticFollowUps, bottlenecks, recentActivity, reviewHistory]
+    TrainerIntelligenceClaim:
+      type: object
+      properties:
+        claim: { type: string }
+        evidenceRefs: { type: array, items: { type: string } }
+        confidence: { type: string, enum: [high, medium, low] }
+        grounding: { type: string, enum: [grounded, partially_grounded, insufficient] }
+      required: [claim, evidenceRefs, confidence, grounding]
+    TrainerIntelligenceRun:
+      type: object
+      properties:
+        runId: { type: string }
+        status: { type: string, enum: [PLANNED, RUNNING, COMPLETED, FAILED, PARTIAL] }
+        agentId: { type: string }
+        agentVersion: { type: string }
+        policyDecision: { type: string, enum: [ALLOW_READ, ALLOW_PROPOSE, REQUIRES_APPROVAL, DENY] }
+        asOf: { type: string, format: date-time }
+        claims: { type: array, items: { $ref: "#/components/schemas/TrainerIntelligenceClaim" } }
+        limitations: { type: array, items: { type: string } }
+        recommendedActions:
+          type: array
+          items:
+            type: object
+            properties:
+              action: { type: string }
+              evidenceRefs: { type: array, items: { type: string } }
+            required: [action, evidenceRefs]
+        sourceRefs: { type: array, items: { type: string } }
+        advisoryNotice: { type: string }
+        provider: { type: ["string", "null"] }
+        model: { type: ["string", "null"] }
+      required: [runId, status, agentId, agentVersion, policyDecision, asOf, claims, limitations, recommendedActions, sourceRefs, advisoryNotice, provider, model]
     TrainerBottleneckSummary:
       type: object
       properties:

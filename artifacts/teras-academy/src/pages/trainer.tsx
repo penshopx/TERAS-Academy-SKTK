@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ReviewQueue } from "@/components/trainer/review-queue";
 import { CourseAuthoring } from "@/components/trainer/authoring/course-authoring";
 import { AdminReadOnlyDashboard } from "@/components/admin-read-only-dashboard";
+import { TrainerIntelligencePanel } from "@/components/trainer/intelligence-panel";
 
 export default function TrainerDesk() {
   const session = useGetCurrentSession({ query: { queryKey: getGetCurrentSessionQueryKey(), staleTime: 60_000 } });
@@ -31,6 +32,7 @@ export default function TrainerDesk() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="queue" className="mt-0">
+          <TrainerIntelligencePanel />
           <ReviewQueue dashboard={dashboard} />
         </TabsContent>
         <TabsContent value="authoring" className="mt-0 h-[calc(100vh-180px)]">

@@ -3264,6 +3264,75 @@ export interface TrainerDashboard {
   reviewHistory: TrainerReviewHistoryEvent[];
 }
 
+export type TrainerIntelligenceClaimConfidence = typeof TrainerIntelligenceClaimConfidence[keyof typeof TrainerIntelligenceClaimConfidence];
+
+
+export const TrainerIntelligenceClaimConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export type TrainerIntelligenceClaimGrounding = typeof TrainerIntelligenceClaimGrounding[keyof typeof TrainerIntelligenceClaimGrounding];
+
+
+export const TrainerIntelligenceClaimGrounding = {
+  grounded: 'grounded',
+  partially_grounded: 'partially_grounded',
+  insufficient: 'insufficient',
+} as const;
+
+export interface TrainerIntelligenceClaim {
+  claim: string;
+  evidenceRefs: string[];
+  confidence: TrainerIntelligenceClaimConfidence;
+  grounding: TrainerIntelligenceClaimGrounding;
+}
+
+export type TrainerIntelligenceRunStatus = typeof TrainerIntelligenceRunStatus[keyof typeof TrainerIntelligenceRunStatus];
+
+
+export const TrainerIntelligenceRunStatus = {
+  PLANNED: 'PLANNED',
+  RUNNING: 'RUNNING',
+  COMPLETED: 'COMPLETED',
+  FAILED: 'FAILED',
+  PARTIAL: 'PARTIAL',
+} as const;
+
+export type TrainerIntelligenceRunPolicyDecision = typeof TrainerIntelligenceRunPolicyDecision[keyof typeof TrainerIntelligenceRunPolicyDecision];
+
+
+export const TrainerIntelligenceRunPolicyDecision = {
+  ALLOW_READ: 'ALLOW_READ',
+  ALLOW_PROPOSE: 'ALLOW_PROPOSE',
+  REQUIRES_APPROVAL: 'REQUIRES_APPROVAL',
+  DENY: 'DENY',
+} as const;
+
+export type TrainerIntelligenceRunRecommendedActionsItem = {
+  action: string;
+  evidenceRefs: string[];
+};
+
+export interface TrainerIntelligenceRun {
+  runId: string;
+  status: TrainerIntelligenceRunStatus;
+  agentId: string;
+  agentVersion: string;
+  policyDecision: TrainerIntelligenceRunPolicyDecision;
+  asOf: string;
+  claims: TrainerIntelligenceClaim[];
+  limitations: string[];
+  recommendedActions: TrainerIntelligenceRunRecommendedActionsItem[];
+  sourceRefs: string[];
+  advisoryNotice: string;
+  /** @nullable */
+  provider: string | null;
+  /** @nullable */
+  model: string | null;
+}
+
 export interface AssessorDashboard {
   assessor: LearnerProfile;
   pendingAssessmentCount: number;
