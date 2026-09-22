@@ -103,3 +103,6 @@ jobs:
 
       - name: Verify trainer reminder quiet-hours confirmation
         run: pnpm --filter @workspace/api-server run test:browser-reminder-preferences
+
+      - name: Verify trainer baseline draft selection
+        run: pnpm --filter @workspace/api-server run test:browser-baseline-selection
