@@ -61,6 +61,7 @@
     "test:agentic-integration": "NODE_ENV=test tsx ./src/trainer-intelligence.integration-runner.ts",
     "test:agent-observability": "NODE_ENV=test tsx ./src/agent-observability.integration.ts",
     "test:browser-admin-access": "NODE_ENV=test tsx ./src/browser-admin-access.integration.ts",
+    "test:regulatory-references": "bash ./path-b-regulatory.integration.test.sh",
     "test:certification-preparation-journey": "bash ../../scripts/certification-preparation-journey.integration.test.sh",
     "test:path-a-golden-journey": "bash ../../scripts/path-a-golden-journey.integration.test.sh",
     "test:app-storage-sidecar": "NODE_ENV=test tsx ./src/app-storage-sidecar.integration.ts",

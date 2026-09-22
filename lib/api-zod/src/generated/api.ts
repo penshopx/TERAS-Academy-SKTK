@@ -3980,10 +3980,12 @@ export const ListAdminCompetencyFrameworksResponseItem = zod.object({
   "description": zod.string(),
   "domain": zod.string(),
   "version": zod.string(),
-  "status": zod.enum(['draft', 'active', 'archived'])
+  "status": zod.enum(['draft', 'active', 'archived']),
+  "authorityStatus": zod.enum(['INTERNAL_DRAFT', 'AUTHORITATIVE']).optional()
 }).and(zod.object({
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date(),
+  "authorityStatus": zod.enum(['INTERNAL_DRAFT', 'AUTHORITATIVE']).optional(),
   "units": zod.array(zod.object({
   "id": zod.string().min(1),
   "frameworkId": zod.string().min(1),
@@ -4034,7 +4036,8 @@ export const CreateAdminCompetencyFrameworkBody = zod.object({
   "description": zod.string(),
   "domain": zod.string(),
   "version": zod.string(),
-  "status": zod.enum(['draft', 'active', 'archived'])
+  "status": zod.enum(['draft', 'active', 'archived']),
+  "authorityStatus": zod.enum(['INTERNAL_DRAFT', 'AUTHORITATIVE']).optional()
 })
 
 
@@ -4068,10 +4071,12 @@ export const CreateAdminCompetencyFrameworkResponse = zod.object({
   "description": zod.string(),
   "domain": zod.string(),
   "version": zod.string(),
-  "status": zod.enum(['draft', 'active', 'archived'])
+  "status": zod.enum(['draft', 'active', 'archived']),
+  "authorityStatus": zod.enum(['INTERNAL_DRAFT', 'AUTHORITATIVE']).optional()
 }).and(zod.object({
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date(),
+  "authorityStatus": zod.enum(['INTERNAL_DRAFT', 'AUTHORITATIVE']).optional(),
   "units": zod.array(zod.object({
   "id": zod.string().min(1),
   "frameworkId": zod.string().min(1),
@@ -4109,6 +4114,33 @@ export const CreateAdminCompetencyFrameworkResponse = zod.object({
 }))
 
 
+/**
+ * @summary List regulatory reference metadata and safe framework provenance
+ */
+export const listAdminRegulatoryReferencesResponseContentSha256RegExp = new RegExp('^[0-9a-fA-F]{64}$');
+
+
+export const ListAdminRegulatoryReferencesResponseItem = zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "issuer": zod.string(),
+  "number": zod.string(),
+  "year": zod.int(),
+  "title": zod.string(),
+  "enactedDate": zod.coerce.date(),
+  "effectiveDate": zod.coerce.date(),
+  "beritaNegara": zod.string(),
+  "authorityRole": zod.enum(['DOMAIN_AUTHORITY', 'REGULATORY_CONTEXT']),
+  "status": zod.enum(['ACTIVE', 'SUPERSEDED', 'RETIRED', 'DRAFT']),
+  "contentSha256": zod.string().regex(listAdminRegulatoryReferencesResponseContentSha256RegExp),
+  "frameworks": zod.array(zod.object({
+  "frameworkId": zod.string(),
+  "provenanceType": zod.enum(['AUTHORITATIVE', 'CONTEXT', 'INTERNAL_DRAFT'])
+}))
+})
+export const ListAdminRegulatoryReferencesResponse = zod.array(ListAdminRegulatoryReferencesResponseItem)
+
+
 
 
 
@@ -4124,7 +4156,8 @@ export const UpdateAdminCompetencyFrameworkBody = zod.object({
   "description": zod.string().optional(),
   "domain": zod.string().optional(),
   "version": zod.string().optional(),
-  "status": zod.enum(['draft', 'active', 'archived']).optional()
+  "status": zod.enum(['draft', 'active', 'archived']).optional(),
+  "authorityStatus": zod.enum(['INTERNAL_DRAFT', 'AUTHORITATIVE']).optional()
 })
 
 
@@ -4158,10 +4191,12 @@ export const UpdateAdminCompetencyFrameworkResponse = zod.object({
   "description": zod.string(),
   "domain": zod.string(),
   "version": zod.string(),
-  "status": zod.enum(['draft', 'active', 'archived'])
+  "status": zod.enum(['draft', 'active', 'archived']),
+  "authorityStatus": zod.enum(['INTERNAL_DRAFT', 'AUTHORITATIVE']).optional()
 }).and(zod.object({
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date(),
+  "authorityStatus": zod.enum(['INTERNAL_DRAFT', 'AUTHORITATIVE']).optional(),
   "units": zod.array(zod.object({
   "id": zod.string().min(1),
   "frameworkId": zod.string().min(1),

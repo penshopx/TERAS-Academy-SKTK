@@ -569,6 +569,14 @@ export const CompetencyFrameworkInputStatus = {
   archived: 'archived',
 } as const;
 
+export type CompetencyFrameworkInputAuthorityStatus = typeof CompetencyFrameworkInputAuthorityStatus[keyof typeof CompetencyFrameworkInputAuthorityStatus];
+
+
+export const CompetencyFrameworkInputAuthorityStatus = {
+  INTERNAL_DRAFT: 'INTERNAL_DRAFT',
+  AUTHORITATIVE: 'AUTHORITATIVE',
+} as const;
+
 export interface CompetencyFrameworkInput {
   /** @minLength 1 */
   id: string;
@@ -580,6 +588,7 @@ export interface CompetencyFrameworkInput {
   domain: string;
   version: string;
   status: CompetencyFrameworkInputStatus;
+  authorityStatus?: CompetencyFrameworkInputAuthorityStatus;
 }
 
 export type CompetencyFrameworkUpdateStatus = typeof CompetencyFrameworkUpdateStatus[keyof typeof CompetencyFrameworkUpdateStatus];
@@ -591,6 +600,14 @@ export const CompetencyFrameworkUpdateStatus = {
   archived: 'archived',
 } as const;
 
+export type CompetencyFrameworkUpdateAuthorityStatus = typeof CompetencyFrameworkUpdateAuthorityStatus[keyof typeof CompetencyFrameworkUpdateAuthorityStatus];
+
+
+export const CompetencyFrameworkUpdateAuthorityStatus = {
+  INTERNAL_DRAFT: 'INTERNAL_DRAFT',
+  AUTHORITATIVE: 'AUTHORITATIVE',
+} as const;
+
 export interface CompetencyFrameworkUpdate {
   /** @minLength 1 */
   name?: string;
@@ -598,7 +615,16 @@ export interface CompetencyFrameworkUpdate {
   domain?: string;
   version?: string;
   status?: CompetencyFrameworkUpdateStatus;
+  authorityStatus?: CompetencyFrameworkUpdateAuthorityStatus;
 }
+
+export type AdminCompetencyFrameworkAuthorityStatus = typeof AdminCompetencyFrameworkAuthorityStatus[keyof typeof AdminCompetencyFrameworkAuthorityStatus];
+
+
+export const AdminCompetencyFrameworkAuthorityStatus = {
+  INTERNAL_DRAFT: 'INTERNAL_DRAFT',
+  AUTHORITATIVE: 'AUTHORITATIVE',
+} as const;
 
 export type CompetencyUnitInputStatus = typeof CompetencyUnitInputStatus[keyof typeof CompetencyUnitInputStatus];
 
@@ -697,8 +723,58 @@ export type AdminCompetencyUnit = CompetencyUnitInput & {
 export type AdminCompetencyFramework = CompetencyFrameworkInput & {
   createdAt: string;
   updatedAt: string;
+  authorityStatus?: AdminCompetencyFrameworkAuthorityStatus;
   units: AdminCompetencyUnit[];
 };
+
+export type AdminRegulatoryReferenceAuthorityRole = typeof AdminRegulatoryReferenceAuthorityRole[keyof typeof AdminRegulatoryReferenceAuthorityRole];
+
+
+export const AdminRegulatoryReferenceAuthorityRole = {
+  DOMAIN_AUTHORITY: 'DOMAIN_AUTHORITY',
+  REGULATORY_CONTEXT: 'REGULATORY_CONTEXT',
+} as const;
+
+export type AdminRegulatoryReferenceStatus = typeof AdminRegulatoryReferenceStatus[keyof typeof AdminRegulatoryReferenceStatus];
+
+
+export const AdminRegulatoryReferenceStatus = {
+  ACTIVE: 'ACTIVE',
+  SUPERSEDED: 'SUPERSEDED',
+  RETIRED: 'RETIRED',
+  DRAFT: 'DRAFT',
+} as const;
+
+export type AdminRegulatoryReferenceFrameworksItemProvenanceType = typeof AdminRegulatoryReferenceFrameworksItemProvenanceType[keyof typeof AdminRegulatoryReferenceFrameworksItemProvenanceType];
+
+
+export const AdminRegulatoryReferenceFrameworksItemProvenanceType = {
+  AUTHORITATIVE: 'AUTHORITATIVE',
+  CONTEXT: 'CONTEXT',
+  INTERNAL_DRAFT: 'INTERNAL_DRAFT',
+} as const;
+
+export type AdminRegulatoryReferenceFrameworksItem = {
+  frameworkId: string;
+  provenanceType: AdminRegulatoryReferenceFrameworksItemProvenanceType;
+};
+
+export interface AdminRegulatoryReference {
+  id: string;
+  type: string;
+  issuer: string;
+  number: string;
+  year: number;
+  title: string;
+  enactedDate: string;
+  effectiveDate: string;
+  beritaNegara: string;
+  authorityRole: AdminRegulatoryReferenceAuthorityRole;
+  status: AdminRegulatoryReferenceStatus;
+  /** @pattern ^[0-9a-fA-F]{64}$ */
+  contentSha256: string;
+  frameworks: AdminRegulatoryReferenceFrameworksItem[];
+}
 
 export type CompetencyUnitUpdateStatus = typeof CompetencyUnitUpdateStatus[keyof typeof CompetencyUnitUpdateStatus];
 

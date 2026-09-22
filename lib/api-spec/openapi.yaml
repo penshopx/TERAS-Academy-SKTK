@@ -1198,6 +1198,17 @@ paths:
         "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/AdminCompetencyFramework" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/regulatory-references:
+    get:
+      operationId: listAdminRegulatoryReferences
+      tags: [admin]
+      summary: List regulatory reference metadata and safe framework provenance
+      responses:
+        "200":
+          description: Regulatory metadata without local source paths or document bytes
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AdminRegulatoryReference" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /admin/competency-frameworks/{frameworkId}:
     patch:
       operationId: updateAdminCompetencyFramework
@@ -3128,6 +3139,7 @@ components:
         domain: { type: string }
         version: { type: string }
         status: { type: string, enum: [draft, active, archived] }
+        authorityStatus: { type: string, enum: [INTERNAL_DRAFT, AUTHORITATIVE] }
     CompetencyFrameworkUpdate:
       type: object
       properties:
@@ -3136,6 +3148,7 @@ components:
         domain: { type: string }
         version: { type: string }
         status: { type: string, enum: [draft, active, archived] }
+        authorityStatus: { type: string, enum: [INTERNAL_DRAFT, AUTHORITATIVE] }
     AdminCompetencyFramework:
       allOf:
         - $ref: "#/components/schemas/CompetencyFrameworkInput"
@@ -3144,9 +3157,34 @@ components:
           properties:
             createdAt: { type: string, format: date-time }
             updatedAt: { type: string, format: date-time }
+            authorityStatus: { type: string, enum: [INTERNAL_DRAFT, AUTHORITATIVE] }
             units:
               type: array
               items: { $ref: "#/components/schemas/AdminCompetencyUnit" }
+    AdminRegulatoryReference:
+      type: object
+      required: [id, type, issuer, number, year, title, enactedDate, effectiveDate, beritaNegara, authorityRole, status, contentSha256, frameworks]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        issuer: { type: string }
+        number: { type: string }
+        year: { type: integer }
+        title: { type: string }
+        enactedDate: { type: string, format: date }
+        effectiveDate: { type: string, format: date }
+        beritaNegara: { type: string }
+        authorityRole: { type: string, enum: [DOMAIN_AUTHORITY, REGULATORY_CONTEXT] }
+        status: { type: string, enum: [ACTIVE, SUPERSEDED, RETIRED, DRAFT] }
+        contentSha256: { type: string, pattern: "^[0-9a-fA-F]{64}$" }
+        frameworks:
+          type: array
+          items:
+            type: object
+            required: [frameworkId, provenanceType]
+            properties:
+              frameworkId: { type: string }
+              provenanceType: { type: string, enum: [AUTHORITATIVE, CONTEXT, INTERNAL_DRAFT] }
     CompetencyUnitInput:
       type: object
       required: [id, frameworkId, code, title, description, status, sequence]

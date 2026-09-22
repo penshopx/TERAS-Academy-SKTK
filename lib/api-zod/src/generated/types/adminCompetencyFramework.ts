@@ -5,11 +5,13 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { AdminCompetencyFrameworkAuthorityStatus } from './adminCompetencyFrameworkAuthorityStatus';
 import type { AdminCompetencyUnit } from './adminCompetencyUnit';
 import type { CompetencyFrameworkInput } from './competencyFrameworkInput';
 
 export type AdminCompetencyFramework = CompetencyFrameworkInput & {
   createdAt: Date;
   updatedAt: Date;
+  authorityStatus?: AdminCompetencyFrameworkAuthorityStatus;
   units: AdminCompetencyUnit[];
 };

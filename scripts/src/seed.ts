@@ -289,7 +289,7 @@ async function seed(): Promise<void> {
   // Reusable SKTTK framework: these IDs deliberately point at the existing
   // Solar PV catalogue records so the configuration remains idempotent and
   // traceable after repeated seed runs.
-  await insert(competencyFrameworksTable, [{ id:"framework-skttk-solar-pv", code:"SKTTK-SPV", name:"SKTTK Solar PV", description:"Unit kompetensi reusable untuk kesiapan teknisi dan desain Solar PV.", domain:"renewable-energy", version:"1.0", status:"active" }]);
+  await insert(competencyFrameworksTable, [{ id:"framework-skttk-solar-pv", code:"SKTTK-SPV", name:"SKTTK Solar PV", description:"Internal draft framework for readiness operations; not an official competency framework.", domain:"renewable-energy", version:"1.0", status:"active", authorityStatus:"INTERNAL_DRAFT" }]);
   const competencyUnits = [
     { id:"skttk-u-safe-isolation", frameworkId:"framework-skttk-solar-pv", code:"SKTTK-SPV-01", title:"Keselamatan dan isolasi listrik", description:"Menerapkan isolasi aman, pembuktian bebas tegangan, dan kontrol risiko.", sequence:1, status:"active" },
     { id:"skttk-u-installation", frameworkId:"framework-skttk-solar-pv", code:"SKTTK-SPV-02", title:"Instalasi dan commissioning PV", description:"Menyiapkan instalasi, pengujian, dan commissioning sistem PV.", sequence:2, status:"active" },

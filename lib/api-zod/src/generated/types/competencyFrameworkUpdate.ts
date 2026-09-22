@@ -5,6 +5,7 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { CompetencyFrameworkUpdateAuthorityStatus } from './competencyFrameworkUpdateAuthorityStatus';
 import type { CompetencyFrameworkUpdateStatus } from './competencyFrameworkUpdateStatus';
 
 export interface CompetencyFrameworkUpdate {
@@ -14,4 +15,5 @@ export interface CompetencyFrameworkUpdate {
   domain?: string;
   version?: string;
   status?: CompetencyFrameworkUpdateStatus;
+  authorityStatus?: CompetencyFrameworkUpdateAuthorityStatus;
 }

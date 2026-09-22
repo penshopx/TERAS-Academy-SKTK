@@ -47,6 +47,7 @@ import type {
   AdminReadinessExportTrendSummary,
   AdminReadinessHistoryPage,
   AdminReadinessRule,
+  AdminRegulatoryReference,
   AdminReminderEscalationPage,
   AdminReminderEscalationResolution,
   AdminReminderEscalationResolutionInput,
@@ -5788,6 +5789,83 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getCreateAdminCompetencyFrameworkMutationOptions(options));
     }
+
+export const getListAdminRegulatoryReferencesUrl = () => {
+
+
+
+
+  return `/api/admin/regulatory-references`
+}
+
+/**
+ * @summary List regulatory reference metadata and safe framework provenance
+ */
+export const listAdminRegulatoryReferences = async ( options?: Parameters<typeof customFetch>[1]): Promise<AdminRegulatoryReference[]> => {
+
+  return customFetch<AdminRegulatoryReference[]>(getListAdminRegulatoryReferencesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAdminRegulatoryReferencesQueryKey = () => {
+    return [
+    `/api/admin/regulatory-references`
+    ] as const;
+    }
+
+
+export const getListAdminRegulatoryReferencesQueryOptions = <TData = Awaited<ReturnType<typeof listAdminRegulatoryReferences>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminRegulatoryReferences>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAdminRegulatoryReferencesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminRegulatoryReferences>>> = ({ signal }) => listAdminRegulatoryReferences({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAdminRegulatoryReferences>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAdminRegulatoryReferencesQueryResult = NonNullable<Awaited<ReturnType<typeof listAdminRegulatoryReferences>>>
+export type ListAdminRegulatoryReferencesQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse>
+
+
+/**
+ * @summary List regulatory reference metadata and safe framework provenance
+ */
+
+export function useListAdminRegulatoryReferences<TData = Awaited<ReturnType<typeof listAdminRegulatoryReferences>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminRegulatoryReferences>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAdminRegulatoryReferencesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getUpdateAdminCompetencyFrameworkUrl = (frameworkId: string,) => {
 

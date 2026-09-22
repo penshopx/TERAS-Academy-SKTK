@@ -24,6 +24,7 @@ import {
   ListAdminReminderEscalationsQueryParams, ListAdminReminderEscalationsResponse,
   ResolveAdminReminderEscalationBody, ResolveAdminReminderEscalationParams, ResolveAdminReminderEscalationResponse,
   GetAdminReadinessExportTrendsResponse, RecordAdminReadinessExportTrendBody, GetAdminAgentObservabilityResponse,
+  ListAdminRegulatoryReferencesResponse,
 } from "@workspace/api-zod";
 import {
   adminAccessRequestsTable, adminAuditEventsTable, assessmentAttemptsTable, cohortsTable, db, enrollmentsTable, evidenceReviewsTable,
@@ -31,6 +32,7 @@ import {
   remediationActivitiesTable, remediationEventsTable, remediationPlansTable,
   competencyFrameworksTable, competencyUnitsTable, pathwayCompetencyUnitsTable, competencyUnitOutcomesTable,
   competencyUnitPracticeTasksTable, competencyUnitEvidenceRequirementsTable, competencyUnitSimulationsTable, competencyUnitSafetyRulesTable,
+  regulatoryReferencesTable, competencyFrameworkSourcesTable,
   readinessEventsTable, readinessGatesTable,
   diagnosticFollowUpFailureNotificationsTable, diagnosticFollowUpReminderDeliveriesTable, diagnosticFollowUpReminderResolutionsTable, diagnosticRecommendationFollowUpsTable,
   diagnosticRecommendationsTable,
@@ -994,6 +996,18 @@ router.get("/admin/competency-frameworks", async (req, res): Promise<void> => {
   if (!await authorizeAdmin(req, res)) return;
   const frameworks = await db.select().from(competencyFrameworksTable);
   res.json(ListAdminCompetencyFrameworksResponse.parse(await Promise.all(frameworks.map(item => competencyView(item)))));
+});
+router.get("/admin/regulatory-references", async (req, res): Promise<void> => {
+  const actor = await authorizeAdmin(req, res);
+  if (!actor) return;
+  const references = await db.select().from(regulatoryReferencesTable);
+  const links = await db.select().from(competencyFrameworkSourcesTable);
+  res.json(ListAdminRegulatoryReferencesResponse.parse(references.map(reference => ({
+    ...reference,
+    frameworks: links
+      .filter(link => link.regulatoryReferenceId === reference.id)
+      .map(link => ({ frameworkId: link.frameworkId, provenanceType: link.provenanceType })),
+  }))));
 });
 router.post("/admin/competency-frameworks", async (req, res): Promise<void> => {
   const actor = await authorizeAdmin(req, res); if (!actor) return;

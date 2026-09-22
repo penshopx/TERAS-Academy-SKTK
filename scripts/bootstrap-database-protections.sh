@@ -12,6 +12,7 @@ readonly protection_migrations=(
   "lib/db/migrations/0044_baseline_draft_cancellation.sql"
   "lib/db/migrations/0051_agent_run_ledger.sql"
   "lib/db/migrations/0053_baseline_pathway_scope_projection.sql"
+  "lib/db/migrations/0054_path_b_regulatory_competency_foundation.sql"
 )
 
 if ! push_output="$(pnpm --filter @workspace/db run push 2>&1)"; then
