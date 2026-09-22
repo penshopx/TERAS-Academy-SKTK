@@ -82,16 +82,32 @@ async function main() {
     page.on("pageerror", error => process.stderr.write(`[browser pageerror] ${error.message}\n`));
 
     const baselineId = "assigned-baseline";
+    const oldPublishedId = "assigned-published-v6";
     const firstDraftId = "assigned-draft-v8";
     const selectedDraftId = "assigned-draft-v9";
+    const cancelledId = "assigned-cancelled-v10";
     const outOfScopeBaselineId = "outside-assignment-baseline";
     const requestedPaths: string[] = [];
     const now = new Date(0).toISOString();
+    const cancellationTime = new Date("2024-02-01T03:30:00.000Z").toISOString();
+    const cancellationActor = "integration-trainer-canceller";
+    const cancellationReason = "Digantikan oleh rancangan kurikulum baru";
     const versions = [
+      { id: cancelledId, baselineId, version: 10, status: "CANCELLED", snapshot: { baseline: { name: "Cancelled snapshot" }, modules: [], selections: [] }, createdBy: "fixture", createdAt: now, publishedBy: null, publishedAt: null, cancelledBy: cancellationActor, cancelledAt: cancellationTime },
       { id: "assigned-active-v7", baselineId, version: 7, status: "PUBLISHED", snapshot: {}, createdBy: "fixture", createdAt: now, publishedBy: "fixture", publishedAt: now, cancelledBy: null, cancelledAt: null },
+      { id: oldPublishedId, baselineId, version: 6, status: "PUBLISHED", snapshot: {}, createdBy: "fixture", createdAt: now, publishedBy: "historical-publisher", publishedAt: now, cancelledBy: null, cancelledAt: null },
       { id: firstDraftId, baselineId, version: 8, status: "DRAFT", snapshot: {}, createdBy: "fixture", createdAt: now, publishedBy: null, publishedAt: null, cancelledBy: null, cancelledAt: null },
       { id: selectedDraftId, baselineId, version: 9, status: "DRAFT", snapshot: {}, createdBy: "fixture", createdAt: now, publishedBy: null, publishedAt: null, cancelledBy: null, cancelledAt: null },
     ];
+    const audit = [{
+      id: "cancel-audit",
+      baselineId,
+      versionId: cancelledId,
+      action: "CANCEL_DRAFT",
+      actorId: cancellationActor,
+      details: { version: 10, reason: cancellationReason },
+      createdAt: cancellationTime,
+    }];
 
     await page.route("**/api/trainer/authoring/baselines**", async route => {
       const url = new URL(route.request().url());
@@ -116,7 +132,7 @@ async function main() {
         return;
       }
       if (url.pathname === `/api/trainer/authoring/baselines/${baselineId}/audit`) {
-        await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(audit) });
         return;
       }
       if (previewMatch?.[1] === baselineId && previewMatch[2] === selectedDraftId) {
@@ -169,12 +185,40 @@ async function main() {
     if (!draftLabels.includes("Versi 8") || !draftLabels.includes("Versi 9")) {
       throw new Error(`Selecting the baseline did not load its draft list: ${draftLabels.join(" | ")}`);
     }
+    if (draftLabels.includes("Versi 6") || draftLabels.includes("Versi 7") || draftLabels.includes("Versi 10")) {
+      throw new Error(`A terminal baseline version was offered as an actionable draft: ${draftLabels.join(" | ")}`);
+    }
+
+    const cancelledVersion = page.getByTestId("baseline-version-cancelled");
+    await cancelledVersion.getByText("Versi 10", { exact: true }).waitFor();
+    await cancelledVersion.getByText("Hanya baca", { exact: true }).waitFor();
+    await cancelledVersion.getByText(cancellationActor, { exact: true }).waitFor();
+    await cancelledVersion.getByText(cancellationReason, { exact: true }).waitFor();
+    const displayedCancellationTime = await page.evaluate(
+      value => new Date(value).toLocaleString("id-ID"),
+      cancellationTime,
+    );
+    await cancelledVersion.getByText(displayedCancellationTime, { exact: true }).waitFor();
+    if (await cancelledVersion.getByRole("button").count() !== 0 || await cancelledVersion.locator("input, select, textarea").count() !== 0) {
+      throw new Error("The cancelled baseline version exposed a mutation control.");
+    }
+    const historicalPublishedVersion = page.getByTestId("baseline-version-published").filter({ hasText: "Versi 6" });
+    await historicalPublishedVersion.waitFor();
+    if (await historicalPublishedVersion.getByRole("button").count() !== 0 || await historicalPublishedVersion.locator("input, select, textarea").count() !== 0) {
+      throw new Error("The historical published baseline version exposed a mutation control.");
+    }
+    if (await page.getByRole("button", { name: "Tutup draft" }).count() !== 0 ||
+        await page.getByRole("button", { name: "Publikasikan baseline setelah review" }).count() !== 0) {
+      throw new Error("Mutation actions appeared before an active draft was selected.");
+    }
 
     await draftSelect.selectOption(selectedDraftId);
     const preview = page.getByTestId("baseline-publication-preview");
     await preview.waitFor();
     await preview.getByText("Draft v9", { exact: true }).waitFor();
     await preview.getByText("Selected draft v9 description", { exact: false }).waitFor();
+    await page.getByRole("button", { name: "Tutup draft" }).waitFor();
+    await page.getByRole("button", { name: "Publikasikan baseline setelah review" }).waitFor();
     if (!requestedPaths.includes(`/api/trainer/authoring/baselines/${baselineId}/versions/${selectedDraftId}/publication-preview`)) {
       throw new Error(`The selected draft did not request its matching preview: ${requestedPaths.join(", ")}`);
     }
