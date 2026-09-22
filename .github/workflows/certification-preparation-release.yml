@@ -129,6 +129,40 @@ jobs:
             echo "Migration winners match: PostgreSQL ${current_version} and ${target_version}, provider=${current_provider}/${target_provider}, locale=${current_locale}/${target_locale}, winners=${current_winners}"
           done
 
+  verify-api-contract:
+    name: Verify generated API contract and API Server types
+    needs: resolve-release-candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out release candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-release-candidate.outputs.sha }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Regenerate OpenAPI outputs
+        run: pnpm --filter @workspace/api-spec run codegen
+
+      - name: Reject uncommitted generated API drift
+        run: git diff --exit-code -- lib/api-zod/src/generated lib/api-client-react/src/generated
+
+      - name: Typecheck API Server
+        run: pnpm --filter @workspace/api-server run typecheck
+
   verify-approval-control:
     name: Verify required human reviewers
     runs-on: ubuntu-latest
@@ -284,6 +318,7 @@ jobs:
     needs:
       - certification-preparation-evidence
       - compare-migration-collation-upgrade
+      - verify-api-contract
       - verify-release-evidence
     runs-on: ubuntu-latest
     environment: release-gate-review

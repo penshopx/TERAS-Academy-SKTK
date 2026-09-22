@@ -41,6 +41,7 @@ verify_block="$(job_block verify-approval-control)"
 candidate_block="$(job_block resolve-release-candidate)"
 collation_block="$(job_block migration-collation-upgrade)"
 collation_comparison_block="$(job_block compare-migration-collation-upgrade)"
+api_contract_block="$(job_block verify-api-contract)"
 evidence_block="$(job_block certification-preparation-evidence)"
 release_evidence_block="$(job_block verify-release-evidence)"
 review_block="$(job_block gate-review)"
@@ -87,6 +88,12 @@ grep -Fq "needs: migration-collation-upgrade" <<<"$collation_comparison_block" &
   grep -Fq 'PostgreSQL ${current_version} provider=${current_provider} locale=${current_locale} winners=${current_winners}' <<<"$collation_comparison_block" &&
   grep -Fq 'PostgreSQL ${target_version} provider=${target_provider} locale=${target_locale} winners=${target_winners}' <<<"$collation_comparison_block" ||
   fail "collation comparison must reject changed winners with both PostgreSQL versions, providers, locales, and winners"
+grep -Fq "needs: resolve-release-candidate" <<<"$api_contract_block" &&
+  grep -Fq 'ref: ${{ needs.resolve-release-candidate.outputs.sha }}' <<<"$api_contract_block" &&
+  grep -Fq "run: pnpm --filter @workspace/api-spec run codegen" <<<"$api_contract_block" &&
+  grep -Fq "run: git diff --exit-code -- lib/api-zod/src/generated lib/api-client-react/src/generated" <<<"$api_contract_block" &&
+  grep -Fq "run: pnpm --filter @workspace/api-server run typecheck" <<<"$api_contract_block" ||
+  fail "release gate must regenerate both API outputs, reject drift, and typecheck API Server for the locked candidate"
 grep -Fq "if: always()" "$workflow" &&
   grep -Fq "actions/upload-artifact@v4" "$workflow" ||
   fail "reports must be uploaded even when the gate fails"
@@ -96,9 +103,10 @@ grep -Fq -- "- resolve-release-candidate" <<<"$evidence_block" &&
   fail "evidence must require approval control and check out the locked release candidate SHA"
 grep -Fq -- "- certification-preparation-evidence" <<<"$review_block" &&
   grep -Fq -- "- compare-migration-collation-upgrade" <<<"$review_block" &&
+  grep -Fq -- "- verify-api-contract" <<<"$review_block" &&
   grep -Fq -- "- verify-release-evidence" <<<"$review_block" &&
   grep -Fq "environment: release-gate-review" <<<"$review_block" ||
-  fail "Gate Review must wait for verified evidence, collation rehearsal, and human approval"
+  fail "Gate Review must wait for verified evidence, API contract validation, collation rehearsal, and human approval"
 grep -Fq "needs: certification-preparation-evidence" <<<"$release_evidence_block" &&
   grep -Fq "actions/download-artifact@v4" <<<"$release_evidence_block" &&
   grep -Fq "gh attestation verify" <<<"$release_evidence_block" &&
