@@ -33,12 +33,19 @@ concurrency:
   group: certification-preparation-release-${{ inputs.tag_name }}
   cancel-in-progress: false
 
+env:
+  POSTGRES_CURRENT_MAJOR: "17"
+  POSTGRES_TARGET_MAJOR: "18"
+
 jobs:
   resolve-release-candidate:
     name: Lock release candidate SHA
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.candidate.outputs.sha }}
+      postgres_current_major: ${{ steps.postgres-upgrade.outputs.current_major }}
+      postgres_target_major: ${{ steps.postgres-upgrade.outputs.target_major }}
+      postgres_upgrade_matrix: ${{ steps.postgres-upgrade.outputs.matrix }}
     steps:
       - name: Resolve release candidate
         uses: actions/checkout@v4
@@ -49,6 +56,28 @@ jobs:
         id: candidate
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Validate PostgreSQL upgrade pair
+        id: postgres-upgrade
+        run: |
+          set -euo pipefail
+          current_major="${POSTGRES_CURRENT_MAJOR:-}"
+          target_major="${POSTGRES_TARGET_MAJOR:-}"
+          if [[ -z "$current_major" || -z "$target_major" ]]; then
+            echo "::error::PostgreSQL upgrade pair is incomplete: both POSTGRES_CURRENT_MAJOR and POSTGRES_TARGET_MAJOR are required."
+            exit 1
+          fi
+          if [[ ! "$current_major" =~ ^[0-9]+$ || ! "$target_major" =~ ^[0-9]+$ ]]; then
+            echo "::error::PostgreSQL upgrade pair must contain numeric major versions: current=${current_major}, target=${target_major}."
+            exit 1
+          fi
+          if [[ "$current_major" == "$target_major" ]]; then
+            echo "::error::PostgreSQL upgrade pair must use different major versions: current=${current_major}, target=${target_major}."
+            exit 1
+          fi
+          echo "current_major=$current_major" >> "$GITHUB_OUTPUT"
+          echo "target_major=$target_major" >> "$GITHUB_OUTPUT"
+          echo "matrix=[\"$current_major\",\"$target_major\"]" >> "$GITHUB_OUTPUT"
+
   migration-collation-upgrade:
     name: Rehearse migration winners (PostgreSQL ${{ matrix.postgres }}, ${{ matrix.collation.name }})
     needs: resolve-release-candidate
@@ -57,9 +86,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        postgres:
-          - "17"
-          - "18"
+        postgres: ${{ fromJSON(needs.resolve-release-candidate.outputs.postgres_upgrade_matrix) }}
         collation:
           - name: libc-C
             initdb_args: --locale-provider=libc --locale=C
@@ -102,10 +129,15 @@ jobs:
           if-no-files-found: error
 
   compare-migration-collation-upgrade:
-    name: Compare PostgreSQL 17 and 18 migration winners
-    needs: migration-collation-upgrade
+    name: Compare PostgreSQL ${{ needs.resolve-release-candidate.outputs.postgres_current_major }} and ${{ needs.resolve-release-candidate.outputs.postgres_target_major }} migration winners
+    needs:
+      - resolve-release-candidate
+      - migration-collation-upgrade
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      POSTGRES_CURRENT_MAJOR: ${{ needs.resolve-release-candidate.outputs.postgres_current_major }}
+      POSTGRES_TARGET_MAJOR: ${{ needs.resolve-release-candidate.outputs.postgres_target_major }}
     steps:
       - name: Download migration winner rehearsals
         uses: actions/download-artifact@v4
@@ -118,8 +150,8 @@ jobs:
         run: |
           set -euo pipefail
           for collation in libc-C icu-en-US; do
-            current_file="migration-collation-results/17-${collation}.tsv"
-            target_file="migration-collation-results/18-${collation}.tsv"
+            current_file="migration-collation-results/${POSTGRES_CURRENT_MAJOR}-${collation}.tsv"
+            target_file="migration-collation-results/${POSTGRES_TARGET_MAJOR}-${collation}.tsv"
             IFS=$'\t' read -r current_version current_provider current_locale current_winners < "$current_file"
             IFS=$'\t' read -r target_version target_provider target_locale target_winners < "$target_file"
             if [[ "$current_winners" != "$target_winners" ]]; then

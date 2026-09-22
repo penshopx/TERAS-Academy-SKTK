@@ -74,15 +74,25 @@ grep -Fq "run: pnpm run gate:certification-preparation" "$workflow" ||
 grep -Fq 'sha: ${{ steps.candidate.outputs.sha }}' <<<"$candidate_block" &&
   grep -Fq 'ref: ${{ inputs.target_ref }}' <<<"$candidate_block" ||
   fail "release candidate SHA must be resolved exactly once from the requested ref"
+grep -Fq 'POSTGRES_CURRENT_MAJOR: "17"' "$workflow" &&
+  grep -Fq 'POSTGRES_TARGET_MAJOR: "18"' "$workflow" &&
+  grep -Fq 'postgres_current_major: ${{ steps.postgres-upgrade.outputs.current_major }}' <<<"$candidate_block" &&
+  grep -Fq 'postgres_target_major: ${{ steps.postgres-upgrade.outputs.target_major }}' <<<"$candidate_block" &&
+  grep -Fq 'postgres_upgrade_matrix: ${{ steps.postgres-upgrade.outputs.matrix }}' <<<"$candidate_block" ||
+  fail "PostgreSQL upgrade versions must have one workflow configuration source and validated job outputs"
 grep -Fq "needs: resolve-release-candidate" <<<"$collation_block" &&
   grep -Fq 'ref: ${{ needs.resolve-release-candidate.outputs.sha }}' <<<"$collation_block" ||
   fail "collation rehearsal must check out the locked release candidate SHA"
-grep -Fq -- '- "17"' <<<"$collation_block" &&
-  grep -Fq -- '- "18"' <<<"$collation_block" &&
+grep -Fq 'postgres: ${{ fromJSON(needs.resolve-release-candidate.outputs.postgres_upgrade_matrix) }}' <<<"$collation_block" &&
   grep -Fq 'image: postgres:${{ matrix.postgres }}' <<<"$collation_block" &&
   grep -Fq 'TERAS_COLLATION_RESULT_FILE:' <<<"$collation_block" ||
   fail "collation rehearsal must run and record winners on current and target PostgreSQL major versions"
-grep -Fq "needs: migration-collation-upgrade" <<<"$collation_comparison_block" &&
+grep -Fq -- "- resolve-release-candidate" <<<"$collation_comparison_block" &&
+  grep -Fq -- "- migration-collation-upgrade" <<<"$collation_comparison_block" &&
+  grep -Fq 'POSTGRES_CURRENT_MAJOR: ${{ needs.resolve-release-candidate.outputs.postgres_current_major }}' <<<"$collation_comparison_block" &&
+  grep -Fq 'POSTGRES_TARGET_MAJOR: ${{ needs.resolve-release-candidate.outputs.postgres_target_major }}' <<<"$collation_comparison_block" &&
+  grep -Fq '${POSTGRES_CURRENT_MAJOR}-${collation}.tsv' <<<"$collation_comparison_block" &&
+  grep -Fq '${POSTGRES_TARGET_MAJOR}-${collation}.tsv' <<<"$collation_comparison_block" &&
   grep -Fq 'current_winners' <<<"$collation_comparison_block" &&
   grep -Fq 'target_winners' <<<"$collation_comparison_block" &&
   grep -Fq 'PostgreSQL ${current_version} provider=${current_provider} locale=${current_locale} winners=${current_winners}' <<<"$collation_comparison_block" &&
@@ -99,6 +109,55 @@ collation_comparison_script="$(
 [[ -n "$collation_comparison_script" ]] ||
   fail "collation comparison executable script is missing"
 
+postgres_upgrade_validation_script="$(
+  awk '
+    /^      - name: Validate PostgreSQL upgrade pair$/ { found = 1; next }
+    found && /^        run: \|$/ { in_script = 1; next }
+    in_script && /^          / { sub(/^          /, ""); print; next }
+    in_script { exit }
+  ' <<<"$candidate_block"
+)"
+[[ -n "$postgres_upgrade_validation_script" ]] ||
+  fail "PostgreSQL upgrade pair validation script is missing"
+
+postgres_upgrade_fixture_dir="$(mktemp -d)"
+postgres_upgrade_output="$postgres_upgrade_fixture_dir/output.log"
+if ! (
+  export GITHUB_OUTPUT="$postgres_upgrade_fixture_dir/github-output"
+  POSTGRES_CURRENT_MAJOR=17 POSTGRES_TARGET_MAJOR=18 bash -c "$postgres_upgrade_validation_script"
+); then
+  rm -rf "$postgres_upgrade_fixture_dir"
+  fail "complete, different PostgreSQL upgrade versions must be accepted"
+fi
+grep -Fq 'current_major=17' "$postgres_upgrade_fixture_dir/github-output" &&
+  grep -Fq 'target_major=18' "$postgres_upgrade_fixture_dir/github-output" &&
+  grep -Fq 'matrix=["17","18"]' "$postgres_upgrade_fixture_dir/github-output" || {
+  rm -rf "$postgres_upgrade_fixture_dir"
+  fail "validated PostgreSQL versions must drive comparator outputs and the rehearsal matrix"
+}
+for invalid_pair in missing-current missing-target same nonnumeric; do
+  current=17
+  target=18
+  case "$invalid_pair" in
+    missing-current) current="" ;;
+    missing-target) target="" ;;
+    same) target=17 ;;
+    nonnumeric) target=next ;;
+  esac
+  if (
+    export GITHUB_OUTPUT="$postgres_upgrade_fixture_dir/github-output-$invalid_pair"
+    POSTGRES_CURRENT_MAJOR="$current" POSTGRES_TARGET_MAJOR="$target" bash -c "$postgres_upgrade_validation_script"
+  ) >"$postgres_upgrade_output" 2>&1; then
+    rm -rf "$postgres_upgrade_fixture_dir"
+    fail "$invalid_pair PostgreSQL upgrade pair must be rejected"
+  fi
+  grep -Fq "::error::PostgreSQL upgrade pair" "$postgres_upgrade_output" || {
+    rm -rf "$postgres_upgrade_fixture_dir"
+    fail "$invalid_pair PostgreSQL upgrade pair must fail with a clear error"
+  }
+done
+rm -rf "$postgres_upgrade_fixture_dir"
+
 collation_fixture_dir="$(mktemp -d)"
 mkdir -p "$collation_fixture_dir/migration-collation-results"
 printf '17\tlibc\tC\twinner-current\n' >"$collation_fixture_dir/migration-collation-results/17-libc-C.tsv"
@@ -108,7 +167,7 @@ printf '18\ticu\ten-US\twinner-shared\n' >"$collation_fixture_dir/migration-coll
 collation_failure_output="$collation_fixture_dir/comparison-output.log"
 if (
   cd "$collation_fixture_dir"
-  bash -c "$collation_comparison_script"
+  POSTGRES_CURRENT_MAJOR=17 POSTGRES_TARGET_MAJOR=18 bash -c "$collation_comparison_script"
 ) >"$collation_failure_output" 2>&1; then
   rm -rf "$collation_fixture_dir"
   fail "collation comparison must exit non-zero when PostgreSQL major versions produce different winners"
