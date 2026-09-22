@@ -38,6 +38,24 @@ export function ReadinessAuditStatusBadge({ status }: { status: unknown }) {
   return <Badge variant={presentation.badgeVariant} data-readiness-presentation={presentation.badgeVariant}>{presentation.label}</Badge>;
 }
 
+function isCanonicalReadinessStatus(status: unknown): status is ReadinessStatus {
+  return typeof status === "string" && statuses.includes(status as ReadinessStatus);
+}
+
+export function ReadinessStatusDiagnostic({ status }: { status: unknown }) {
+  if (isCanonicalReadinessStatus(status)) return null;
+
+  return <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3" role="alert" data-testid="readiness-status-diagnostic">
+    <p className="font-medium">Status readiness tidak dikenal</p>
+    <p className="mt-1 text-muted-foreground">
+      Nilai mentah berikut hanya untuk pelacakan ketidaksesuaian kontrak dan bukan keputusan readiness:
+    </p>
+    <code className="mt-2 block break-all rounded bg-background/70 px-2 py-1 text-xs" data-testid="readiness-status-raw-value">
+      {typeof status === "string" ? status : String(status)}
+    </code>
+  </div>;
+}
+
 type DownloadEnvironment = {
   createObjectURL: (blob: Blob) => string;
   revokeObjectURL: (url: string) => void;
@@ -488,6 +506,7 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
         <DialogHeader><DialogTitle>Detail evaluasi readiness</DialogTitle><DialogDescription>Snapshot ini disimpan saat keputusan dibuat dan tidak dihitung ulang.</DialogDescription></DialogHeader>
         {selected && <div className="space-y-5 text-sm">
           <div className="flex flex-wrap gap-2"><ReadinessAuditStatusBadge status={selected.status} /><Badge variant="outline">Rule v{selected.ruleVersion}</Badge><Badge variant="outline">Skor {selected.score}%</Badge></div>
+          <ReadinessStatusDiagnostic status={selected.status} />
           <section><h3 className="font-semibold">Alasan keputusan</h3><p className="mt-1 text-muted-foreground">{selected.decisionReason}</p></section>
           <section><h3 className="font-semibold">Blocker</h3>{selected.blockers.length ? <ul className="mt-2 list-disc space-y-1 pl-5">{selected.blockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul> : <p className="mt-1 text-muted-foreground">Tidak ada blocker.</p>}</section>
           <section><h3 className="font-semibold">Assessment snapshot</h3><div className="mt-2 grid gap-2">{selected.inputEvidence.assessments.map(item => <div key={item.id} className="rounded border p-3"><strong>{item.id}</strong><p>Skor {item.score} · {item.completed ? "Selesai" : "Belum selesai"} · {item.criticalFailure ? "Critical failure" : "Tanpa critical failure"}</p></div>)}</div></section>

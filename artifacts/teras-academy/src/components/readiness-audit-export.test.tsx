@@ -14,6 +14,7 @@ import {
   ReadinessExportFeedback,
   ReadinessExportAlerts,
   ReadinessAuditStatusBadge,
+  ReadinessStatusDiagnostic,
   enqueueReadinessExportOutcome,
   flushPendingReadinessExportOutcomes,
   READINESS_EXPORT_OUTCOME_QUEUE_KEY,
@@ -69,6 +70,23 @@ test("readiness audit badge presents an unknown runtime status conservatively", 
   assert.match(markup, /data-readiness-presentation="warning"/);
   assert.match(markup, />Status kesiapan tidak dikenal</);
   assert.doesNotMatch(markup, /Future API status/);
+});
+
+test("readiness detail keeps canonical statuses free of diagnostic metadata", () => {
+  for (const status of Object.values(ReadinessSummaryStatus)) {
+    const markup = renderToStaticMarkup(<ReadinessStatusDiagnostic status={status} />);
+    assert.equal(markup, "");
+  }
+});
+
+test("readiness detail exposes an unknown runtime status as escaped diagnostic text", () => {
+  const rawStatus = '<img src=x onerror="alert(1)">Future API status';
+  const markup = renderToStaticMarkup(<ReadinessStatusDiagnostic status={rawStatus} />);
+
+  assert.match(markup, /Status readiness tidak dikenal/);
+  assert.match(markup, /hanya untuk pelacakan ketidaksesuaian kontrak dan bukan keputusan readiness/);
+  assert.match(markup, /&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;Future API status/);
+  assert.doesNotMatch(markup, /<img/);
 });
 
 test("readiness history export downloads the JSON and canonical checksum sidecar", async () => {
