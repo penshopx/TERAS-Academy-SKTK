@@ -335,6 +335,27 @@ async function run() {
         && !malformedResult.stderr.includes(retiredPublicPem),
       `Malformed ${malformed.label} rejection must not expose public key material`);
     }
+    const invalidJsonKeyDocuments = [
+      {
+        label: "truncated JSON",
+        document: `{"issuer":"TERAS","keys":[{"keyId":"secret-truncated-key","publicKeyPem":"${publicPem.slice(0, 24)}`,
+      },
+      {
+        label: "invalid JSON syntax",
+        document: `{"issuer":"TERAS","keys":[{"keyId":"secret-syntax-key",}],"secret":"do-not-display"}`,
+      },
+    ];
+    for (const invalid of invalidJsonKeyDocuments) {
+      await writeFile(keysPath, invalid.document);
+      const invalidResult = await runVerifier(exported);
+      assert(!invalidResult.accepted, `Official verifier must reject ${invalid.label} in the public-key file`);
+      assert(invalidResult.stderr.trim() === "FAILED: public-key file could not be read as valid JSON",
+        `${invalid.label} rejection must identify the public-key JSON file without exposing parser internals`);
+      assert(!invalidResult.stderr.includes("secret-")
+        && !invalidResult.stderr.includes("do-not-display")
+        && !invalidResult.stderr.includes(publicPem.slice(0, 24)),
+      `${invalid.label} rejection must not expose manifest content or key material`);
+    }
     const currentKeysOnly = {
       ...publicKeys,
       keys: publicKeys.keys.filter((key: any) => key.keyId !== "teras-audit-2026-01"),

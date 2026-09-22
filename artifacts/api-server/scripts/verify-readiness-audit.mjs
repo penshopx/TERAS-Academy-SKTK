@@ -34,9 +34,16 @@ try {
     throw new Error("missing or invalid digital signature metadata");
   }
   const keyText = await readFile(publicKeysPath, "utf8");
-  const keyDocument = keyText.trimStart().startsWith("-----BEGIN PUBLIC KEY-----")
-    ? { keys: [{ keyId: signature.keyId, version: signature.keyVersion, algorithm: "Ed25519", publicKeyPem: keyText }] }
-    : JSON.parse(keyText);
+  let keyDocument;
+  if (keyText.trimStart().startsWith("-----BEGIN PUBLIC KEY-----")) {
+    keyDocument = { keys: [{ keyId: signature.keyId, version: signature.keyVersion, algorithm: "Ed25519", publicKeyPem: keyText }] };
+  } else {
+    try {
+      keyDocument = JSON.parse(keyText);
+    } catch {
+      throw new Error("public-key file could not be read as valid JSON");
+    }
+  }
   if (!Array.isArray(keyDocument.keys)) {
     throw new Error("invalid public key manifest: keys must be an array");
   }
