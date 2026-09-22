@@ -35,6 +35,17 @@ export async function collectTimelineExportPages<T>(
   return items;
 }
 
+export async function collectTimelineSnapshotPages<TSnapshot, T>(
+  loadSnapshot: () => Promise<TSnapshot>,
+  fetchPage: (snapshot: TSnapshot, cursor?: string) => TimelineExportPage<T> | Promise<TimelineExportPage<T>>,
+) {
+  const snapshot = await loadSnapshot();
+  return {
+    snapshot,
+    items: await collectTimelineExportPages(async cursor => fetchPage(snapshot, cursor)),
+  };
+}
+
 export function createLearnerPortfolioExport(portfolio: unknown, exportedAt = new Date()) {
   const exportedAtIso = exportedAt.toISOString();
   const portfolioChecksum = crypto.createHash("sha256").update(JSON.stringify(portfolio)).digest("hex");

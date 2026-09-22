@@ -10,6 +10,8 @@ import {
 } from "@workspace/db";
 import { eq, inArray, sql } from "drizzle-orm";
 import { createIntegrationTestApp } from "./integration-test-app";
+import { collectTimelineSnapshotPages } from "./lib/learner-portfolio-export";
+import { decodeTimelineCursor, timelinePage } from "./routes/learner";
 
 type Identity = "path-a" | "path-b";
 type Passport = {
@@ -89,6 +91,27 @@ function parityProjection(passport: Passport) {
 }
 
 async function run() {
+  const syntheticTimeline = Array.from({ length: 205 }, (_, index) => ({
+    id: `synthetic-${String(index).padStart(3, "0")}`,
+    date: new Date(Date.UTC(2026, 0, 1, 0, Math.floor(index / 4))),
+    causalReferences: { evidenceIds: [`synthetic-evidence-${index}`] },
+  })).sort((left, right) => left.date.getTime() - right.date.getTime() || left.id.localeCompare(right.id));
+  let snapshotLoads = 0;
+  const syntheticCollection = await collectTimelineSnapshotPages(
+    async () => {
+      snapshotLoads += 1;
+      return syntheticTimeline;
+    },
+    (snapshot, cursorValue) => {
+      const cursor = cursorValue ? decodeTimelineCursor(cursorValue) : undefined;
+      assert(!cursorValue || cursor, "synthetic pagination must produce valid date+ID cursors");
+      const page = timelinePage(snapshot, 17, cursor ?? undefined);
+      return { items: page.items, nextCursor: page.nextCursor };
+    },
+  );
+  assert.equal(snapshotLoads, 1, "multi-page full-history traversal must build its timeline snapshot exactly once");
+  assert.deepEqual(syntheticCollection.items, syntheticTimeline, "snapshot pagination must preserve date+ID order and causal references");
+
   await seed();
   const app = createIntegrationTestApp(req => {
     const identity = req.get("x-passport-identity") as Identity;
