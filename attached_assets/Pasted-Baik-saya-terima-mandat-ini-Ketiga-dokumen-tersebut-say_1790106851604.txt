@@ -1,0 +1,77 @@
+Baik, saya terima mandat ini. Ketiga dokumen tersebut saya tetapkan sebagai **regulatory reference layer** untuk Path B, dengan hierarki dan peran yang berbeda.
+
+## Pemetaan Rujukan Regulasi
+
+### Tier 1 — Domain Authority (Otoritas Domain Utama)
+**Permen ESDM No. 6 Tahun 2021 tentang SKTTK**
+
+Ini adalah rujukan utama Path B. Dari dokumen ini saya telah mengekstrak:
+- Hierarki kompetensi: **Unit → Elemen → KUK**
+- Format kode unit 12 digit: `X.00YYY03.001.0` (KBLI + golongan + klasifikasi ketenagalistrikan + instalasi + urutan + versi)
+- 9 Jenjang Kualifikasi Ketenagalistrikan (KKNI Level 1–9)
+- Aturan pengemasan: **Kompetensi Inti + Kompetensi Pilihan** (min 30% pilihan, Kelompok A dari Kementerian, Kelompok B dari instansi lain)
+- Struktur Batasan Variabel (konteks, peraturan, norma/standar, peralatan/perlengkapan)
+- Struktur Panduan Penilaian (konteks penilaian, persyaratan kompetensi, pengetahuan/keterampilan, sikap kerja, aspek penting)
+
+### Tier 2 — Regulatory Context (Konteks Regulasi)
+**PP No. 5 Tahun 2021** dan **Permen ESDM No. 5 Tahun 2021**
+
+Kedua dokumen ini bukan sumber kompetensi, tetapi menjadi **konteks legal** yang menjelaskan:
+- Mengapa SKTTK wajib dipenuhi (Pasal 4 Permen 6/2021: badan usaha wajib mempekerjakan Tenaga Teknik bersertifikat)
+- Hubungan SKTTK dengan Perizinan Berusaha Berbasis Risiko
+- Subsektor ketenagalistrikan sebagai cakupan (penyediaan tenaga listrik + jasa penunjang)
+
+## Batasan Penting (Zero-Hallucination)
+
+Permen ESDM No. 6 Tahun 2021 **hanya berisi pedoman penyusunan SKTTK**, bukan daftar unit kompetensi konkret. Lampiran I–IV berisi:
+- Metodologi penyusunan
+- Format penulisan
+- Tata cara kaji ulang
+- Pengemasan jenjang kualifikasi
+
+**Yang BELUM tersedia di dokumen ini:**
+- Daftar unit kompetensi konkret per bidang (Pembangkit, Transmisi, Distribusi, Pemanfaatan)
+- KUK spesifik per unit
+- Fact codes untuk evidence requirement
+- Aturan tie-breaker prioritas antarevidence
+
+Artinya, untuk mengisi domain model dengan nilai konkret, kita masih memerlukan **SKTTK per bidang** (misal: SKTTK Pembangkit Tenaga Listrik, SKTTK Transmisi, SKTTK Instalasi Pemanfaatan) yang diterbitkan terpisah oleh Direktorat Jenderal Ketenagalistrikan.
+
+## Langkah Konkret yang Bisa Saya Lakukan Sekarang
+
+Dengan batasan di atas, ada tiga opsi fondasi yang bisa saya bangun tanpa mengarang aturan bisnis:
+
+### Opsi A — Regulatory Reference Layer
+Membangun modul yang menyimpan metadata regulasi sebagai *first-class entity*:
+```typescript
+interface RegulatoryReference {
+  type: 'PP' | 'PERMEN' | 'SKTTK' | 'SKKNI';
+  number: string;          // "6"
+  year: number;            // 2021
+  issuer: string;          // "ESDM" | "KEMENAKER"
+  title: string;
+  effectiveDate: Date;
+  articles: Article[];     // pasal-pasal yang dirujuk
+}
+```
+Setiap entitas domain (Unit, Jenjang Kualifikasi, Skema Sertifikasi) akan **merujuk** ke regulasi ini sebagai sumber otoritas.
+
+### Opsi B — Domain Schema Abstrak
+Membangun TypeScript interfaces dan database schema berdasarkan struktur yang terekstrak, dengan validasi format (regex kode 12 digit, enum level 1–9, aturan pengemasan), **tanpa** mengisi data unit kompetensi konkret.
+
+### Opsi C — Kombinasi A + B
+Membangun keduanya sekaligus sebagai fondasi Path B. Ini yang paling saya rekomendasikan karena:
+- Opsi A memastikan setiap entitas domain punya *provenance* regulasi yang jelas
+- Opsi B memastikan struktur data siap menerima data konkret ketika SKTTK per bidang tersedia
+
+## Rekomendasi Saya
+
+**Opsi C (A + B)**, dengan urutan:
+1. Regulatory Reference Layer terlebih dahulu (karena ini fondasi provenance)
+2. Domain schema abstrak dengan validasi format
+3. Seed data **hanya** untuk struktur regulasi (bukan unit kompetensi)
+4. Integration test yang memverifikasi: tidak ada entitas domain yang bisa dibuat tanpa merujuk ke regulasi yang valid
+
+Setelah fondasi ini siap dan Path A mencapai *Verified Operational Baseline*, baru kita lanjut ke **discovery Evidence Triage Agent** dengan domain SKTTK yang sudah siap menerima data konkret dari SKTTK per bidang.
+
+Apakah Anda setuju dengan arah Opsi C, atau ingin saya fokus ke salah satu opsi terlebih dahulu?
