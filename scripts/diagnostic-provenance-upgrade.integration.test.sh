@@ -141,7 +141,7 @@ assert_contains() {
 assert_no_increase_warning() {
   local output_file="$1"
   if grep -Fq "TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS_INCREASE" "$output_file"; then
-    echo "Initial schema-check baseline unexpectedly emitted an increase warning" >&2
+    echo "Schema-check unexpectedly emitted an increase warning" >&2
     cat "$output_file" >&2
     exit 1
   fi
@@ -162,9 +162,10 @@ baseline_output="$(mktemp)"
 second_output="$(mktemp)"
 parallel_a_output="$(mktemp)"
 parallel_b_output="$(mktemp)"
+decrease_output="$(mktemp)"
 lock_ready_file="$(mktemp)"
 rm -f "$lock_ready_file"
-trap 'rm -f "$check_sql" "$baseline_output" "$second_output" "$parallel_a_output" "$parallel_b_output" "$lock_ready_file"; cleanup' EXIT
+trap 'rm -f "$check_sql" "$baseline_output" "$second_output" "$parallel_a_output" "$parallel_b_output" "$decrease_output" "$lock_ready_file"; cleanup' EXIT
 
 run_schema_check "$baseline_output"
 assert_contains "$baseline_output" \
@@ -277,6 +278,19 @@ fi
 assert_output_is_aggregate_only "$parallel_a_output"
 assert_output_is_aggregate_only "$parallel_b_output"
 
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "
+  DELETE FROM teras_diagnostic_provenance_exceptions
+  WHERE entity_type = 'profile'
+    AND entity_id = 'sequential-sensitive-id'
+    AND reason = 'NO_VALID_RESPONSE_CHAIN'
+" >/dev/null
+
+run_schema_check "$decrease_output"
+assert_contains "$decrease_output" \
+  "TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS entity_type=profile reason=NO_VALID_RESPONSE_CHAIN count=2 delta=-1"
+assert_no_increase_warning "$decrease_output"
+assert_output_is_aggregate_only "$decrease_output"
+
 exception_count_before_retention="$(
   psql "$DATABASE_URL" -Atqc \
     "SELECT count(*) FROM teras_diagnostic_provenance_exceptions"
@@ -314,7 +328,7 @@ SQL
 
 retention_first_output="$(mktemp)"
 retention_second_output="$(mktemp)"
-trap 'rm -f "$check_sql" "$baseline_output" "$second_output" "$parallel_a_output" "$parallel_b_output" "$retention_first_output" "$retention_second_output" "$lock_ready_file"; cleanup' EXIT
+trap 'rm -f "$check_sql" "$baseline_output" "$second_output" "$parallel_a_output" "$parallel_b_output" "$decrease_output" "$retention_first_output" "$retention_second_output" "$lock_ready_file"; cleanup' EXIT
 
 run_schema_check "$retention_first_output"
 first_retained_state="$(psql "$DATABASE_URL" -Atqc "
