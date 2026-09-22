@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import test from "node:test";
 import {
   MAX_PORTFOLIO_FILE_SIZE_BYTES,
+  PORTFOLIO_COMPLEXITY_REJECTION_MESSAGE,
   verifyPortfolioFile,
   verifyPortfolioText,
 } from "./portfolio-verification";
@@ -59,16 +60,73 @@ test("rejects malformed JSON and invalid document shapes", async () => {
 
 test("reads and verifies a portfolio file exactly at the local size limit", async () => {
   let textCalls = 0;
+  const worker = localVerificationWorker();
   const result = await verifyPortfolioFile({
     size: MAX_PORTFOLIO_FILE_SIZE_BYTES,
     text: async () => {
       textCalls += 1;
       return JSON.stringify(portfolioDocument());
     },
-  });
+  }, { createWorker: () => worker });
 
   assert.equal(textCalls, 1);
   assert.equal(result.status, "match");
+});
+
+function localVerificationWorker() {
+  const listeners = new Map<string, (event?: MessageEvent) => void>();
+  return {
+    addEventListener(type: string, listener: (event?: MessageEvent) => void) {
+      listeners.set(type, listener);
+    },
+    postMessage(text: string) {
+      setTimeout(async () => {
+        const data = await verifyPortfolioText(text);
+        listeners.get("message")?.({ data } as MessageEvent);
+      }, 0);
+    },
+    terminate() {},
+  };
+}
+
+test("rejects an extreme deeply nested payload below the size limit without escaping the worker boundary", async () => {
+  const depth = 20_000;
+  const portfolio = `${'{"child":'.repeat(depth)}null${"}".repeat(depth)}`;
+  const text = `{"schemaVersion":"1.0","documentId":"deep","exportedAt":"2026-09-22T00:00:00.000Z","portfolio":${portfolio},"integrity":{"algorithm":"SHA-256","checksum":"${"0".repeat(64)}","canonicalization":"teras-learner-portfolio-v1-json-stringify","verificationNote":"Integrity only."}}`;
+  assert.ok(Buffer.byteLength(text) < MAX_PORTFOLIO_FILE_SIZE_BYTES);
+
+  const result = await verifyPortfolioFile(
+    { size: Buffer.byteLength(text), text: async () => text },
+    { createWorker: localVerificationWorker },
+  );
+
+  assert.deepEqual(result, {
+    status: "rejected",
+    message: PORTFOLIO_COMPLEXITY_REJECTION_MESSAGE,
+  });
+});
+
+test("terminates stalled verification work and reports a clear rejection", async () => {
+  let terminated = false;
+  const result = await verifyPortfolioFile(
+    { size: 2, text: async () => "{}" },
+    {
+      timeoutMs: 5,
+      createWorker: () => ({
+        addEventListener() {},
+        postMessage() {},
+        terminate() {
+          terminated = true;
+        },
+      }),
+    },
+  );
+
+  assert.equal(terminated, true);
+  assert.deepEqual(result, {
+    status: "rejected",
+    message: PORTFOLIO_COMPLEXITY_REJECTION_MESSAGE,
+  });
 });
 
 test("rejects a portfolio file above the local size limit before reading it", async () => {

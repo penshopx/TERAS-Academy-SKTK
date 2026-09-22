@@ -2,6 +2,10 @@ export const SUPPORTED_PORTFOLIO_SCHEMA_VERSION = "1.0";
 export const SUPPORTED_PORTFOLIO_CANONICALIZATION = "teras-learner-portfolio-v1-json-stringify";
 export const MAX_PORTFOLIO_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 export const MAX_PORTFOLIO_FILE_SIZE_LABEL = "5 MiB";
+export const PORTFOLIO_VERIFICATION_TIMEOUT_MS = 5_000;
+
+export const PORTFOLIO_COMPLEXITY_REJECTION_MESSAGE =
+  "Struktur file terlalu kompleks untuk diverifikasi dengan aman.";
 
 type PortfolioDocument = {
   schemaVersion: string;
@@ -26,6 +30,18 @@ export type PortfolioVerificationResult =
     }
   | { status: "rejected"; message: string };
 
+type VerificationWorker = {
+  postMessage(value: string): void;
+  terminate(): void;
+  addEventListener(type: "message", listener: (event: MessageEvent<PortfolioVerificationResult>) => void): void;
+  addEventListener(type: "error" | "messageerror", listener: () => void): void;
+};
+
+type VerifyPortfolioFileOptions = {
+  createWorker?: () => VerificationWorker;
+  timeoutMs?: number;
+};
+
 export function rejectOversizedPortfolioFile(fileSize: number): PortfolioVerificationResult | null {
   if (fileSize <= MAX_PORTFOLIO_FILE_SIZE_BYTES) return null;
 
@@ -37,11 +53,47 @@ export function rejectOversizedPortfolioFile(fileSize: number): PortfolioVerific
 
 export async function verifyPortfolioFile(
   file: Pick<File, "size" | "text">,
+  options: VerifyPortfolioFileOptions = {},
 ): Promise<PortfolioVerificationResult> {
   const sizeRejection = rejectOversizedPortfolioFile(file.size);
   if (sizeRejection) return sizeRejection;
 
-  return verifyPortfolioText(await file.text());
+  const text = await file.text();
+  const createWorker = options.createWorker ?? (() => new Worker(
+    new URL("./portfolio-verification.worker.ts", import.meta.url),
+    { type: "module" },
+  ));
+
+  let worker: VerificationWorker;
+  try {
+    worker = createWorker();
+  } catch {
+    return {
+      status: "rejected",
+      message: "Browser tidak mendukung pemeriksaan file lokal yang aman.",
+    };
+  }
+
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = (result: PortfolioVerificationResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      worker.terminate();
+      resolve(result);
+    };
+    const fail = () => finish({
+      status: "rejected",
+      message: PORTFOLIO_COMPLEXITY_REJECTION_MESSAGE,
+    });
+    const timeout = setTimeout(fail, options.timeoutMs ?? PORTFOLIO_VERIFICATION_TIMEOUT_MS);
+
+    worker.addEventListener("message", event => finish(event.data));
+    worker.addEventListener("error", fail);
+    worker.addEventListener("messageerror", fail);
+    worker.postMessage(text);
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -98,7 +150,19 @@ export async function verifyPortfolioText(text: string): Promise<PortfolioVerifi
     exportedAt: document.exportedAt,
     portfolio: document.portfolio,
   };
-  const calculatedChecksum = await sha256Hex(JSON.stringify(canonicalPayload));
+  let canonicalText: string;
+  try {
+    canonicalText = JSON.stringify(canonicalPayload);
+  } catch {
+    return { status: "rejected", message: PORTFOLIO_COMPLEXITY_REJECTION_MESSAGE };
+  }
+
+  let calculatedChecksum: string;
+  try {
+    calculatedChecksum = await sha256Hex(canonicalText);
+  } catch {
+    return { status: "rejected", message: "Browser tidak dapat menghitung checksum file ini." };
+  }
 
   return {
     status: calculatedChecksum === document.integrity.checksum ? "match" : "mismatch",
