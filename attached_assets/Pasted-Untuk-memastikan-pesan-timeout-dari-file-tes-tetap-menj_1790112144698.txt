@@ -1,0 +1,65 @@
+Untuk memastikan pesan *timeout* dari *file* tes tetap menjadi penyebab utama yang terlihat (primary cause) ketika proses *cleanup* juga ikut macet, kita perlu memodifikasi logika penggabungan error di dalam *runner*. 
+
+Saat ini, masalahnya adalah error dari *cleanup* menimpa atau menyembunyikan status *timeout* asli dari *command*. Berikut adalah pendekatan dan implementasi kode untuk memperbaiki kontrak penggabungan error tersebut.
+
+### Logika Perbaikan
+1. **Deteksi Timeout:** Periksa apakah `commandError` adalah sebuah *timeout error*.
+2. **Prioritaskan Command Timeout:** Jika iya, jadikan `commandError` sebagai basis error utama. Pertahankan `name` (misal: `TimeoutError`) dan `stack` aslinya.
+3. **Lampirkan Cleanup Error:** Sisipkan pesan `cleanupError` sebagai informasi tambahan (konteks sekunder) tanpa mengubah jenis error utamanya.
+
+### Contoh Implementasi (TypeScript / JavaScript)
+
+```typescript
+// Helper untuk mendeteksi apakah sebuah error adalah timeout
+function isTimeoutError(error: any): boolean {
+  return (
+    error?.name === 'TimeoutError' || 
+    error?.code === 'ETIMEDOUT' || 
+    error?.message?.toLowerCase().includes('timeout')
+  );
+}
+
+function mergeTestErrors(
+  commandError: Error | null, 
+  cleanupError: Error | null
+): Error | null {
+  // Jika tidak ada error, kembalikan null
+  if (!commandError && !cleanupError) return null;
+  if (!commandError) return cleanupError;
+  if (!cleanupError) return commandError;
+
+  // --- KEDUA ERROR ADA, LAKUKAN PENGGABUNGAN ---
+
+  // Skenario 1: Command (Test File) mengalami Timeout
+  if (isTimeoutError(commandError)) {
+    const primaryError = commandError;
+    
+    // Gabungkan pesan: Timeout test file tetap di depan, cleanup error di bawahnya
+    const combinedMessage = `${primaryError.message}\n\n[Cleanup Error]: ${cleanupError.message}`;
+    
+    const finalError = new Error(combinedMessage);
+    finalError.name = primaryError.name; // PENTING: Tetap 'TimeoutError' agar CI/Runner mengenalinya
+    finalError.stack = primaryError.stack;
+    
+    // Simpan cleanupError sebagai 'cause' untuk akses terprogram (ES2022 standard)
+    (finalError as any).cause = cleanupError;
+    
+    return finalError;
+  }
+
+  // Skenario 2: Command gagal biasa (bukan timeout)
+  const combinedMessage = `${commandError.message}\n\n[Cleanup Error]: ${cleanupError.message}`;
+  const finalError = new Error(combinedMessage);
+  finalError.name = commandError.name || 'TestExecutionError';
+  (finalError as any).cause = cleanupError;
+  
+  return finalError;
+}
+```
+
+### Poin Kunci Perubahan:
+1. **Preservasi Tipe Error:** Dengan menyalin `primaryError.name` ke `finalError.name`, *reporter* atau *dashboard* CI/CD akan tetap menampilkan ikon/status **Timeout** untuk *file* tes tersebut, bukan *Generic Failure* atau *Cleanup Failure*.
+2. **Hierarki Pesan:** Pesan *timeout* diletakkan di baris pertama. Pesan *cleanup* diletakkan di baris baru dengan prefix `[Cleanup Error]` agar developer tahu bahwa *database* juga ikut macet, tetapi tidak mengaburkan akar masalah.
+3. **Properti `cause`:** Menggunakan properti `cause` memungkinkan *tools* debugging lanjutan untuk tetap bisa menelusuri objek `cleanupError` secara terprogram jika diperlukan.
+
+Apakah *runner* yang Anda gunakan memiliki *interface* error khusus (misalnya dari Jest, Playwright, atau *custom runner* internal)? Jika ada, saya bisa menyesuaikan struktur objek error di atas agar sesuai dengan *contract* yang berlaku di *codebase* Anda.
