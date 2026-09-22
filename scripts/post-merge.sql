@@ -25,6 +25,36 @@ BEGIN
   END IF;
 END $$;
 
+-- Older installations modelled this nullable identity key as a partial unique
+-- index. Drizzle models it as a table UNIQUE constraint, so align the existing
+-- database before schema push to prevent an unsafe interactive truncation
+-- prompt in the non-interactive post-merge runner.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT clerk_user_id
+    FROM teras_people
+    WHERE clerk_user_id IS NOT NULL
+    GROUP BY clerk_user_id
+    HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'Cannot add unique Clerk identity constraint: duplicate non-null identities exist';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'teras_people'::regclass
+      AND conname = 'teras_people_clerk_user_id_unique'
+      AND contype = 'u'
+  ) THEN
+    IF to_regclass('public.teras_people_clerk_user_id_unique') IS NOT NULL THEN
+      DROP INDEX teras_people_clerk_user_id_unique;
+    END IF;
+    ALTER TABLE teras_people
+      ADD CONSTRAINT teras_people_clerk_user_id_unique UNIQUE (clerk_user_id);
+  END IF;
+END $$;
+
 ALTER TABLE teras_modules ADD COLUMN IF NOT EXISTS pathway_id text;
 ALTER TABLE teras_practice_attempts ADD COLUMN IF NOT EXISTS pathway_id text;
 ALTER TABLE teras_evidence ADD COLUMN IF NOT EXISTS pathway_id text;

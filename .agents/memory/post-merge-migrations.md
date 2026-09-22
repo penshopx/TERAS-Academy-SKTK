@@ -11,6 +11,12 @@ Post-merge reconciliation and demo fixtures are development-only operations. Cat
 
 **How to apply:** Detect the anchor table with `to_regclass`. Register every ordered migration in both existing-schema preflight and post-push finalization; do not skip intermediate migration numbers. Run idempotent, data-preserving preflight SQL only when the anchor exists, then run ordinary schema push and the atomic seed. Refresh composite-library declaration output before API tests consume newly merged exports. Require an explicit demo mode, reject production-like execution before any mutation, serialize updates on one transaction client, and verify the full script with closed stdin.
 
+Drizzle Kit 0.31 may print an interactive-prompt error while returning a successful process status. Post-merge automation must inspect push output for emitted errors instead of trusting exit status alone.
+
+**Why:** A nullable unique key represented as a legacy partial index caused schema push to request destructive truncation without a TTY; the runner continued into later migrations because the command still exited successfully.
+
+**How to apply:** Align legacy indexes with the table constraints represented by the current schema during preflight, capture schema-push output, and fail before protection migrations whenever that output reports an error.
+
 Composite foreign-key targets should be represented as named `UNIQUE` constraints in both PostgreSQL migrations and the Drizzle schema, rather than as standalone unique indexes.
 
 **Why:** After a schema-only dump, Drizzle can try to recreate a standalone unique index that already backs a composite foreign key, producing a relation-name collision or a failed drop due to dependent objects.
