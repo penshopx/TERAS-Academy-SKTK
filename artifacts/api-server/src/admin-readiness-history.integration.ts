@@ -324,6 +324,38 @@ async function run() {
         },
         expectedField: "keys[0].version must be an integer",
       },
+      {
+        label: "missing key algorithm",
+        manifest: {
+          ...publicKeys,
+          keys: [{ keyId: "teras-audit-2026-09", version: 2, publicKeyPem: publicPem }],
+        },
+        expectedField: "keys[0].algorithm must be a string",
+      },
+      {
+        label: "non-string key algorithm",
+        manifest: {
+          ...publicKeys,
+          keys: [{ keyId: "teras-audit-2026-09", version: 2, algorithm: 25519, publicKeyPem: publicPem }],
+        },
+        expectedField: "keys[0].algorithm must be a string",
+      },
+      {
+        label: "missing public key PEM",
+        manifest: {
+          ...publicKeys,
+          keys: [{ keyId: "teras-audit-2026-09", version: 2, algorithm: "Ed25519" }],
+        },
+        expectedField: "keys[0].publicKeyPem must be a string",
+      },
+      {
+        label: "non-string public key PEM",
+        manifest: {
+          ...publicKeys,
+          keys: [{ keyId: "teras-audit-2026-09", version: 2, algorithm: "Ed25519", publicKeyPem: { value: publicPem } }],
+        },
+        expectedField: "keys[0].publicKeyPem must be a string",
+      },
     ];
     for (const malformed of malformedKeyManifests) {
       await writeFile(keysPath, JSON.stringify(malformed.manifest));

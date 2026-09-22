@@ -55,6 +55,12 @@ try {
     if (!Number.isInteger(candidate.version)) {
       throw new Error(`invalid public key manifest: keys[${index}].version must be an integer`);
     }
+    if (typeof candidate.algorithm !== "string") {
+      throw new Error(`invalid public key manifest: keys[${index}].algorithm must be a string`);
+    }
+    if (typeof candidate.publicKeyPem !== "string") {
+      throw new Error(`invalid public key manifest: keys[${index}].publicKeyPem must be a string`);
+    }
     const existingKeyId = keyIdByVersion.get(candidate.version);
     if (existingKeyId !== undefined && existingKeyId !== candidate.keyId) {
       throw new Error(
