@@ -160,12 +160,16 @@ assert_output_is_aggregate_only() {
 
 baseline_output="$(mktemp)"
 second_output="$(mktemp)"
+cancelled_output="$(mktemp)"
+post_cancel_output="$(mktemp)"
 parallel_a_output="$(mktemp)"
 parallel_b_output="$(mktemp)"
 decrease_output="$(mktemp)"
 lock_ready_file="$(mktemp)"
 rm -f "$lock_ready_file"
-trap 'rm -f "$check_sql" "$baseline_output" "$second_output" "$parallel_a_output" "$parallel_b_output" "$decrease_output" "$lock_ready_file"; cleanup' EXIT
+cancel_lock_ready_file="$(mktemp)"
+rm -f "$cancel_lock_ready_file"
+trap 'rm -f "$check_sql" "$baseline_output" "$second_output" "$cancelled_output" "$post_cancel_output" "$parallel_a_output" "$parallel_b_output" "$decrease_output" "$lock_ready_file" "$cancel_lock_ready_file"; cleanup' EXIT
 
 run_schema_check "$baseline_output"
 assert_contains "$baseline_output" \
@@ -190,6 +194,131 @@ run_schema_check "$second_output"
 assert_contains "$second_output" \
   "TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS_INCREASE entity_type=profile reason=NO_VALID_RESPONSE_CHAIN previous_count=1 current_count=2 delta=1"
 assert_output_is_aggregate_only "$second_output"
+
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "
+  INSERT INTO teras_diagnostic_provenance_exceptions
+    (entity_type, entity_id, profile_id, session_id, reason, details)
+  VALUES (
+    'profile',
+    'cancel-sensitive-id',
+    'profile-cancel-sensitive-id',
+    'session-cancel-sensitive-id',
+    'NO_VALID_RESPONSE_CHAIN',
+    '{\"private\":\"learner-cancel-sensitive-id\"}'::jsonb
+  );
+
+  CREATE FUNCTION block_cancelled_check_count_insert()
+  RETURNS trigger
+  LANGUAGE plpgsql
+  AS \$\$
+  BEGIN
+    PERFORM pg_advisory_xact_lock(hashtext('teras_diagnostic_provenance_cancel_fixture'));
+    RETURN NEW;
+  END;
+  \$\$;
+
+  CREATE TRIGGER block_cancelled_check_count_insert
+  BEFORE INSERT ON teras_diagnostic_provenance_check_counts
+  FOR EACH ROW
+  EXECUTE FUNCTION block_cancelled_check_count_insert();
+" >/dev/null
+
+pre_cancel_state="$(psql "$DATABASE_URL" -Atqc "
+  SELECT
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_runs),
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_counts),
+    (SELECT max(id) FROM teras_diagnostic_provenance_check_runs)
+")"
+
+PGAPPNAME="diagnostic-provenance-cancel-lock-holder" psql "$DATABASE_URL" \
+  -v ON_ERROR_STOP=1 <<SQL >/dev/null &
+    SELECT pg_advisory_lock(hashtext('teras_diagnostic_provenance_cancel_fixture'));
+\! touch "$cancel_lock_ready_file"
+    SELECT pg_sleep(30);
+    SELECT pg_advisory_unlock(hashtext('teras_diagnostic_provenance_cancel_fixture'));
+SQL
+cancel_lock_holder_pid=$!
+
+for _ in $(seq 1 50); do
+  if [ -f "$cancel_lock_ready_file" ]; then
+    break
+  fi
+  sleep 0.1
+done
+
+if [ ! -f "$cancel_lock_ready_file" ]; then
+  echo "Cancellation fixture did not acquire its advisory lock" >&2
+  wait "$cancel_lock_holder_pid" || true
+  exit 1
+fi
+
+run_schema_check "$cancelled_output" "diagnostic-provenance-cancelled-check" &
+cancelled_check_pid=$!
+cancelled_backend_pid=""
+for _ in $(seq 1 50); do
+  cancelled_backend_pid="$(psql "$DATABASE_URL" -Atqc "
+    SELECT pid
+    FROM pg_stat_activity
+    WHERE application_name = 'diagnostic-provenance-cancelled-check'
+      AND wait_event = 'advisory'
+    LIMIT 1
+  ")"
+  if [ -n "$cancelled_backend_pid" ]; then
+    break
+  fi
+  sleep 0.1
+done
+
+if [ -z "$cancelled_backend_pid" ]; then
+  echo "Schema check was not observed after creating its run and before inserting counts" >&2
+  wait "$cancelled_check_pid" || true
+  kill "$cancel_lock_holder_pid" 2>/dev/null || true
+  wait "$cancel_lock_holder_pid" || true
+  exit 1
+fi
+
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+  "SELECT pg_terminate_backend($cancelled_backend_pid)" >/dev/null
+if wait "$cancelled_check_pid"; then
+  echo "Cancelled schema check unexpectedly completed successfully" >&2
+  kill "$cancel_lock_holder_pid" 2>/dev/null || true
+  wait "$cancel_lock_holder_pid" || true
+  exit 1
+fi
+
+kill "$cancel_lock_holder_pid" 2>/dev/null || true
+wait "$cancel_lock_holder_pid" || true
+
+post_cancel_state="$(psql "$DATABASE_URL" -Atqc "
+  SELECT
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_runs),
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_counts),
+    (SELECT max(id) FROM teras_diagnostic_provenance_check_runs)
+")"
+if [ "$post_cancel_state" != "$pre_cancel_state" ]; then
+  echo "Cancelled schema check left a partial run or count snapshot: before=$pre_cancel_state after=$post_cancel_state" >&2
+  exit 1
+fi
+
+main_lock_released="$(psql "$DATABASE_URL" -Atqc "
+  SELECT pg_try_advisory_lock(hashtext('teras_diagnostic_provenance_schema_check'));
+  SELECT pg_advisory_unlock(hashtext('teras_diagnostic_provenance_schema_check'));
+")"
+if [ "$main_lock_released" != $'t\nt' ]; then
+  echo "Cancelled schema check did not release its transaction advisory lock" >&2
+  exit 1
+fi
+
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "
+  DROP TRIGGER block_cancelled_check_count_insert
+    ON teras_diagnostic_provenance_check_counts;
+  DROP FUNCTION block_cancelled_check_count_insert();
+" >/dev/null
+
+run_schema_check "$post_cancel_output"
+assert_contains "$post_cancel_output" \
+  "TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS_INCREASE entity_type=profile reason=NO_VALID_RESPONSE_CHAIN previous_count=2 current_count=3 delta=1"
+assert_output_is_aggregate_only "$post_cancel_output"
 
 PGAPPNAME="diagnostic-provenance-lock-holder" psql "$DATABASE_URL" \
   -v ON_ERROR_STOP=1 <<SQL >/dev/null &
@@ -260,12 +389,12 @@ wait "$parallel_b_pid"
 parallel_output="$(cat "$parallel_a_output" "$parallel_b_output")"
 parallel_warning_count="$(
   grep -Fc \
-    "TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS_INCREASE entity_type=profile reason=NO_VALID_RESPONSE_CHAIN previous_count=2 current_count=3 delta=1" \
+    "TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS_INCREASE entity_type=profile reason=NO_VALID_RESPONSE_CHAIN previous_count=3 current_count=4 delta=1" \
     <<<"$parallel_output" || true
 )"
 parallel_zero_delta_count="$(
   grep -Fc \
-    "TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS entity_type=profile reason=NO_VALID_RESPONSE_CHAIN count=3 delta=0" \
+    "TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS entity_type=profile reason=NO_VALID_RESPONSE_CHAIN count=4 delta=0" \
     <<<"$parallel_output" || true
 )"
 
@@ -287,7 +416,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "
 
 run_schema_check "$decrease_output"
 assert_contains "$decrease_output" \
-  "TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS entity_type=profile reason=NO_VALID_RESPONSE_CHAIN count=2 delta=-1"
+  "TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS entity_type=profile reason=NO_VALID_RESPONSE_CHAIN count=3 delta=-1"
 assert_no_increase_warning "$decrease_output"
 assert_output_is_aggregate_only "$decrease_output"
 
@@ -328,7 +457,7 @@ SQL
 
 retention_first_output="$(mktemp)"
 retention_second_output="$(mktemp)"
-trap 'rm -f "$check_sql" "$baseline_output" "$second_output" "$parallel_a_output" "$parallel_b_output" "$decrease_output" "$retention_first_output" "$retention_second_output" "$lock_ready_file"; cleanup' EXIT
+trap 'rm -f "$check_sql" "$baseline_output" "$second_output" "$cancelled_output" "$post_cancel_output" "$parallel_a_output" "$parallel_b_output" "$decrease_output" "$retention_first_output" "$retention_second_output" "$lock_ready_file" "$cancel_lock_ready_file"; cleanup' EXIT
 
 run_schema_check "$retention_first_output"
 first_retained_state="$(psql "$DATABASE_URL" -Atqc "
