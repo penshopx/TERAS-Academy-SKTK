@@ -1061,3 +1061,38 @@ test("connection timeout stops the runner before the test fixture runs", async (
     await assert.rejects(readFile(markerFile, "utf8"), { code: "ENOENT" });
   });
 });
+
+test("an immediate connection rejection preserves its original cause and skips fixtures", async () => {
+  const connectionError = new Error("simulated admin authentication rejection");
+  const fakeAdmin = {
+    connect: async () => {
+      throw connectionError;
+    },
+  } as unknown as InstanceType<typeof Client>;
+
+  await withMarkerFile(async (markerFile) => {
+    await assert.rejects(
+      runIsolatedIntegrationTest({
+        schemaPrefix: "connection_rejection_test",
+        testFile: afterSetupFixture,
+        setupCommand: [
+          "pnpm",
+          "--filter",
+          "@workspace/api-server",
+          "exec",
+          "tsx",
+          setupFixture,
+        ],
+        connectionTimeoutMs: 100,
+        createAdminClient: () => fakeAdmin,
+      }),
+      (error: unknown) => {
+        assert.equal(error, connectionError);
+        assert.doesNotMatch(String(error), /timed out/i);
+        return true;
+      },
+    );
+
+    await assert.rejects(readFile(markerFile, "utf8"), { code: "ENOENT" });
+  });
+});
