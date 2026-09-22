@@ -52,3 +52,4 @@
 - [Concurrent expected rejections](concurrent-expected-rejections.md) — attach rejection assertions when starting an expected-failing query, before releasing the lock that triggers it.
 - [Scheduled cleanup cycle claims](scheduled-cleanup-cycle-claims.md) — use durable UTC-cycle claims; transaction locks alone only prevent overlapping scheduler runs.
 - [Agentic provider boundaries](agentic-provider-boundaries.md) — models rank opaque fact codes; TERAS owns authoritative counts, prose, citations, actions, and audit references.
+- [Anonymous outcome delivery queues](anonymous-outcome-delivery-queues.md) — persist only an idempotency key and coarse outcome fields; retry unchanged and delete only after acceptance.

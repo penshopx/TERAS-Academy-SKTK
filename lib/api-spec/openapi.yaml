@@ -1163,6 +1163,7 @@ paths:
       operationId: recordAdminReadinessExportTrend
       tags: [admin]
       summary: Record one anonymous readiness export outcome
+      description: Safe to retry after reconnecting with the same attemptKey; accepted retries are idempotent.
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ReadinessExportTrendInput" } } } }
       responses:
         "204": { description: "Outcome recorded, including outcomes for samples below the server minimum" }

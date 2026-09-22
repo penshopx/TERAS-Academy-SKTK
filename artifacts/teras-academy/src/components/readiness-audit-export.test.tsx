@@ -14,6 +14,10 @@ import {
   ReadinessExportFeedback,
   ReadinessExportAlerts,
   ReadinessAuditStatusBadge,
+  enqueueReadinessExportOutcome,
+  flushPendingReadinessExportOutcomes,
+  READINESS_EXPORT_OUTCOME_QUEUE_KEY,
+  readPendingReadinessExportOutcomes,
   readinessExportTrendInput,
   runReadinessAuditExport,
 } from "./admin/ReadinessAuditHistory";
@@ -182,6 +186,50 @@ test("export trend mutation cannot send device time to the server", () => {
   assert.deepEqual(readinessExportTrendInput(attemptKey, "failed", 5_000), {
     data: { attemptKey, outcome: "failed", recordCount: 5_000 },
   });
+});
+
+test("failed export outcomes survive offline reload and clear after connection recovery", async () => {
+  const values = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      values.set(key, value);
+    },
+  };
+  const attemptKey = "8581da20-938a-4f90-96f6-5cc20456134b";
+  enqueueReadinessExportOutcome(storage, {
+    attemptKey,
+    outcome: "failed",
+    recordCount: 5_000,
+  });
+
+  const offlineAttempts: string[] = [];
+  await flushPendingReadinessExportOutcomes(storage, async outcome => {
+    offlineAttempts.push(outcome.attemptKey);
+    throw new Error("offline");
+  });
+
+  assert.deepEqual(offlineAttempts, [attemptKey]);
+  assert.deepEqual(readPendingReadinessExportOutcomes(storage), [{
+    attemptKey,
+    outcome: "failed",
+    recordCount: 5_000,
+  }]);
+  const persisted = values.get(READINESS_EXPORT_OUTCOME_QUEUE_KEY) ?? "";
+  assert.deepEqual(Object.keys(JSON.parse(persisted)[0]).sort(), ["attemptKey", "outcome", "recordCount"]);
+  assert.doesNotMatch(persisted, /learner|pathway|filter|records|exportedAt/i);
+
+  const recoveredAttempts: string[] = [];
+  let accepted = 0;
+  await flushPendingReadinessExportOutcomes(storage, async outcome => {
+    recoveredAttempts.push(outcome.attemptKey);
+  }, () => {
+    accepted += 1;
+  });
+
+  assert.deepEqual(recoveredAttempts, [attemptKey]);
+  assert.equal(accepted, 1);
+  assert.deepEqual(readPendingReadinessExportOutcomes(storage), []);
 });
 
 test("readiness export shows the filtered record count and advancing streamed bytes", async () => {

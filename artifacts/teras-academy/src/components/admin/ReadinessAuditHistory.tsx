@@ -189,6 +189,58 @@ export function ReadinessExportProgress({
 }
 
 type ExportTrendOutcome = "succeeded" | "cancelled" | "failed";
+type PendingExportOutcome = {
+  attemptKey: string;
+  outcome: ExportTrendOutcome;
+  recordCount: number;
+};
+type OutcomeStorage = Pick<Storage, "getItem" | "setItem">;
+
+export const READINESS_EXPORT_OUTCOME_QUEUE_KEY = "teras:readiness-export-outcomes:v1";
+
+function isPendingExportOutcome(value: unknown): value is PendingExportOutcome {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return Object.keys(item).length === 3
+    && typeof item.attemptKey === "string"
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.attemptKey)
+    && (item.outcome === "succeeded" || item.outcome === "cancelled" || item.outcome === "failed")
+    && typeof item.recordCount === "number"
+    && Number.isInteger(item.recordCount)
+    && item.recordCount >= 0;
+}
+
+export function readPendingReadinessExportOutcomes(storage: OutcomeStorage): PendingExportOutcome[] {
+  try {
+    const parsed: unknown = JSON.parse(storage.getItem(READINESS_EXPORT_OUTCOME_QUEUE_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter(isPendingExportOutcome) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function enqueueReadinessExportOutcome(storage: OutcomeStorage, outcome: PendingExportOutcome) {
+  const pending = readPendingReadinessExportOutcomes(storage).filter(item => item.attemptKey !== outcome.attemptKey);
+  storage.setItem(READINESS_EXPORT_OUTCOME_QUEUE_KEY, JSON.stringify([...pending, outcome]));
+}
+
+export async function flushPendingReadinessExportOutcomes(
+  storage: OutcomeStorage,
+  send: (outcome: PendingExportOutcome) => Promise<unknown>,
+  onAccepted?: () => void,
+) {
+  for (const outcome of readPendingReadinessExportOutcomes(storage)) {
+    try {
+      await send(outcome);
+      const remaining = readPendingReadinessExportOutcomes(storage)
+        .filter(item => item.attemptKey !== outcome.attemptKey);
+      storage.setItem(READINESS_EXPORT_OUTCOME_QUEUE_KEY, JSON.stringify(remaining));
+      onAccepted?.();
+    } catch {
+      // Keep the same attempt queued for the next online or page-load retry.
+    }
+  }
+}
 
 export function readinessExportTrendInput(attemptKey: string, outcome: ExportTrendOutcome, recordCount: number) {
   return { data: { attemptKey, outcome, recordCount } };
@@ -247,6 +299,8 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
   const [lastChecksum, setLastChecksum] = useState("");
   const exportAbortController = useRef<AbortController | null>(null);
   const mounted = useRef(false);
+  const recordExportTrend = useRecordAdminReadinessExportTrend();
+  const recordExportTrendRef = useRef(recordExportTrend);
   const exporting = exportStatus === "preparing";
   const params = useMemo<ListAdminReadinessHistoryParams>(() => ({
     ...(learnerId ? { learnerId } : {}),
@@ -262,7 +316,7 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
   const exportTrends = useGetAdminReadinessExportTrends({
     query: { enabled, staleTime: 30_000, refetchOnMount: "always", queryKey: getGetAdminReadinessExportTrendsQueryKey() },
   });
-  const recordExportTrend = useRecordAdminReadinessExportTrend();
+  recordExportTrendRef.current = recordExportTrend;
   const learners = users.filter(user => user.roles.includes("learner"));
   const totalPages = Math.max(1, Math.ceil((history.data?.total ?? 0) / 25));
   const exportParams = useMemo(() => ({
@@ -277,12 +331,44 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
     return () => cancelReadinessExportOnUnmount(mounted, exportAbortController);
   }, []);
 
+  useEffect(() => {
+    if (!enabled) return;
+    const flush = () => {
+      void flushPendingReadinessExportOutcomes(
+        window.localStorage,
+        outcome => recordExportTrendRef.current.mutateAsync(
+          readinessExportTrendInput(outcome.attemptKey, outcome.outcome, outcome.recordCount),
+        ),
+        () => {
+          if (mounted.current) void exportTrends.refetch();
+        },
+      );
+    };
+    flush();
+    window.addEventListener("online", flush);
+    return () => window.removeEventListener("online", flush);
+  }, [enabled, exportTrends.refetch]);
+
   const exportAlerts = exportTrends.data?.alerts ?? [];
   const recordFinalExportOutcome = (attemptKey: string, outcome: ExportTrendOutcome, recordCount: number) => {
     if (!enabled) return;
-    void recordExportTrend.mutateAsync(readinessExportTrendInput(attemptKey, outcome, recordCount))
-      .then(() => exportTrends.refetch())
-      .catch(() => undefined);
+    const pending = { attemptKey, outcome, recordCount };
+    try {
+      enqueueReadinessExportOutcome(window.localStorage, pending);
+      void flushPendingReadinessExportOutcomes(
+        window.localStorage,
+        item => recordExportTrendRef.current.mutateAsync(
+          readinessExportTrendInput(item.attemptKey, item.outcome, item.recordCount),
+        ),
+        () => {
+          if (mounted.current) void exportTrends.refetch();
+        },
+      );
+    } catch {
+      void recordExportTrendRef.current.mutateAsync(readinessExportTrendInput(attemptKey, outcome, recordCount))
+        .then(() => exportTrends.refetch())
+        .catch(() => undefined);
+    }
   };
 
   const download = async () => {
