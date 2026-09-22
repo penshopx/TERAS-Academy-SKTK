@@ -432,9 +432,11 @@ function terminateAdminConnection(admin: InstanceType<typeof Client>) {
 function combineRunAndCleanupErrors(runError: unknown, cleanupError: unknown) {
   if (runError === undefined) return cleanupError;
   if (cleanupError === undefined) return runError;
+  const runMessage =
+    runError instanceof Error ? runError.message : String(runError);
   return new AggregateError(
     [runError, cleanupError],
-    "Integration command failed and database cleanup also failed",
+    `${runMessage}; integration command failed and database cleanup also failed`,
     { cause: runError },
   );
 }

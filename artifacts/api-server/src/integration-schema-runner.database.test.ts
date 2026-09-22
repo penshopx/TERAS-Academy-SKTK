@@ -975,6 +975,61 @@ test("cleanup timeout stops the runner without hiding the command failure", asyn
   assert.equal(connectionDestroyed, true);
 });
 
+test("cleanup timeout keeps the timed out test command visible", async () => {
+  let connectionDestroyed = false;
+  const never = new Promise<never>(() => {});
+  const fakeAdmin = {
+    connection: {
+      stream: {
+        destroy: () => {
+          connectionDestroyed = true;
+        },
+      },
+    },
+    connect: async () => undefined,
+    query: async (query: string) => {
+      if (query.includes("SELECT tablename")) return { rows: [] };
+      if (query.startsWith("DROP SCHEMA")) return never;
+      return { rows: [] };
+    },
+    end: async () => undefined,
+  } as unknown as InstanceType<typeof Client>;
+  const command = [
+    "pnpm",
+    "--filter",
+    "@workspace/api-server",
+    "exec",
+    "tsx",
+    hangFixture,
+  ] as const;
+
+  await withMarkerFile(async () => {
+    await assert.rejects(
+      runIsolatedIntegrationTest({
+        schemaPrefix: "test_and_cleanup_timeout",
+        testFile: hangFixture,
+        testTimeoutMs: 2_000,
+        cleanupTimeoutMs: 100,
+        createAdminClient: () => fakeAdmin,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof AggregateError);
+        const testTimeoutMessage =
+          `Integration command ${command.join(" ")} timed out after 2000ms`;
+        assert.match(error.message, new RegExp(testTimeoutMessage));
+        assert.match(String(error.errors[0]), new RegExp(testTimeoutMessage));
+        assert.match(
+          String(error.errors[1]),
+          /Integration database cleanup timed out after 100ms/,
+        );
+        assert.equal(error.cause, error.errors[0]);
+        return true;
+      },
+    );
+  });
+  assert.equal(connectionDestroyed, true);
+});
+
 test("connection timeout stops the runner before the test fixture runs", async () => {
   let connectionDestroyed = false;
   const never = new Promise<never>(() => {});
