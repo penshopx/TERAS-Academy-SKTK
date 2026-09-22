@@ -88,6 +88,38 @@ grep -Fq "needs: migration-collation-upgrade" <<<"$collation_comparison_block" &
   grep -Fq 'PostgreSQL ${current_version} provider=${current_provider} locale=${current_locale} winners=${current_winners}' <<<"$collation_comparison_block" &&
   grep -Fq 'PostgreSQL ${target_version} provider=${target_provider} locale=${target_locale} winners=${target_winners}' <<<"$collation_comparison_block" ||
   fail "collation comparison must reject changed winners with both PostgreSQL versions, providers, locales, and winners"
+
+collation_comparison_script="$(
+  awk '
+    /^        run: \|$/ { in_script = 1; next }
+    in_script && /^          / { sub(/^          /, ""); print; next }
+    in_script { exit }
+  ' <<<"$collation_comparison_block"
+)"
+[[ -n "$collation_comparison_script" ]] ||
+  fail "collation comparison executable script is missing"
+
+collation_fixture_dir="$(mktemp -d)"
+mkdir -p "$collation_fixture_dir/migration-collation-results"
+printf '17\tlibc\tC\twinner-current\n' >"$collation_fixture_dir/migration-collation-results/17-libc-C.tsv"
+printf '18\tlibc\tC\twinner-target\n' >"$collation_fixture_dir/migration-collation-results/18-libc-C.tsv"
+printf '17\ticu\ten-US\twinner-shared\n' >"$collation_fixture_dir/migration-collation-results/17-icu-en-US.tsv"
+printf '18\ticu\ten-US\twinner-shared\n' >"$collation_fixture_dir/migration-collation-results/18-icu-en-US.tsv"
+collation_failure_output="$collation_fixture_dir/comparison-output.log"
+if (
+  cd "$collation_fixture_dir"
+  bash -c "$collation_comparison_script"
+) >"$collation_failure_output" 2>&1; then
+  rm -rf "$collation_fixture_dir"
+  fail "collation comparison must exit non-zero when PostgreSQL major versions produce different winners"
+fi
+grep -Fq 'PostgreSQL 17 provider=libc locale=C winners=winner-current' "$collation_failure_output" &&
+  grep -Fq 'PostgreSQL 18 provider=libc locale=C winners=winner-target' "$collation_failure_output" || {
+  rm -rf "$collation_fixture_dir"
+  fail "collation comparison failure must identify both PostgreSQL versions, providers, locales, and winners"
+}
+rm -rf "$collation_fixture_dir"
+
 grep -Fq "needs: resolve-release-candidate" <<<"$api_contract_block" &&
   grep -Fq 'ref: ${{ needs.resolve-release-candidate.outputs.sha }}' <<<"$api_contract_block" &&
   grep -Fq "run: pnpm --filter @workspace/api-spec run codegen" <<<"$api_contract_block" &&
