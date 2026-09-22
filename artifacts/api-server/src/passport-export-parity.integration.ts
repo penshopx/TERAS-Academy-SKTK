@@ -8,7 +8,7 @@ import {
   peopleTable,
   readinessEventsTable,
 } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { createIntegrationTestApp } from "./integration-test-app";
 
 type Identity = "path-a" | "path-b";
@@ -47,11 +47,11 @@ async function seed() {
   ]);
   await db.insert(enrollmentsTable).values([
     { id: enrollmentA, learnerId: learnerA, programId: "solar-pv-tech", pathwayId: "path-a", trainerId: null, assessorId: null, createdBy: learnerA },
-    { id: enrollmentB, learnerId: learnerB, programId: "solar-pv-tech", pathwayId: "path-b", trainerId: null, assessorId: null, createdBy: learnerB },
+    { id: enrollmentB, learnerId: learnerB, programId: "solar-pv-tech", pathwayId: "path-a", trainerId: null, assessorId: null, createdBy: learnerB },
   ]);
   await db.insert(evidenceTable).values([
     { id: evidenceA, learnerId: learnerA, pathwayId: "path-a", moduleId: "m03", taskId: "task-m03", title: "Path A private evidence", type: "Report", description: "Path A export fixture", fileName: null, createdBy: learnerA },
-    { id: evidenceB, learnerId: learnerB, pathwayId: "path-b", moduleId: "m01", taskId: "task-m01", title: "Path B private evidence", type: "Report", description: "Path B export fixture", fileName: null, createdBy: learnerB },
+    { id: evidenceB, learnerId: learnerB, pathwayId: "path-a", moduleId: "m01", taskId: "task-m01", title: "Second learner private evidence", type: "Report", description: "Same-pathway isolation fixture", fileName: null, createdBy: learnerB },
   ]);
   await db.insert(evidenceReviewsTable).values([
     { id: `passport-review-a-${suffix}`, evidenceId: evidenceA, status: "Under review", quality: { valid: false, relevant: true, sufficient: false, traceable: true }, createdBy: learnerA },
@@ -160,6 +160,81 @@ async function run() {
       pathAEventsAfterChange.length,
       pathAEventsBeforeChange.length + 1,
       "changed readiness input must append a new immutable readiness event",
+    );
+
+    let releasePathALock!: () => void;
+    let confirmPathALock!: () => void;
+    const pathALockReleased = new Promise<void>(resolve => {
+      releasePathALock = resolve;
+    });
+    const pathALockAcquired = new Promise<void>(resolve => {
+      confirmPathALock = resolve;
+    });
+    let pathALockHolderPid: number | undefined;
+    const heldPathALock = db.transaction(async tx => {
+      const lockKey = `readiness-snapshot:${enrollmentA}:path-a`;
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+      const holder = await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid()::int AS pid`);
+      pathALockHolderPid = holder.rows[0]?.pid;
+      confirmPathALock();
+      await pathALockReleased;
+    });
+    await pathALockAcquired;
+    assert(pathALockHolderPid, "the held readiness lock must expose its PostgreSQL backend");
+
+    let pathASettled = false;
+    const blockedPathARequest = request<Passport>("/passport", "path-a").finally(() => {
+      pathASettled = true;
+    });
+    try {
+      const waiterDeadline = Date.now() + 2_000;
+      let matchingWaiter = false;
+      while (!matchingWaiter && Date.now() < waiterDeadline) {
+        const result = await db.execute<{ waiting: boolean }>(sql`
+          SELECT EXISTS (
+            SELECT 1
+            FROM pg_locks waiter
+            JOIN pg_locks holder
+              ON holder.locktype = waiter.locktype
+              AND holder.database IS NOT DISTINCT FROM waiter.database
+              AND holder.classid IS NOT DISTINCT FROM waiter.classid
+              AND holder.objid IS NOT DISTINCT FROM waiter.objid
+              AND holder.objsubid IS NOT DISTINCT FROM waiter.objsubid
+            WHERE waiter.locktype = 'advisory'
+              AND waiter.granted = false
+              AND holder.granted = true
+              AND holder.pid = ${pathALockHolderPid}
+              AND waiter.pid <> holder.pid
+          ) AS waiting
+        `);
+        matchingWaiter = result.rows[0]?.waiting === true;
+        if (!matchingWaiter) await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      assert(matchingWaiter, "the path-a Passport request must be waiting on the exact held readiness lock");
+
+      const independentPathBRequest = request<Passport>("/passport", "path-b");
+      const independentPathB = await Promise.race([
+        independentPathBRequest,
+        new Promise<never>((_, reject) => setTimeout(
+          () => reject(new Error("path-b Passport request was blocked by path-a readiness lock")),
+          2_000,
+        )),
+      ]);
+      assert.equal(independentPathB.learner.id, learnerB, "the unlocked learner Passport request must complete normally");
+      assert.equal(pathASettled, false, "the matching learner Passport request must remain blocked while its readiness lock is held");
+    } finally {
+      releasePathALock();
+      await heldPathALock;
+    }
+    const unblockedPathA = await blockedPathARequest;
+    assert.equal(unblockedPathA.learner.id, learnerA, "the matching learner Passport request must resume after its readiness lock is released");
+
+    const eventsAfterLockIsolation = await db.select().from(readinessEventsTable)
+      .where(inArray(readinessEventsTable.enrollmentId, [enrollmentA, enrollmentB]));
+    assert.equal(
+      eventsAfterLockIsolation.length,
+      pathAEventsAfterChange.length + 1,
+      "unchanged Passport requests for both enrollment/pathway pairs must remain deduplicated",
     );
 
     const maliciousExport = await request<ExportPayload>(`/passport/export?learnerId=${encodeURIComponent(learnerB)}`, "path-a");

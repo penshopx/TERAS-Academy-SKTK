@@ -54,3 +54,4 @@
 - [Agentic provider boundaries](agentic-provider-boundaries.md) — models rank opaque fact codes; TERAS owns authoritative counts, prose, citations, actions, and audit references.
 - [Anonymous outcome delivery queues](anonymous-outcome-delivery-queues.md) — persist only an idempotency key and coarse outcome fields; retry unchanged and delete only after acceptance.
 - [Bounded historical scope projections](bounded-historical-scope-projections.md) — authorize against a maintained union projection, not repeated JSON scans across immutable history.
+- [Advisory lock isolation tests](advisory-lock-isolation-tests.md) — prove exact lock contention before asserting unrelated requests remain independent.
