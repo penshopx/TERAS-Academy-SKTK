@@ -877,6 +877,61 @@ test("a timed out test file is killed and removes its empty disposable database"
   }
 });
 
+test("a timed out test file is killed and cleans up its schema", {
+  skip: !databaseUrl,
+}, async () => {
+  const client = new Client({ connectionString: databaseUrl });
+  const contractPrefix =
+    `schema_test_t_${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`;
+  await client.connect();
+  try {
+    await withMarkerFile(async (markerFile) => {
+      const command = [
+        "pnpm",
+        "--filter",
+        "@workspace/api-server",
+        "exec",
+        "tsx",
+        hangFixture,
+      ] as const;
+      await assert.rejects(
+        runIsolatedIntegrationTest({
+          schemaPrefix: contractPrefix,
+          testFile: hangFixture,
+          testTimeoutMs: 2_000,
+        }),
+        new RegExp(
+          `Integration command ${command.join(" ")} timed out after 2000ms`,
+        ),
+      );
+
+      assert.equal(await readFile(markerFile, "utf8"), "setup\n");
+      const remainingSchemas = await client.query<{ schema_name: string }>(
+        `
+          SELECT schema_name
+          FROM information_schema.schemata
+          WHERE schema_name LIKE $1 ESCAPE '\\'
+        `,
+        [`${contractPrefix.replaceAll("_", "\\_")}_%`],
+      );
+      assert.deepEqual(remainingSchemas.rows, []);
+    });
+  } finally {
+    const remainingSchemas = await client.query<{ schema_name: string }>(
+      `
+        SELECT schema_name
+        FROM information_schema.schemata
+        WHERE schema_name LIKE $1 ESCAPE '\\'
+      `,
+      [`${contractPrefix.replaceAll("_", "\\_")}_%`],
+    );
+    for (const { schema_name: remainingSchema } of remainingSchemas.rows) {
+      await client.query(`DROP SCHEMA IF EXISTS "${remainingSchema}" CASCADE`);
+    }
+    await client.end();
+  }
+});
+
 test("cleanup timeout stops the runner without hiding the command failure", async () => {
   let connectionDestroyed = false;
   const never = new Promise<never>(() => {});
