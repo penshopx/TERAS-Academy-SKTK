@@ -106,3 +106,6 @@ jobs:
 
       - name: Verify trainer baseline draft selection
         run: pnpm --filter @workspace/api-server run test:browser-baseline-selection
+
+      - name: Verify portfolio file size rejection
+        run: pnpm --filter @workspace/api-server run test:browser-portfolio-file-limit
