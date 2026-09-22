@@ -26,6 +26,20 @@ export function isBaselinePreviewConfirmed(confirmedFingerprint: string | null, 
   return Boolean(currentFingerprint && confirmedFingerprint === currentFingerprint);
 }
 
+export async function refreshBaselinePublicationHistory({
+  baselineId,
+  invalidateQueries,
+}: {
+  baselineId: string;
+  invalidateQueries: (queryKey: readonly unknown[]) => Promise<unknown>;
+}) {
+  await Promise.all([
+    invalidateQueries(getListBaselineVersionsQueryKey(baselineId)),
+    invalidateQueries(getListBaselineAuditQueryKey(baselineId)),
+    invalidateQueries(getListManagedBaselinesQueryKey()),
+  ]);
+}
+
 export function BaselineVersionHistory({
   versions,
   audit,
@@ -108,10 +122,17 @@ export function BaselineVersionHistory({
             </details>
           </>
         )}
-        {publishEvent && typeof publishEvent.details.changedPathwayCount === "number" && (
-          <p className="mt-1 text-muted-foreground">
-            {publishEvent.details.changedPathwayCount} pathway berubah · {publishEvent.details.eligibleCohortCount ?? 0} cohort eligible · {publishEvent.details.preservedEnrollmentCount ?? 0} enrollment lama dipertahankan
-          </p>
+        {version.status === "PUBLISHED" && (
+          publishEvent
+          && typeof publishEvent.details.previewFingerprint === "string"
+          && typeof publishEvent.details.changedPathwayCount === "number"
+            ? <div className="mt-1 text-muted-foreground" data-testid={`baseline-publish-summary-${version.id}`}>
+                <p>{publishEvent.details.changedPathwayCount} pathway berubah · {publishEvent.details.eligibleCohortCount ?? 0} cohort eligible · {publishEvent.details.preservedEnrollmentCount ?? 0} enrollment lama dipertahankan</p>
+                <p>Fingerprint review: <span className="break-all text-foreground">{publishEvent.details.previewFingerprint}</span></p>
+              </div>
+            : <p className="mt-1 text-muted-foreground" data-testid={`baseline-publish-summary-${version.id}`}>
+                Ringkasan review tidak tersedia pada audit lama.
+              </p>
         )}
       </article>;
     })}
@@ -188,11 +209,10 @@ export function BaselinePublicationGate() {
       onSuccess: async result => {
         setConfirmedFingerprint(null);
         setVersionId("");
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: getListBaselineVersionsQueryKey(baselineId) }),
-          queryClient.invalidateQueries({ queryKey: getListBaselineAuditQueryKey(baselineId) }),
-          queryClient.invalidateQueries({ queryKey: getListManagedBaselinesQueryKey() }),
-        ]);
+        await refreshBaselinePublicationHistory({
+          baselineId,
+          invalidateQueries: queryKey => queryClient.invalidateQueries({ queryKey }),
+        });
         toast({ title: `Baseline v${result.version} dipublikasikan`, description: "Enrollment baru akan memakai versi ini; histori learner lama tetap dipin." });
       },
       onError: error => toast({

@@ -7,6 +7,9 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryObserver, type QueryKey } from "@tanstack/react-query";
 import {
+  getListBaselineAuditQueryKey,
+  getListBaselineVersionsQueryKey,
+  getListManagedBaselinesQueryKey,
   getListAuthoredCourseVersionsQueryKey,
   getListCourseAuthoringAuditQueryKey,
   type CourseVersion,
@@ -19,7 +22,7 @@ import {
   publishAuthoredCourseAndRefresh,
   refreshAuthoringHistory,
 } from "./trainer/authoring/validation-panel";
-import { BaselineVersionHistory, isBaselinePreviewConfirmed } from "./trainer/authoring/baseline-publication-gate";
+import { BaselineVersionHistory, isBaselinePreviewConfirmed, refreshBaselinePublicationHistory } from "./trainer/authoring/baseline-publication-gate";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -134,6 +137,66 @@ test("baseline version history remains reviewable without audit enrichment", () 
   assert.match(html, /Persisted cancelled snapshot/);
   assert.match(html, /manager-fallback/);
   assert.match(html, /Tidak tersedia pada audit lama/);
+});
+
+test("baseline publish summaries stay attached to their exact published versions", () => {
+  const fingerprintV1 = "1".repeat(64);
+  const fingerprintV2 = "2".repeat(64);
+  const html = renderToStaticMarkup(<BaselineVersionHistory
+    activeVersion={2}
+    versions={[
+      { id: "v2", baselineId: "baseline-1", version: 2, status: "PUBLISHED", snapshot: {}, createdAt: "2026-09-16T08:00:00.000Z", createdBy: "author-2", publishedAt: "2026-09-16T09:00:00.000Z", publishedBy: "manager-2", cancelledAt: null, cancelledBy: null },
+      { id: "v1", baselineId: "baseline-1", version: 1, status: "PUBLISHED", snapshot: {}, createdAt: "2026-09-15T08:00:00.000Z", createdBy: "author-1", publishedAt: "2026-09-15T09:00:00.000Z", publishedBy: "manager-1", cancelledAt: null, cancelledBy: null },
+    ]}
+    audit={[
+      { id: "audit-v1", baselineId: "baseline-1", versionId: "v1", action: "PUBLISH", actorId: "manager-1", details: { version: 1, previewFingerprint: fingerprintV1, changedPathwayCount: 1, eligibleCohortCount: 11, preservedEnrollmentCount: 101 }, createdAt: "2026-09-15T09:00:00.000Z" },
+      { id: "audit-v2", baselineId: "baseline-1", versionId: "v2", action: "PUBLISH", actorId: "manager-2", details: { version: 2, previewFingerprint: fingerprintV2, changedPathwayCount: 2, eligibleCohortCount: 22, preservedEnrollmentCount: 202 }, createdAt: "2026-09-16T09:00:00.000Z" },
+    ]}
+  />);
+
+  const summaryV1 = html.match(/data-testid="baseline-publish-summary-v1"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? "";
+  const summaryV2 = html.match(/data-testid="baseline-publish-summary-v2"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? "";
+  assert.match(summaryV1, /1 pathway berubah.*11 cohort eligible.*101 enrollment lama dipertahankan/);
+  assert.match(summaryV1, new RegExp(fingerprintV1));
+  assert.doesNotMatch(summaryV1, new RegExp(fingerprintV2));
+  assert.match(summaryV2, /2 pathway berubah.*22 cohort eligible.*202 enrollment lama dipertahankan/);
+  assert.match(summaryV2, new RegExp(fingerprintV2));
+  assert.doesNotMatch(summaryV2, new RegExp(fingerprintV1));
+});
+
+test("legacy published baseline audits show an explicit review-summary fallback", () => {
+  const html = renderToStaticMarkup(<BaselineVersionHistory
+    activeVersion={1}
+    versions={[{
+      id: "legacy-v1", baselineId: "baseline-1", version: 1, status: "PUBLISHED", snapshot: {},
+      createdAt: "2026-09-15T08:00:00.000Z", createdBy: "author-1", publishedAt: "2026-09-15T09:00:00.000Z", publishedBy: "manager-1", cancelledAt: null, cancelledBy: null,
+    }]}
+    audit={[{
+      id: "legacy-audit", baselineId: "baseline-1", versionId: "legacy-v1", action: "PUBLISH", actorId: "manager-1",
+      details: { version: 1 }, createdAt: "2026-09-15T09:00:00.000Z",
+    }]}
+  />);
+
+  assert.match(html, /data-testid="baseline-publish-summary-legacy-v1"/);
+  assert.match(html, /Ringkasan review tidak tersedia pada audit lama/);
+});
+
+test("successful baseline publish refreshes versions, audit, and active baseline without a page reload", async () => {
+  const baselineId = "baseline-1";
+  const invalidatedKeys: Array<readonly unknown[]> = [];
+
+  await refreshBaselinePublicationHistory({
+    baselineId,
+    invalidateQueries: async queryKey => {
+      invalidatedKeys.push(queryKey);
+    },
+  });
+
+  assert.deepEqual(invalidatedKeys, [
+    getListBaselineVersionsQueryKey(baselineId),
+    getListBaselineAuditQueryKey(baselineId),
+    getListManagedBaselinesQueryKey(),
+  ]);
 });
 
 test("Adding COURSE_MODULE requires canonical moduleId payload", async () => {
