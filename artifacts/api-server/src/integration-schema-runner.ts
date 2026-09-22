@@ -31,7 +31,10 @@ const SCHEMA_METADATA_VERSION = 1;
 const ADVISORY_LOCK_SEED = 847_201;
 const POSTGRES_IDENTIFIER_MAX_BYTES = 63;
 const SCHEMA_NAME_SEPARATOR = "_";
-const randomSchemaSuffix = () => crypto.randomUUID().replaceAll("-", "");
+const SCHEMA_SUFFIX_LENGTH = 32;
+const SCHEMA_SUFFIX_PATTERN = /^[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}$/;
+export const generateIntegrationSchemaSuffix = () =>
+  crypto.randomUUID().replaceAll("-", "");
 const EMPTY_DATABASE_PRIVILEGE_ERROR =
   "Clean-bootstrap integration tests require the PostgreSQL test role to have the CREATEDB attribute (or be a superuser). " +
   "Grant CREATEDB only to the dedicated CI/test role. The runner creates and removes a separate disposable test database; it does not modify the application database.";
@@ -54,10 +57,19 @@ function assertTestEnvironment() {
 
 export function safeSchemaPrefix(
   prefix: string,
-  suffix = randomSchemaSuffix(),
+  suffix = generateIntegrationSchemaSuffix(),
 ) {
   if (!/^[a-z][a-z0-9_]*$/.test(prefix)) {
     throw new Error(`Invalid integration schema prefix: ${prefix}`);
+  }
+  if (
+    suffix.length !== SCHEMA_SUFFIX_LENGTH ||
+    !SCHEMA_SUFFIX_PATTERN.test(suffix)
+  ) {
+    throw new Error(
+      `Invalid integration schema suffix: must contain exactly ${SCHEMA_SUFFIX_LENGTH} ` +
+      "lowercase hexadecimal characters in compact UUID v4 format",
+    );
   }
   const prefixBytes = Buffer.byteLength(prefix, "utf8");
   const suffixBytes = Buffer.byteLength(suffix, "utf8");
@@ -76,7 +88,7 @@ export function safeSchemaPrefix(
 
 export function createIntegrationSchemaName(
   prefix: string,
-  suffix = randomSchemaSuffix(),
+  suffix = generateIntegrationSchemaSuffix(),
 ) {
   const schemaName = `${safeSchemaPrefix(prefix, suffix)}${SCHEMA_NAME_SEPARATOR}${suffix}`;
   const schemaNameBytes = Buffer.byteLength(schemaName, "utf8");
