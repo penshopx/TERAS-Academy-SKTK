@@ -27,6 +27,7 @@
     "test:diagnostic-integration": "NODE_ENV=test tsx ./src/diagnostic.integration-runner.ts",
     "test:integration-schema-runner": "NODE_ENV=test tsx --test --test-concurrency=1 ./src/integration-schema-runner.test.ts ./src/integration-schema-runner.database.test.ts",
     "test:readiness-dashboard-isolation": "NODE_ENV=test tsx ./src/readiness-dashboard-isolation.integration.ts",
+    "test:readiness-gate-status": "NODE_ENV=test tsx --test ./src/lib/readiness-gate-status.test.ts",
     "test:diagnostic": "NODE_ENV=test tsx ./src/diagnostic.integration-runner.ts",
     "test:admin-authorization": "NODE_ENV=test tsx ./src/admin-authorization.integration.ts",
     "test:admin-module-catalogue": "NODE_ENV=test tsx --test ./src/admin-module-catalogue.contract.test.ts && bash ../../scripts/admin-module-catalogue.integration.test.sh",

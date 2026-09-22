@@ -4,6 +4,20 @@ import { db, assessmentAttemptsTable, assessmentCriteriaTable, assessmentsTable,
 import type { BaselineModule, PathwayModuleContract } from "@workspace/db";
 import { selectedBaselineModuleIdsFromVersion } from "./baseline-authoring";
 export const DEMO_LEARNER = "learner-demo";
+export type ReadinessGateStatus = "PASSED" | "ACTIVE" | "BLOCKED" | "LOCKED";
+
+export function readinessGateStatus(input: {
+  previousPassed: boolean;
+  hasPolicyBlockers: boolean;
+  hardGateFailed: boolean;
+  hasSafetyBlockers: boolean;
+}): ReadinessGateStatus {
+  if (!input.previousPassed) return "LOCKED";
+  if (!input.hasPolicyBlockers && !input.hasSafetyBlockers) return "PASSED";
+  if (input.hardGateFailed || input.hasSafetyBlockers) return "BLOCKED";
+  return "ACTIVE";
+}
+
 const latest = <T extends { createdAt: Date }, K extends string>(rows: T[], key: (row: T) => K) => { const result = new Map<K, T>(); for (const row of rows) if (!result.has(key(row)) || result.get(key(row))!.createdAt < row.createdAt) result.set(key(row), row); return result; };
 export async function catalogue() {
   const [programs, paths, modules, tasks, requirements, assessments, gates, enrollments, baselines, baselineModules, pathwayBaselineModules, pathwayContracts, legacyMappings] = await Promise.all([
@@ -312,14 +326,13 @@ export async function readiness(context?: Awaited<ReturnType<typeof learnerConte
     const score = Math.round((assessmentScore + evidenceScore) / 2);
     if (score < gate.threshold) policyBlockers.push(`Rule threshold not met: ${score}/${gate.threshold}`);
     const hardGateFailed = gate.hardGate && policyBlockers.length > 0;
-    const passed = previousPassed && policyBlockers.length === 0 && safetyBlockers.length === 0;
-    const status = passed
-      ? "PASSED"
-      : previousPassed
-        ? hardGateFailed || safetyBlockers.length > 0
-          ? "BLOCKED"
-          : "ACTIVE"
-        : "LOCKED";
+    const status = readinessGateStatus({
+      previousPassed,
+      hasPolicyBlockers: policyBlockers.length > 0,
+      hardGateFailed,
+      hasSafetyBlockers: safetyBlockers.length > 0,
+    });
+    const passed = status === "PASSED";
     previousPassed = passed;
     return {
       id: gate.id, code: gate.code, name: gate.name, requirement: gate.requirement, status, score,
