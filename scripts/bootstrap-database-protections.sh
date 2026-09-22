@@ -11,6 +11,7 @@ readonly protection_migrations=(
   "lib/db/migrations/0039_baseline_versioned_publishing.sql"
   "lib/db/migrations/0044_baseline_draft_cancellation.sql"
   "lib/db/migrations/0051_agent_run_ledger.sql"
+  "lib/db/migrations/0053_baseline_pathway_scope_projection.sql"
 )
 
 pnpm --filter @workspace/db run push

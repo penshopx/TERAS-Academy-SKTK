@@ -93,10 +93,100 @@ async function main() {
   const draftResult = await cloneResponse.json() as { versionId: string; version: number };
   const draft = (await db.select().from(learningBaselineVersionsTable)
     .where(eq(learningBaselineVersionsTable.id, draftResult.versionId)))[0]!;
+  const draftSnapshot = draft.snapshot as any;
+  const soleDraftPathwayId = "baseline-integration-owner-pathway";
+  const expandedDraftSnapshot = {
+    ...draftSnapshot,
+    selections: [...(draftSnapshot.selections ?? []), {
+      ...(draftSnapshot.selections?.[0] ?? {}),
+      pathwayId: soleDraftPathwayId,
+      pathway_id: soleDraftPathwayId,
+    }],
+  };
+  const expandedDraft = await updateBaselineDraft(baseline.id, draft.id, expandedDraftSnapshot, person.id);
+  assert(!("error" in expandedDraft), "a draft can add a pathway represented by no other version");
+  const addedScope = await pool.query(`
+    SELECT version_count
+    FROM teras_learning_baseline_pathway_scopes
+    WHERE baseline_id = $1 AND pathway_id = $2
+  `, [baseline.id, soleDraftPathwayId]);
+  assert.equal(addedScope.rows[0]?.version_count, 1);
+  const restoredDraft = await updateBaselineDraft(baseline.id, draft.id, draftSnapshot, person.id);
+  assert(!("error" in restoredDraft), "a draft can remove its sole projected pathway without storing a zero count");
+  const removedScope = await pool.query(`
+    SELECT 1
+    FROM teras_learning_baseline_pathway_scopes
+    WHERE baseline_id = $1 AND pathway_id = $2
+  `, [baseline.id, soleDraftPathwayId]);
+  assert.equal(removedScope.rowCount, 0, "removing a sole draft pathway deletes its projection row");
   const listWithDraft = await request("/trainer/authoring/baselines").then(response => response.json()) as Array<{
     baselineId: string; draftCount: number;
   }>;
   assert.equal(listWithDraft.find(item => item.baselineId === baseline.id)?.draftCount, 1);
+  const historySize = 500;
+  await pool.query(`
+    INSERT INTO teras_learning_baseline_versions (
+      id, baseline_id, version, status, snapshot, created_by
+    )
+    SELECT
+      $1 || n::text,
+      $2,
+      1000 + n,
+      'DRAFT',
+      jsonb_build_object(
+        'baseline', jsonb_build_object('id', $2::text),
+        'modules', '[]'::jsonb,
+        'selections', jsonb_build_array(jsonb_build_object(
+          'pathwayId', $3::text,
+          'padding', repeat('x', 4096)
+        ))
+      ),
+      'integration'
+    FROM generate_series(1, $4::integer) AS n
+  `, [id("baseline-history-"), baseline.id, pathway.id, historySize]);
+  await pool.query(`
+    UPDATE teras_learning_baseline_versions
+    SET status = 'CANCELLED', cancelled_at = now(), cancelled_by = 'integration'
+    WHERE baseline_id = $1 AND version BETWEEN 1001 AND 1000 + $2::integer
+  `, [baseline.id, historySize]);
+  const listWithLargeHistory = await request("/trainer/authoring/baselines").then(response => response.json()) as Array<{
+    baselineId: string; activeVersion: number | null; draftCount: number;
+  }>;
+  const largeHistorySummary = listWithLargeHistory.find(item => item.baselineId === baseline.id);
+  assert.equal(largeHistorySummary?.activeVersion, active.version,
+    "large terminal history does not change the active version summary");
+  assert.equal(largeHistorySummary?.draftCount, 1,
+    "large terminal history is aggregated without changing the draft count");
+  const scopeProjection = await pool.query<{
+    row_count: number;
+    version_count: number;
+  }>(`
+    SELECT COUNT(*)::integer AS row_count, MAX(version_count)::integer AS version_count
+    FROM teras_learning_baseline_pathway_scopes
+    WHERE baseline_id = $1
+  `, [baseline.id]);
+  assert.equal(scopeProjection.rows[0]?.row_count, 1,
+    "scope work stays bounded by governed pathways rather than version history");
+  assert.equal(scopeProjection.rows[0]?.version_count, historySize + 2,
+    "scope projection accounts for every historical version without reparsing it during listing");
+  const explainClient = await pool.connect();
+  try {
+    await explainClient.query("BEGIN");
+    await explainClient.query("SET LOCAL enable_seqscan = off");
+    const draftPlan = await explainClient.query(`
+      EXPLAIN (FORMAT JSON)
+      SELECT baseline_id, COUNT(*)::integer
+      FROM teras_learning_baseline_versions
+      WHERE status = 'DRAFT'
+      GROUP BY baseline_id
+    `);
+    assert.match(JSON.stringify(draftPlan.rows[0]?.["QUERY PLAN"]),
+      /teras_learning_baseline_versions_draft_baseline_idx/,
+      "draft aggregation uses the partial draft index instead of scanning terminal history");
+    await explainClient.query("ROLLBACK");
+  } finally {
+    explainClient.release();
+  }
   const editedSnapshot = {
     ...(draft.snapshot as Record<string, unknown>),
     baseline: { ...((draft.snapshot as any).baseline), description: "Version 2 integration snapshot" },

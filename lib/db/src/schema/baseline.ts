@@ -1,4 +1,5 @@
-import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { modulesTable, pathwaysTable } from "./teras";
@@ -38,6 +39,18 @@ export const learningBaselineVersionsTable = pgTable("teras_learning_baseline_ve
 }, table => [
   uniqueIndex("teras_learning_baseline_versions_baseline_version_unique").on(table.baselineId, table.version),
   index("teras_learning_baseline_versions_baseline_published_idx").on(table.baselineId, table.publishedAt),
+  index("teras_learning_baseline_versions_draft_baseline_idx").on(table.baselineId)
+    .where(sql`${table.status} = 'DRAFT'`),
+]);
+
+/** Bounded union of every pathway governed by any current baseline snapshot. */
+export const learningBaselinePathwayScopesTable = pgTable("teras_learning_baseline_pathway_scopes", {
+  baselineId: text("baseline_id").notNull().references(() => learningBaselinesTable.id),
+  pathwayId: text("pathway_id").notNull(),
+  versionCount: integer("version_count").notNull(),
+}, table => [
+  uniqueIndex("teras_learning_baseline_pathway_scopes_unique").on(table.baselineId, table.pathwayId),
+  check("teras_learning_baseline_pathway_scopes_version_count_check", sql`${table.versionCount} > 0`),
 ]);
 
 /** Append-only audit for baseline clone, update, cancellation, and publish commands. */

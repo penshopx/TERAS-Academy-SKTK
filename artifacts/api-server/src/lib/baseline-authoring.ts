@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, max, sql } from "drizzle-orm";
 import {
   db,
   learningBaselineAuditTable,
+  learningBaselinePathwayScopesTable,
   learningBaselineVersionsTable,
   learningBaselinesTable,
   cohortsTable,
@@ -432,32 +433,60 @@ export async function listBaselineVersions(baselineId: string) {
 }
 
 export async function listManagedBaselines(manager: { id: string; global: boolean }) {
-  const baselines = await db.select().from(learningBaselinesTable);
-  const versions = await db.select().from(learningBaselineVersionsTable);
   const assignedPathways = manager.global ? null : new Set((await db.select({ pathwayId: enrollmentsTable.pathwayId })
     .from(enrollmentsTable).where(and(
       eq(enrollmentsTable.trainerId, manager.id),
       eq(enrollmentsTable.status, "active"),
     ))).map(row => row.pathwayId));
-  const versionsByBaseline = new Map<string, typeof versions>();
-  for (const version of versions) {
-    const rows = versionsByBaseline.get(version.baselineId) ?? [];
-    rows.push(version);
-    versionsByBaseline.set(version.baselineId, rows);
-  }
-  return baselines.flatMap(baseline => {
-    const rows = versionsByBaseline.get(baseline.id) ?? [];
-    const pathwayIds = new Set(rows.flatMap(version => [...snapshotPathwayIds(version.snapshot)]));
+  const summaries = await db.execute<{
+    baseline_id: string;
+    code: string;
+    name: string;
+    status: string;
+    active_version: number | null;
+    draft_count: number;
+    pathway_ids: string[];
+  }>(sql`
+    WITH version_summary AS (
+      SELECT
+        baseline_id,
+        COUNT(*)::integer AS draft_count
+      FROM ${learningBaselineVersionsTable}
+      WHERE status = 'DRAFT'
+      GROUP BY baseline_id
+    ),
+    baseline_scope AS (
+      SELECT
+        baseline_id,
+        ARRAY_AGG(pathway_id) AS pathway_ids
+      FROM ${learningBaselinePathwayScopesTable}
+      GROUP BY baseline_id
+    )
+    SELECT
+      baseline.id AS baseline_id,
+      baseline.code,
+      baseline.name,
+      baseline.status,
+      active_version.version AS active_version,
+      COALESCE(version_summary.draft_count, 0)::integer AS draft_count,
+      COALESCE(baseline_scope.pathway_ids, ARRAY[]::text[]) AS pathway_ids
+    FROM ${learningBaselinesTable} AS baseline
+    LEFT JOIN version_summary ON version_summary.baseline_id = baseline.id
+    LEFT JOIN baseline_scope ON baseline_scope.baseline_id = baseline.id
+    LEFT JOIN ${learningBaselineVersionsTable} AS active_version
+      ON active_version.id = baseline.published_version_id
+      AND active_version.status = 'PUBLISHED'
+  `);
+  return summaries.rows.flatMap(summary => {
+    const pathwayIds = new Set(summary.pathway_ids);
     if (assignedPathways && (!pathwayIds.size || [...pathwayIds].some(pathwayId => !assignedPathways.has(pathwayId)))) return [];
-    const active = rows.find(version =>
-      version.id === baseline.publishedVersionId && version.status === "PUBLISHED");
     return [{
-      baselineId: baseline.id,
-      code: baseline.code,
-      name: baseline.name,
-      status: baseline.status,
-      activeVersion: active?.version ?? null,
-      draftCount: rows.filter(version => version.status === "DRAFT").length,
+      baselineId: summary.baseline_id,
+      code: summary.code,
+      name: summary.name,
+      status: summary.status,
+      activeVersion: summary.active_version,
+      draftCount: summary.draft_count,
     }];
   }).sort((left, right) => left.name.localeCompare(right.name) || left.code.localeCompare(right.code));
 }
@@ -467,17 +496,10 @@ export async function baselinePathwayIds(baselineId: string) {
 }
 
 async function baselinePathwayIdsWithExecutor(baselineId: string, executor: any) {
-  const versions = await executor.select().from(learningBaselineVersionsTable)
-    .where(eq(learningBaselineVersionsTable.baselineId, baselineId));
-  const pathways = new Set<string>();
-  for (const version of versions) {
-    const snapshot = snapshotOf(version);
-    for (const selection of snapshot.selections ?? []) {
-      const pathwayId = selection.pathwayId ?? selection.pathway_id;
-      if (typeof pathwayId === "string" && pathwayId) pathways.add(pathwayId);
-    }
-  }
-  return pathways;
+  const scopes = await executor.select({ pathwayId: learningBaselinePathwayScopesTable.pathwayId })
+    .from(learningBaselinePathwayScopesTable)
+    .where(eq(learningBaselinePathwayScopesTable.baselineId, baselineId));
+  return new Set<string>(scopes.map((scope: { pathwayId: string }) => scope.pathwayId));
 }
 
 export function snapshotPathwayIds(snapshot: unknown) {
