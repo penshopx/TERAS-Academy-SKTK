@@ -8,6 +8,11 @@
 
 export interface BaselineDraftCancellation {
   /**
+     * @minLength 8
+     * @maxLength 160
+     */
+  idempotencyKey: string;
+  /**
      * @minLength 1
      * @maxLength 500
      */

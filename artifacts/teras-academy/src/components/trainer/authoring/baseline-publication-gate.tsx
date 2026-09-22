@@ -13,6 +13,7 @@ import {
   type BaselineAuditEvent,
   type BaselineVersion,
 } from "@workspace/api-client-react";
+import { clearDraftIdempotencyKey, getDraftIdempotencyKey } from "@/lib/draft-idempotency";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, GitCompareArrows, Loader2, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -139,6 +140,27 @@ export function BaselineVersionHistory({
   </div>;
 }
 
+export function baselineCancellationFlow(baselineId: string, versionId: string) {
+  return `baseline-cancellation:${baselineId}:${versionId}`;
+}
+
+export function baselineCancellationRequest(
+  storage: Storage,
+  baselineId: string,
+  versionId: string,
+  reason: string,
+) {
+  const normalizedReason = reason.trim();
+  return {
+    idempotencyKey: getDraftIdempotencyKey(
+      storage,
+      baselineCancellationFlow(baselineId, versionId),
+      normalizedReason,
+    ),
+    reason: normalizedReason,
+  };
+}
+
 export function BaselinePublicationGate() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -176,8 +198,11 @@ export function BaselinePublicationGate() {
   const cancelSelectedDraft = () => {
     const reason = cancellationReason.trim();
     if (!versionId || !reason) return;
-    cancel.mutate({ baselineId, versionId, data: { reason } }, {
+    const flow = baselineCancellationFlow(baselineId, versionId);
+    const data = baselineCancellationRequest(window.localStorage, baselineId, versionId, reason);
+    cancel.mutate({ baselineId, versionId, data }, {
       onSuccess: async result => {
+        clearDraftIdempotencyKey(window.localStorage, flow);
         setConfirmedFingerprint(null);
         setVersionId("");
         setCancellationReason("");

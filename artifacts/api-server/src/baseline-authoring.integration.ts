@@ -355,20 +355,56 @@ async function main() {
   if (!("error" in cancellationDraft)) {
     activeRole = "trainer";
     activeLearner = person.id;
+    const cancellationRequest = {
+      idempotencyKey: id("cancel-draft-operation"),
+      reason: "Draft is no longer required",
+    };
     const pointerBeforeCancellation = (await db.select().from(learningBaselinesTable).where(eq(learningBaselinesTable.id, baseline.id)))[0]!.publishedVersionId;
     const cancellationResponse = await request(
       `/trainer/authoring/baselines/${baseline.id}/versions/${cancellationDraft.versionId}/cancel`,
       "POST",
-      { reason: "Draft is no longer required" },
+      cancellationRequest,
     );
     assert.equal(cancellationResponse.status, 200);
     const cancellation = await cancellationResponse.json() as { status: string; cancelledBy: string };
     assert.equal(cancellation.status, "CANCELLED");
     assert.equal(cancellation.cancelledBy, person.id);
+    const retryResponse = await request(
+      `/trainer/authoring/baselines/${baseline.id}/versions/${cancellationDraft.versionId}/cancel`,
+      "POST",
+      cancellationRequest,
+    );
+    assert.equal(retryResponse.status, 200, "a retry after a lost committed response returns success");
+    assert.deepEqual(await retryResponse.json(), cancellation, "the retry returns the committed cancellation result");
+    const changedReasonResponse = await request(
+      `/trainer/authoring/baselines/${baseline.id}/versions/${cancellationDraft.versionId}/cancel`,
+      "POST",
+      { ...cancellationRequest, reason: "A different cancellation reason" },
+    );
+    assert.equal(changedReasonResponse.status, 409, "the same operation identity cannot change its reason");
+    assert.deepEqual(
+      await cancelBaselineDraft(
+        baseline.id,
+        cancellationDraft.versionId,
+        "different-cancellation-actor",
+        cancellationRequest.reason,
+        cancellationRequest.idempotencyKey,
+      ),
+      { error: "Cancellation retry does not match the committed operation" },
+      "the same operation identity cannot be replayed by a different actor",
+    );
+    activeLearner = newPerson.id;
+    const changedActorResponse = await request(
+      `/trainer/authoring/baselines/${baseline.id}/versions/${cancellationDraft.versionId}/cancel`,
+      "POST",
+      cancellationRequest,
+    );
+    assert.equal(changedActorResponse.status, 403, "a different actor cannot replay the cancellation");
+    activeLearner = person.id;
     const blankReasonResponse = await request(
       `/trainer/authoring/baselines/${baseline.id}/versions/${cancellationDraft.versionId}/cancel`,
       "POST",
-      { reason: "   " },
+      { ...cancellationRequest, reason: "   " },
     );
     assert.equal(blankReasonResponse.status, 400, "whitespace-only cancellation reasons are rejected");
     const cancelled = (await db.select().from(learningBaselineVersionsTable).where(eq(learningBaselineVersionsTable.id, cancellationDraft.versionId)))[0]!;
@@ -391,7 +427,11 @@ async function main() {
       eq(learningBaselineAuditTable.action, "CANCEL_DRAFT"),
     ));
     assert.equal(cancellationAudit.length, 1);
-    assert.deepEqual(cancellationAudit[0]!.details, { version: cancellationDraft.version, reason: "Draft is no longer required" });
+    assert.deepEqual(cancellationAudit[0]!.details, {
+      version: cancellationDraft.version,
+      reason: "Draft is no longer required",
+      idempotencyKey: cancellationRequest.idempotencyKey,
+    });
     await assert.rejects(
       db.update(learningBaselineVersionsTable).set({ snapshot: { malformed: true } }).where(eq(learningBaselineVersionsTable.id, cancellationDraft.versionId)),
     );
@@ -412,7 +452,13 @@ async function main() {
     const racedSnapshot = structuredClone(draftBeforeRace.snapshot as Record<string, unknown>);
     (racedSnapshot.baseline as Record<string, unknown>).description = "Concurrent edit committed before cancellation";
     const [cancelResult, editResult] = await Promise.all([
-      cancelBaselineDraft(baseline.id, cancelEditDraft.versionId, "trainer-cancel-winner", "Concurrent cancel and edit"),
+      cancelBaselineDraft(
+        baseline.id,
+        cancelEditDraft.versionId,
+        "trainer-cancel-winner",
+        "Concurrent cancel and edit",
+        id("cancel-edit-operation"),
+      ),
       updateBaselineDraft(baseline.id, cancelEditDraft.versionId, racedSnapshot, "trainer-edit-racer"),
     ]);
     assert(!("error" in cancelResult), "cancel remains the terminal winner against an edit");
@@ -451,7 +497,13 @@ async function main() {
       const eventPinBeforeRace = (await db.select().from(enrollmentPathwayEventsTable)
         .where(eq(enrollmentPathwayEventsTable.enrollmentId, enrollmentId)))[0]!.baselineVersionId;
       const [cancelResult, publishResult] = await Promise.all([
-        cancelBaselineDraft(baseline.id, cancelPublishDraft.versionId, "trainer-cancel-racer", "Concurrent cancel and publish"),
+        cancelBaselineDraft(
+          baseline.id,
+          cancelPublishDraft.versionId,
+          "trainer-cancel-racer",
+          "Concurrent cancel and publish",
+          id("cancel-publish-operation"),
+        ),
         publishBaseline(
           baseline.id,
           cancelPublishDraft.versionId,

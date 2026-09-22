@@ -396,7 +396,13 @@ export async function updateBaselineDraft(baselineId: string, versionId: string,
   });
 }
 
-export async function cancelBaselineDraft(baselineId: string, versionId: string, actorId: string, reason: string) {
+export async function cancelBaselineDraft(
+  baselineId: string,
+  versionId: string,
+  actorId: string,
+  reason: string,
+  idempotencyKey: string,
+) {
   const cancellationReason = reason.trim();
   if (!cancellationReason) return { error: "Cancellation reason is required" as const, invalid: true as const };
   return db.transaction(async tx => {
@@ -406,6 +412,24 @@ export async function cancelBaselineDraft(baselineId: string, versionId: string,
       eq(learningBaselineVersionsTable.baselineId, baselineId),
     )).limit(1);
     if (!draft) return { error: "Baseline draft not found" as const };
+    if (draft.status === "CANCELLED") {
+      const [audit] = await tx.select().from(learningBaselineAuditTable).where(and(
+        eq(learningBaselineAuditTable.versionId, versionId),
+        eq(learningBaselineAuditTable.action, "CANCEL_DRAFT"),
+      )).limit(1);
+      const details = audit?.details as { reason?: unknown; idempotencyKey?: unknown } | undefined;
+      if (
+        audit?.actorId !== actorId
+        || details?.reason !== cancellationReason
+        || details?.idempotencyKey !== idempotencyKey
+      ) {
+        return { error: "Cancellation retry does not match the committed operation" as const };
+      }
+      return {
+        baselineId, versionId, version: draft.version, status: draft.status,
+        cancelledAt: draft.cancelledAt, cancelledBy: draft.cancelledBy,
+      };
+    }
     if (draft.status !== "DRAFT") return { error: "Baseline version is not an active draft" as const };
     const cancelledAt = new Date();
     const [cancelled] = await tx.update(learningBaselineVersionsTable).set({
@@ -417,7 +441,7 @@ export async function cancelBaselineDraft(baselineId: string, versionId: string,
     if (!cancelled) return { error: "Baseline version is not an active draft" as const };
     await tx.insert(learningBaselineAuditTable).values({
       id: id("baseline-audit"), baselineId, versionId, action: "CANCEL_DRAFT", actorId,
-      details: { version: cancelled.version, reason: cancellationReason },
+      details: { version: cancelled.version, reason: cancellationReason, idempotencyKey },
     });
     return {
       baselineId, versionId, version: cancelled.version, status: cancelled.status,

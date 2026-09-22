@@ -3383,8 +3383,9 @@ components:
       type: object
       additionalProperties: false
       properties:
+        idempotencyKey: { type: string, minLength: 8, maxLength: 160 }
         reason: { type: string, minLength: 1, maxLength: 500 }
-      required: [reason]
+      required: [idempotencyKey, reason]
     BaselineDraftCancelled:
       type: object
       properties:

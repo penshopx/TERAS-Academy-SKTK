@@ -77,7 +77,13 @@ router.post("/trainer/authoring/baselines/:baselineId/versions/:versionId/cancel
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
   if (!await requireBaselineScope(parsed.data.baselineId, manager, res)) return;
-  const result = await cancelBaselineDraft(parsed.data.baselineId, parsed.data.versionId, manager.id, body.data.reason);
+  const result = await cancelBaselineDraft(
+    parsed.data.baselineId,
+    parsed.data.versionId,
+    manager.id,
+    body.data.reason,
+    body.data.idempotencyKey,
+  );
   if ("error" in result) { res.status("invalid" in result ? 400 : result.error === "Baseline draft not found" ? 404 : 409).json({ error: result.error }); return; }
   res.json(CancelBaselineDraftResponse.parse(result));
 });

@@ -23,6 +23,7 @@ export const HealthCheckResponse = zod.object({
  */
 
 
+
 export const GetCurrentSessionResponse = zod.object({
   "personId": zod.string(),
   "name": zod.string(),
@@ -424,6 +425,7 @@ export const GetLearnerDashboardResponse = zod.object({
  */
 
 
+
 export const SelectLearnerPathwayBody = zod.object({
   "pathwayId": zod.string().min(1)
 })
@@ -483,6 +485,7 @@ export const GetLearnerJourneyResponse = zod.array(GetLearnerJourneyResponseItem
 
 export const getLearnerJourneyPageQueryLimitDefault = 50;
 export const getLearnerJourneyPageQueryLimitMax = 100;
+
 
 
 export const GetLearnerJourneyPageQueryParams = zod.object({
@@ -568,6 +571,7 @@ export const getModuleResponseModuleBaselineOneCodeRegExp = new RegExp('^M(0[1-9
 export const getModuleResponseModuleBaselineOneEvidenceIdRegExp = new RegExp('^E(0[1-9]|10)$');
 export const getModuleResponseAssessmentScoreMin = 0;
 export const getModuleResponseAssessmentScoreMax = 100;
+
 
 
 export const GetModuleResponse = zod.object({
@@ -658,8 +662,10 @@ export const CreatePracticeAttemptParams = zod.object({
 })
 
 
+
 export const createPracticeAttemptBodyIdempotencyKeyMin = 8;
 export const createPracticeAttemptBodyIdempotencyKeyMax = 160;
+
 
 
 export const CreatePracticeAttemptBody = zod.object({
@@ -728,6 +734,7 @@ export const createEvidenceBodyIdempotencyKeyMin = 8;
 export const createEvidenceBodyIdempotencyKeyMax = 160;
 
 
+
 export const CreateEvidenceBody = zod.object({
   "moduleId": zod.string(),
   "taskId": zod.string(),
@@ -773,6 +780,7 @@ export const listAssessmentsResponseScoreMin = 0;
 export const listAssessmentsResponseScoreMax = 100;
 
 
+
 export const ListAssessmentsResponseItem = zod.object({
   "id": zod.string(),
   "moduleId": zod.string(),
@@ -804,6 +812,7 @@ export const getAssessmentResponseAssessmentScoreMax = 100;
 
 export const getAssessmentResponseCriteriaItemScoreMin = 0;
 export const getAssessmentResponseCriteriaItemScoreMax = 3;
+
 
 
 export const GetAssessmentResponse = zod.object({
@@ -909,6 +918,7 @@ export const CompleteRemediationResponse = zod.object({
  */
 
 
+
 export const CompleteRemediationActivityParams = zod.object({
   "remediationId": zod.coerce.string(),
   "activityId": zod.coerce.string().min(1)
@@ -917,6 +927,7 @@ export const CompleteRemediationActivityParams = zod.object({
 export const completeRemediationActivityBodyIdempotencyKeyMax = 200;
 
 export const completeRemediationActivityBodyCompletionNoteMax = 1000;
+
 
 
 export const CompleteRemediationActivityBody = zod.object({
@@ -968,6 +979,8 @@ export const getLearnerReadinessResponseGatesItemScoreMax = 100;
 
 export const getLearnerReadinessResponseGatesItemThresholdMin = 0;
 export const getLearnerReadinessResponseGatesItemThresholdMax = 100;
+
+
 
 
 export const GetLearnerReadinessResponse = zod.object({
@@ -1177,12 +1190,16 @@ export const StartDiagnosticSessionResponse = zod.object({
 })
 
 
+
+
+
 export const SaveDiagnosticResponsesParams = zod.object({
   "sessionId": zod.coerce.string().min(1)
 })
 
 export const saveDiagnosticResponsesBodyProgressMin = 0;
 export const saveDiagnosticResponsesBodyProgressMax = 100;
+
 
 
 export const SaveDiagnosticResponsesBody = zod.object({
@@ -1203,13 +1220,37 @@ export const SaveDiagnosticResponsesResponse = zod.object({
 })
 
 
+
+
+
 export const CompleteDiagnosticSessionParams = zod.object({
   "sessionId": zod.coerce.string().min(1)
 })
 
 
+
+
+
+
+
+
 export const completeDiagnosticSessionResponseItemsItemScoreMin = 0;
 export const completeDiagnosticSessionResponseItemsItemScoreMax = 100;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 export const CompleteDiagnosticSessionResponse = zod.object({
@@ -1282,8 +1323,30 @@ export const CompleteDiagnosticSessionResponse = zod.object({
 })
 
 
+
+
+
+
+
+
+
 export const getCompetencyProfileResponseItemsItemScoreMin = 0;
 export const getCompetencyProfileResponseItemsItemScoreMax = 100;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 export const GetCompetencyProfileResponse = zod.object({
@@ -1356,8 +1419,28 @@ export const GetCompetencyProfileResponse = zod.object({
 })
 
 
+
+
+
+
+
+
+
 export const getReadinessMapResponseProfileItemsItemScoreMin = 0;
 export const getReadinessMapResponseProfileItemsItemScoreMax = 100;
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 export const getReadinessMapResponseReadinessScoreMin = 0;
@@ -1383,6 +1466,8 @@ export const getReadinessMapResponseReadinessGatesItemScoreMax = 100;
 
 export const getReadinessMapResponseReadinessGatesItemThresholdMin = 0;
 export const getReadinessMapResponseReadinessGatesItemThresholdMax = 100;
+
+
 
 
 export const GetReadinessMapResponse = zod.object({
@@ -1624,6 +1709,8 @@ export const getCapabilityPassportResponseReadinessGatesItemScoreMax = 100;
 
 export const getCapabilityPassportResponseReadinessGatesItemThresholdMin = 0;
 export const getCapabilityPassportResponseReadinessGatesItemThresholdMax = 100;
+
+
 
 
 export const GetCapabilityPassportResponse = zod.object({
@@ -2081,6 +2168,14 @@ export const getTrainerDashboardResponseDiagnosticFollowUpsItemBaselineScoreMin 
 export const getTrainerDashboardResponseDiagnosticFollowUpsItemBaselineScoreMax = 100;
 
 
+
+
+
+
+
+
+
+
 export const GetTrainerDashboardResponse = zod.object({
   "trainer": zod.object({
   "id": zod.string(),
@@ -2322,6 +2417,7 @@ export const GetTrainerReviewQueueResponse = zod.array(GetTrainerReviewQueueResp
  */
 
 
+
 export const RecordDiagnosticRecommendationFollowUpParams = zod.object({
   "recommendationId": zod.coerce.string().min(1)
 })
@@ -2329,6 +2425,7 @@ export const RecordDiagnosticRecommendationFollowUpParams = zod.object({
 export const recordDiagnosticRecommendationFollowUpBodyIdempotencyKeyMax = 100;
 
 export const recordDiagnosticRecommendationFollowUpBodyNoteMax = 500;
+
 
 
 export const RecordDiagnosticRecommendationFollowUpBody = zod.object({
@@ -2359,6 +2456,7 @@ export const ReviewEvidenceByTrainerParams = zod.object({
 
 export const reviewEvidenceByTrainerBodyIdempotencyKeyMin = 8;
 export const reviewEvidenceByTrainerBodyIdempotencyKeyMax = 160;
+
 
 
 export const ReviewEvidenceByTrainerBody = zod.object({
@@ -2404,8 +2502,16 @@ export const ReviewEvidenceByTrainerResponse = zod.object({
  */
 
 
+
+
+
+
+
+
+
 export const openTrainerRemediationBodyIdempotencyKeyMin = 8;
 export const openTrainerRemediationBodyIdempotencyKeyMax = 160;
+
 
 
 export const OpenTrainerRemediationBody = zod.object({
@@ -2445,6 +2551,7 @@ export const ReviewPracticeAttemptParams = zod.object({
 
 export const reviewPracticeAttemptBodyIdempotencyKeyMin = 8;
 export const reviewPracticeAttemptBodyIdempotencyKeyMax = 160;
+
 
 
 export const ReviewPracticeAttemptBody = zod.object({
@@ -2534,6 +2641,8 @@ export const submitAssessmentDecisionBodyCriteriaItemScoreMin = 0;
 export const submitAssessmentDecisionBodyCriteriaItemScoreMax = 3;
 
 
+
+
 export const SubmitAssessmentDecisionBody = zod.object({
   "learnerId": zod.string(),
   "decision": zod.enum(['Competent', 'Not competent']),
@@ -2551,6 +2660,7 @@ export const submitAssessmentDecisionResponseAssessmentScoreMax = 100;
 
 export const submitAssessmentDecisionResponseCriteriaItemScoreMin = 0;
 export const submitAssessmentDecisionResponseCriteriaItemScoreMax = 3;
+
 
 
 export const SubmitAssessmentDecisionResponse = zod.object({
@@ -2674,8 +2784,10 @@ export const ListLearningCoursesResponse = zod.array(ListLearningCoursesResponse
  */
 
 
+
 export const createLearningResourceBodyUriRegExp = new RegExp('^https?:/');
 export const createLearningResourceBodyObjectPathRegExp = new RegExp('^/objects');
+
 
 
 export const CreateLearningResourceBody = zod.object({
@@ -2710,11 +2822,13 @@ export const CreateLearningResourceResponse = zod.object({
  */
 
 
+
 export const GetLearningResourceProgressParams = zod.object({
   "resourceId": zod.coerce.string().min(1)
 })
 
 export const getLearningResourceProgressResponsePositionMin = 0;
+
 
 
 export const GetLearningResourceProgressResponse = zod.object({
@@ -2730,6 +2844,7 @@ export const GetLearningResourceProgressResponse = zod.object({
  */
 
 
+
 export const SaveLearningResourceProgressParams = zod.object({
   "resourceId": zod.coerce.string().min(1)
 })
@@ -2738,11 +2853,13 @@ export const saveLearningResourceProgressBodyPositionMin = 0;
 export const saveLearningResourceProgressBodyPositionMax = 2147483647;
 
 
+
 export const SaveLearningResourceProgressBody = zod.object({
   "position": zod.int().min(saveLearningResourceProgressBodyPositionMin).max(saveLearningResourceProgressBodyPositionMax)
 })
 
 export const saveLearningResourceProgressResponsePositionMin = 0;
+
 
 
 export const SaveLearningResourceProgressResponse = zod.object({
@@ -2760,6 +2877,7 @@ export const SaveLearningResourceProgressResponse = zod.object({
 
 export const transitionLearningStateBodyIdempotencyKeyMin = 8;
 export const transitionLearningStateBodyIdempotencyKeyMax = 160;
+
 
 
 export const TransitionLearningStateBody = zod.object({
@@ -2817,6 +2935,8 @@ export const TransitionLearningStateResponse = zod.object({
  * Trainer-only draft authoring command. It never rewrites learner progress events.
  * @summary Create, edit, reorder, duplicate, or archive one course authoring entity
  */
+
+
 
 
 export const ApplyCourseAuthoringCommandBody = zod.object({
@@ -2922,6 +3042,7 @@ export const ListAuthoredCoursesResponse = zod.array(ListAuthoredCoursesResponse
 export const listManagedBaselinesResponseDraftCountMin = 0;
 
 
+
 export const ListManagedBaselinesResponseItem = zod.object({
   "baselineId": zod.string(),
   "code": zod.string(),
@@ -2936,6 +3057,7 @@ export const ListManagedBaselinesResponse = zod.array(ListManagedBaselinesRespon
 /**
  * @summary Clone the active published baseline into a draft
  */
+
 
 
 export const CreateBaselineDraftParams = zod.object({
@@ -2954,6 +3076,8 @@ export const CreateBaselineDraftResponse = zod.object({
 /**
  * @summary Publish an immutable baseline snapshot
  */
+
+
 
 
 export const PublishBaselineVersionParams = zod.object({
@@ -2982,15 +3106,22 @@ export const PublishBaselineVersionResponse = zod.object({
  */
 
 
+
+
 export const CancelBaselineDraftParams = zod.object({
   "baselineId": zod.coerce.string().min(1),
   "versionId": zod.coerce.string().min(1)
 })
 
+export const cancelBaselineDraftBodyIdempotencyKeyMin = 8;
+export const cancelBaselineDraftBodyIdempotencyKeyMax = 160;
+
 export const cancelBaselineDraftBodyReasonMax = 500;
 
 
+
 export const CancelBaselineDraftBody = zod.object({
+  "idempotencyKey": zod.string().min(cancelBaselineDraftBodyIdempotencyKeyMin).max(cancelBaselineDraftBodyIdempotencyKeyMax),
   "reason": zod.string().min(1).max(cancelBaselineDraftBodyReasonMax)
 })
 
@@ -3007,6 +3138,8 @@ export const CancelBaselineDraftResponse = zod.object({
 /**
  * @summary Compare an immutable active snapshot with a draft and show publication impact
  */
+
+
 
 
 export const PreviewBaselinePublicationParams = zod.object({
@@ -3116,6 +3249,8 @@ export const PreviewBaselinePublicationResponse = zod.object({
  */
 
 
+
+
 export const UpdateBaselineDraftParams = zod.object({
   "baselineId": zod.coerce.string().min(1),
   "versionId": zod.coerce.string().min(1)
@@ -3132,6 +3267,9 @@ export const UpdateBaselineDraftResponse = zod.object({
   "status": zod.enum(['DRAFT']),
   "snapshot": zod.record(zod.string(), zod.unknown())
 })
+
+
+
 
 
 export const ListBaselineVersionsParams = zod.object({
@@ -3154,6 +3292,9 @@ export const ListBaselineVersionsResponseItem = zod.object({
 export const ListBaselineVersionsResponse = zod.array(ListBaselineVersionsResponseItem)
 
 
+
+
+
 export const ListBaselineAuditParams = zod.object({
   "baselineId": zod.coerce.string().min(1)
 })
@@ -3166,6 +3307,7 @@ export const listBaselineAuditResponseDetailsTwoEligibleCohortCountMin = 0;
 export const listBaselineAuditResponseDetailsTwoPreservedEnrollmentCountMin = 0;
 
 export const listBaselineAuditResponseDetailsTwoReasonMax = 500;
+
 
 
 export const ListBaselineAuditResponseItem = zod.object({
@@ -3198,6 +3340,7 @@ export const requestManagedResourceUploadUrlBodyNameRegExp = new RegExp('^[^/\\\
 export const requestManagedResourceUploadUrlBodySizeMax = 104857600;
 
 
+
 export const RequestManagedResourceUploadUrlBody = zod.object({
   "name": zod.string().min(1).max(requestManagedResourceUploadUrlBodyNameMax).regex(requestManagedResourceUploadUrlBodyNameRegExp),
   "size": zod.int().min(1).max(requestManagedResourceUploadUrlBodySizeMax),
@@ -3210,6 +3353,7 @@ export const requestManagedResourceUploadUrlResponseMetadataNameMax = 180;
 
 export const requestManagedResourceUploadUrlResponseMetadataNameRegExp = new RegExp('^[^/\\\\]+$');
 export const requestManagedResourceUploadUrlResponseMetadataSizeMax = 104857600;
+
 
 
 export const RequestManagedResourceUploadUrlResponse = zod.object({
@@ -3366,6 +3510,7 @@ export const PublishAuthoredCourseParams = zod.object({
 export const publishAuthoredCourseResponseAuthoringRevisionMin = 0;
 
 
+
 export const PublishAuthoredCourseResponse = zod.object({
   "id": zod.string(),
   "courseId": zod.string(),
@@ -3381,6 +3526,7 @@ export const ListAuthoredCourseVersionsParams = zod.object({
 })
 
 export const listAuthoredCourseVersionsResponseAuthoringRevisionMin = 0;
+
 
 
 export const ListAuthoredCourseVersionsResponseItem = zod.object({
@@ -3423,6 +3569,8 @@ export const listAdminReadinessRulesResponseThresholdMin = 0;
 export const listAdminReadinessRulesResponseThresholdMax = 100;
 
 
+
+
 export const ListAdminReadinessRulesResponseItem = zod.object({
   "id": zod.string(),
   "programId": zod.string(),
@@ -3447,8 +3595,13 @@ export const ListAdminReadinessRulesResponse = zod.array(ListAdminReadinessRules
  */
 
 
+
+
+
+
 export const createAdminReadinessRuleVersionBodyThresholdMin = 0;
 export const createAdminReadinessRuleVersionBodyThresholdMax = 100;
+
 
 
 export const CreateAdminReadinessRuleVersionBody = zod.object({
@@ -3468,6 +3621,8 @@ export const CreateAdminReadinessRuleVersionBody = zod.object({
 
 export const createAdminReadinessRuleVersionResponseThresholdMin = 0;
 export const createAdminReadinessRuleVersionResponseThresholdMax = 100;
+
+
 
 
 export const CreateAdminReadinessRuleVersionResponse = zod.object({
@@ -3493,10 +3648,12 @@ export const CreateAdminReadinessRuleVersionResponse = zod.object({
  */
 
 
+
 export const listAdminReadinessHistoryQueryPageDefault = 1;
 
 export const listAdminReadinessHistoryQueryPageSizeDefault = 25;
 export const listAdminReadinessHistoryQueryPageSizeMax = 100;
+
 
 
 export const ListAdminReadinessHistoryQueryParams = zod.object({
@@ -3512,9 +3669,11 @@ export const listAdminReadinessHistoryResponseItemsItemScoreMin = 0;
 export const listAdminReadinessHistoryResponseItemsItemScoreMax = 100;
 
 
+
 export const listAdminReadinessHistoryResponsePageSizeMax = 100;
 
 export const listAdminReadinessHistoryResponseTotalMin = 0;
+
 
 
 export const ListAdminReadinessHistoryResponse = zod.object({
@@ -3592,6 +3751,9 @@ export const ListAdminDiagnosticProvenanceExceptionsResponse = zod.array(ListAdm
  */
 
 
+
+
+
 export const ExportAdminReadinessHistoryQueryParams = zod.object({
   "learnerId": zod.coerce.string().min(1).optional(),
   "pathwayId": zod.coerce.string().min(1).optional(),
@@ -3607,6 +3769,8 @@ export const exportAdminReadinessHistoryResponseRecordsItemScoreMax = 100;
 
 
 export const exportAdminReadinessHistoryResponseIntegrityChecksumRegExp = new RegExp('^[a-f0-9]{64}$');
+
+
 
 
 export const ExportAdminReadinessHistoryResponse = zod.object({
@@ -3709,6 +3873,8 @@ export const getAdminReadinessExportTrendsResponseAlertsItemFailureRatioMax = 1;
 export const getAdminReadinessExportTrendsResponseRetentionCleanupConsecutiveFailuresMin = 0;
 
 
+
+
 export const GetAdminReadinessExportTrendsResponse = zod.object({
   "thresholds": zod.object({
   "minimumRecordCount": zod.int().min(1),
@@ -3751,6 +3917,7 @@ export const GetAdminReadinessExportTrendsResponse = zod.object({
 export const recordAdminReadinessExportTrendBodyRecordCountMin = 0;
 
 
+
 export const RecordAdminReadinessExportTrendBody = zod.object({
   "attemptKey": zod.uuid(),
   "outcome": zod.enum(['started', 'succeeded', 'cancelled', 'failed']),
@@ -3763,6 +3930,8 @@ export const RecordAdminReadinessExportTrendResponse = zod.void()
 /**
  * @summary List TERAS public keys for offline readiness audit verification
  */
+
+
 
 
 export const ListReadinessAuditPublicKeysResponse = zod.object({
@@ -3782,7 +3951,26 @@ export const ListReadinessAuditPublicKeysResponse = zod.object({
  */
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export const listAdminCompetencyFrameworksResponseTwoUnitsItemOneSimulationsItemDurationMinutesMin = 0;
+
+
+
+
 
 
 export const ListAdminCompetencyFrameworksResponseItem = zod.object({
@@ -3834,6 +4022,11 @@ export const ListAdminCompetencyFrameworksResponseItem = zod.object({
 export const ListAdminCompetencyFrameworksResponse = zod.array(ListAdminCompetencyFrameworksResponseItem)
 
 
+
+
+
+
+
 export const CreateAdminCompetencyFrameworkBody = zod.object({
   "id": zod.string().min(1),
   "code": zod.string().min(1),
@@ -3845,7 +4038,27 @@ export const CreateAdminCompetencyFrameworkBody = zod.object({
 })
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export const createAdminCompetencyFrameworkResponseTwoUnitsItemOneSimulationsItemDurationMinutesMin = 0;
+
+
+
+
 
 
 export const CreateAdminCompetencyFrameworkResponse = zod.object({
@@ -3896,9 +4109,14 @@ export const CreateAdminCompetencyFrameworkResponse = zod.object({
 }))
 
 
+
+
+
 export const UpdateAdminCompetencyFrameworkParams = zod.object({
   "frameworkId": zod.coerce.string().min(1)
 })
+
+
 
 
 export const UpdateAdminCompetencyFrameworkBody = zod.object({
@@ -3910,7 +4128,27 @@ export const UpdateAdminCompetencyFrameworkBody = zod.object({
 })
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export const updateAdminCompetencyFrameworkResponseTwoUnitsItemOneSimulationsItemDurationMinutesMin = 0;
+
+
+
+
 
 
 export const UpdateAdminCompetencyFrameworkResponse = zod.object({
@@ -3966,7 +4204,23 @@ export const UpdateAdminCompetencyFrameworkResponse = zod.object({
  */
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 export const createAdminCompetencyUnitBodySimulationsItemDurationMinutesMin = 0;
+
+
+
+
 
 
 export const CreateAdminCompetencyUnitBody = zod.object({
@@ -4002,7 +4256,24 @@ export const CreateAdminCompetencyUnitBody = zod.object({
 })
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 export const createAdminCompetencyUnitResponseOneSimulationsItemDurationMinutesMin = 0;
+
+
+
+
 
 
 export const CreateAdminCompetencyUnitResponse = zod.object({
@@ -4041,12 +4312,32 @@ export const CreateAdminCompetencyUnitResponse = zod.object({
 }))
 
 
+
+
+
 export const UpdateAdminCompetencyUnitParams = zod.object({
   "unitId": zod.coerce.string().min(1)
 })
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 export const updateAdminCompetencyUnitBodySimulationsItemDurationMinutesMin = 0;
+
+
+
+
 
 
 export const UpdateAdminCompetencyUnitBody = zod.object({
@@ -4081,7 +4372,24 @@ export const UpdateAdminCompetencyUnitBody = zod.object({
 })
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 export const updateAdminCompetencyUnitResponseOneSimulationsItemDurationMinutesMin = 0;
+
+
+
+
 
 
 export const UpdateAdminCompetencyUnitResponse = zod.object({
@@ -4135,6 +4443,12 @@ export const ListAdminUsersResponseItem = zod.object({
 export const ListAdminUsersResponse = zod.array(ListAdminUsersResponseItem)
 
 
+
+
+
+
+
+
 export const CreateAdminUserBody = zod.object({
   "id": zod.string().min(1),
   "name": zod.string().min(1),
@@ -4176,7 +4490,9 @@ export const ListAdminAccessRequestsResponseItem = zod.object({
 export const ListAdminAccessRequestsResponse = zod.array(ListAdminAccessRequestsResponseItem)
 
 
+
 export const createAdminAccessRequestBodyReasonMax = 2000;
+
 
 
 export const CreateAdminAccessRequestBody = zod.object({
@@ -4199,11 +4515,15 @@ export const CreateAdminAccessRequestResponse = zod.object({
 })
 
 
+
+
+
 export const ApproveAdminAccessRequestParams = zod.object({
   "requestId": zod.coerce.string().min(1)
 })
 
 export const approveAdminAccessRequestBodyReviewNoteMax = 2000;
+
 
 
 export const ApproveAdminAccessRequestBody = zod.object({
@@ -4224,11 +4544,15 @@ export const ApproveAdminAccessRequestResponse = zod.object({
 })
 
 
+
+
+
 export const RejectAdminAccessRequestParams = zod.object({
   "requestId": zod.coerce.string().min(1)
 })
 
 export const rejectAdminAccessRequestBodyReviewNoteMax = 2000;
+
 
 
 export const RejectAdminAccessRequestBody = zod.object({
@@ -4270,6 +4594,7 @@ export const getAdminOperationalSummaryResponseQueuesItemCountMin = 0;
 export const getAdminOperationalSummaryResponseBottleneckCountMin = 0;
 
 export const getAdminOperationalSummaryResponseActionsItemCountMin = 0;
+
 
 
 export const GetAdminOperationalSummaryResponse = zod.object({
@@ -4387,6 +4712,7 @@ export const getAdminAgentObservabilityResponseTotalsActionCountMin = 0;
 export const getAdminAgentObservabilityResponseDimensionsItemRunCountMin = 0;
 
 
+
 export const GetAdminAgentObservabilityResponse = zod.object({
   "windowDays": zod.literal(30),
   "from": zod.coerce.date(),
@@ -4423,6 +4749,7 @@ export const listAdminReminderEscalationsQueryOffsetDefault = 0;
 export const listAdminReminderEscalationsQueryOffsetMin = 0;
 
 
+
 export const ListAdminReminderEscalationsQueryParams = zod.object({
   "status": zod.enum(['open', 'resolved']).optional(),
   "limit": zod.coerce.number().int().min(1).max(listAdminReminderEscalationsQueryLimitMax).default(listAdminReminderEscalationsQueryLimitDefault),
@@ -4442,6 +4769,7 @@ export const listAdminReminderEscalationsResponsePaginationOffsetMin = 0;
 export const listAdminReminderEscalationsResponsePaginationReturnedMin = 0;
 
 export const listAdminReminderEscalationsResponsePaginationTotalMin = 0;
+
 
 
 export const ListAdminReminderEscalationsResponse = zod.object({
@@ -4494,6 +4822,7 @@ export const ListAdminReminderEscalationsResponse = zod.object({
  */
 
 
+
 export const ResolveAdminReminderEscalationParams = zod.object({
   "reminderDeliveryId": zod.coerce.string().min(1)
 })
@@ -4542,6 +4871,7 @@ export const getAdminLearnerDashboardProjectionResponseQueuesItemCountMin = 0;
 export const getAdminLearnerDashboardProjectionResponseBottleneckCountMin = 0;
 
 export const getAdminLearnerDashboardProjectionResponseActionsItemCountMin = 0;
+
 
 
 export const GetAdminLearnerDashboardProjectionResponse = zod.object({
@@ -4657,6 +4987,7 @@ export const getAdminTrainerDashboardProjectionResponseBottleneckCountMin = 0;
 export const getAdminTrainerDashboardProjectionResponseActionsItemCountMin = 0;
 
 
+
 export const GetAdminTrainerDashboardProjectionResponse = zod.object({
   "metrics": zod.array(zod.object({
   "id": zod.enum(['learners', 'programs', 'cohorts', 'enrollments']),
@@ -4770,6 +5101,7 @@ export const getAdminAssessorDashboardProjectionResponseBottleneckCountMin = 0;
 export const getAdminAssessorDashboardProjectionResponseActionsItemCountMin = 0;
 
 
+
 export const GetAdminAssessorDashboardProjectionResponse = zod.object({
   "metrics": zod.array(zod.object({
   "id": zod.enum(['learners', 'programs', 'cohorts', 'enrollments']),
@@ -4861,6 +5193,9 @@ export const UpdateAdminUserParams = zod.object({
 })
 
 
+
+
+
 export const UpdateAdminUserBody = zod.object({
   "name": zod.string().min(1).optional(),
   "initials": zod.string().min(1).optional(),
@@ -4888,6 +5223,8 @@ export const UpdateAdminUserResponse = zod.object({
 export const ReplaceAdminUserRolesParams = zod.object({
   "personId": zod.coerce.string()
 })
+
+
 
 
 export const ReplaceAdminUserRolesBody = zod.object({
@@ -4948,6 +5285,7 @@ export const getAdminModuleCatalogueResponseLegacyModulesMin = 8;
 export const getAdminModuleCatalogueResponseLegacyModulesMax = 8;
 
 
+
 export const GetAdminModuleCatalogueResponse = zod.object({
   "canonicalModules": zod.array(zod.object({
   "id": zod.string(),
@@ -4970,6 +5308,10 @@ export const GetAdminModuleCatalogueResponse = zod.object({
 export const UpdateAdminProgramParams = zod.object({
   "programId": zod.coerce.string()
 })
+
+
+
+
 
 
 export const UpdateAdminProgramBody = zod.object({
@@ -5028,6 +5370,9 @@ export const UpdateAdminPathwayParams = zod.object({
 })
 
 
+
+
+
 export const UpdateAdminPathwayBody = zod.object({
   "name": zod.string().min(1).optional(),
   "type": zod.string().min(1).optional(),
@@ -5080,6 +5425,8 @@ export const CreateAdminCohortResponse = zod.object({
 export const UpdateAdminCohortParams = zod.object({
   "cohortId": zod.coerce.string()
 })
+
+
 
 
 export const UpdateAdminCohortBody = zod.object({
@@ -5175,6 +5522,7 @@ export const ListAdminAuditEventsResponse = zod.array(ListAdminAuditEventsRespon
 export const searchAssistantKnowledgeBodyQuestionMax = 1000;
 
 
+
 export const SearchAssistantKnowledgeBody = zod.object({
   "category": zod.enum(['help', 'energy']),
   "question": zod.string().min(1).max(searchAssistantKnowledgeBodyQuestionMax)
@@ -5192,6 +5540,10 @@ export const SearchAssistantKnowledgeResponse = zod.object({
 })
 
 
+
+
+
+
 export const ListAdminKnowledgeArticlesResponseItem = zod.object({
   "id": zod.string(),
   "category": zod.enum(['help', 'energy']),
@@ -5206,9 +5558,12 @@ export const ListAdminKnowledgeArticlesResponseItem = zod.object({
 export const ListAdminKnowledgeArticlesResponse = zod.array(ListAdminKnowledgeArticlesResponseItem)
 
 
+
 export const createAdminKnowledgeArticleBodyTitleMax = 200;
 
 export const createAdminKnowledgeArticleBodyBodyMax = 12000;
+
+
 
 
 export const CreateAdminKnowledgeArticleBody = zod.object({
@@ -5218,6 +5573,9 @@ export const CreateAdminKnowledgeArticleBody = zod.object({
   "body": zod.string().min(1).max(createAdminKnowledgeArticleBodyBodyMax),
   "audience": zod.array(zod.enum(['learner', 'trainer', 'assessor', 'admin'])).min(1)
 })
+
+
+
 
 
 export const CreateAdminKnowledgeArticleResponse = zod.object({
@@ -5233,6 +5591,10 @@ export const CreateAdminKnowledgeArticleResponse = zod.object({
 })
 
 
+
+
+
+
 export const ListAdminKnowledgeNotFoundTopicsResponse = zod.object({
   "retentionDays": zod.int().min(1),
   "topics": zod.array(zod.object({
@@ -5245,6 +5607,9 @@ export const ListAdminKnowledgeNotFoundTopicsResponse = zod.object({
 })
 
 
+
+
+
 export const UpdateAdminKnowledgeArticleParams = zod.object({
   "articleId": zod.coerce.string().min(1)
 })
@@ -5254,6 +5619,8 @@ export const updateAdminKnowledgeArticleBodyTitleMax = 200;
 export const updateAdminKnowledgeArticleBodyBodyMax = 12000;
 
 
+
+
 export const UpdateAdminKnowledgeArticleBody = zod.object({
   "title": zod.string().min(1).max(updateAdminKnowledgeArticleBodyTitleMax).optional(),
   "body": zod.string().min(1).max(updateAdminKnowledgeArticleBodyBodyMax).optional(),
@@ -5261,6 +5628,9 @@ export const UpdateAdminKnowledgeArticleBody = zod.object({
   "status": zod.enum(['draft', 'archived']).optional(),
   "audience": zod.array(zod.enum(['learner', 'trainer', 'assessor', 'admin'])).min(1).optional()
 })
+
+
+
 
 
 export const UpdateAdminKnowledgeArticleResponse = zod.object({
@@ -5276,9 +5646,15 @@ export const UpdateAdminKnowledgeArticleResponse = zod.object({
 })
 
 
+
+
+
 export const PublishAdminKnowledgeArticleParams = zod.object({
   "articleId": zod.coerce.string().min(1)
 })
+
+
+
 
 
 export const PublishAdminKnowledgeArticleResponse = zod.object({

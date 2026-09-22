@@ -22,10 +22,25 @@ import {
   publishAuthoredCourseAndRefresh,
   refreshAuthoringHistory,
 } from "./trainer/authoring/validation-panel";
-import { BaselineVersionHistory, isBaselinePreviewConfirmed, refreshBaselinePublicationHistory } from "./trainer/authoring/baseline-publication-gate";
+import {
+  baselineCancellationRequest,
+  BaselineVersionHistory,
+  isBaselinePreviewConfirmed,
+  refreshBaselinePublicationHistory,
+} from "./trainer/authoring/baseline-publication-gate";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+class MemoryStorage implements Storage {
+  private values = new Map<string, string>();
+  get length() { return this.values.size; }
+  clear() { this.values.clear(); }
+  getItem(key: string) { return this.values.get(key) ?? null; }
+  key(index: number) { return [...this.values.keys()][index] ?? null; }
+  removeItem(key: string) { this.values.delete(key); }
+  setItem(key: string, value: string) { this.values.set(key, value); }
+}
 
 const sources = [
   "trainer/authoring/course-authoring.tsx",
@@ -86,6 +101,33 @@ test("baseline publication confirmation is bound to the exact preview fingerprin
   assert.equal(isBaselinePreviewConfirmed(null, "preview-a"), false);
   assert.equal(isBaselinePreviewConfirmed("preview-a", "preview-a"), true);
   assert.equal(isBaselinePreviewConfirmed("preview-a", "preview-b"), false, "a refreshed preview requires explicit confirmation again");
+});
+
+test("baseline cancellation retries send the same operation key and normalized reason", () => {
+  const storage = new MemoryStorage();
+  const first = baselineCancellationRequest(
+    storage,
+    "baseline-1",
+    "version-3",
+    "  Draft diganti oleh koreksi  ",
+  );
+  const retry = baselineCancellationRequest(
+    storage,
+    "baseline-1",
+    "version-3",
+    "Draft diganti oleh koreksi",
+  );
+  const differentTarget = baselineCancellationRequest(
+    storage,
+    "baseline-1",
+    "version-4",
+    "Draft diganti oleh koreksi",
+  );
+
+  assert.equal(first.reason, "Draft diganti oleh koreksi");
+  assert.equal(first.idempotencyKey.length >= 8, true);
+  assert.deepEqual(retry, first, "an ambiguous request retry preserves the operation identity");
+  assert.notEqual(differentTarget.idempotencyKey, first.idempotencyKey, "a different draft starts a new operation");
 });
 
 test("baseline history shows cancelled versions as read-only with audit details", () => {
