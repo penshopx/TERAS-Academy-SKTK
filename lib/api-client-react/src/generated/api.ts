@@ -24,6 +24,7 @@ import type {
   AdminAccessRequest,
   AdminAccessRequestInput,
   AdminAccessRequestReview,
+  AdminAgentObservability,
   AdminAuditEvent,
   AdminCohort,
   AdminCohortInput,
@@ -6453,6 +6454,83 @@ export function useGetAdminOperationalSummary<TData = Awaited<ReturnType<typeof 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetAdminOperationalSummaryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAdminAgentObservabilityUrl = () => {
+
+
+
+
+  return `/api/admin/agent-observability`
+}
+
+/**
+ * @summary Read privacy-preserving aggregate Trainer Intelligence Agent metrics
+ */
+export const getAdminAgentObservability = async ( options?: Parameters<typeof customFetch>[1]): Promise<AdminAgentObservability> => {
+
+  return customFetch<AdminAgentObservability>(getGetAdminAgentObservabilityUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminAgentObservabilityQueryKey = () => {
+    return [
+    `/api/admin/agent-observability`
+    ] as const;
+    }
+
+
+export const getGetAdminAgentObservabilityQueryOptions = <TData = Awaited<ReturnType<typeof getAdminAgentObservability>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminAgentObservability>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminAgentObservabilityQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminAgentObservability>>> = ({ signal }) => getAdminAgentObservability({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminAgentObservability>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminAgentObservabilityQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminAgentObservability>>>
+export type GetAdminAgentObservabilityQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse>
+
+
+/**
+ * @summary Read privacy-preserving aggregate Trainer Intelligence Agent metrics
+ */
+
+export function useGetAdminAgentObservability<TData = Awaited<ReturnType<typeof getAdminAgentObservability>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminAgentObservability>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminAgentObservabilityQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

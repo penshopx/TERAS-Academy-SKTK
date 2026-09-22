@@ -1784,6 +1784,51 @@ export interface AdminOperationalSummary {
   generatedAt: string;
 }
 
+export type AdminAgentObservabilityStatusCounts = {[key: string]: number};
+
+export type AdminAgentObservabilityTotals = {
+  /** @minimum 0 */
+  runCount: number;
+  /** @minimum 0 */
+  completedCount: number;
+  /** @minimum 0 */
+  partialCount: number;
+  /** @minimum 0 */
+  failedCount: number;
+  /** @minimum 0 */
+  fallbackCount: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  fallbackRate: number;
+  /** @minimum 0 */
+  averageTerminalLatencyMs: number | null;
+  /** @minimum 0 */
+  p95TerminalLatencyMs: number | null;
+  /** @minimum 0 */
+  claimCount: number;
+  /** @minimum 0 */
+  actionCount: number;
+};
+
+export type AdminAgentObservabilityDimensionsItem = {
+  agentVersion: string;
+  provider: string | null;
+  model: string | null;
+  /** @minimum 0 */
+  runCount: number;
+};
+
+export interface AdminAgentObservability {
+  windowDays: 30;
+  from: string;
+  to: string;
+  statusCounts: AdminAgentObservabilityStatusCounts;
+  totals: AdminAgentObservabilityTotals;
+  dimensions: AdminAgentObservabilityDimensionsItem[];
+}
+
 export type AdminReminderEscalationPagePagination = {
   /**
      * @minimum 1

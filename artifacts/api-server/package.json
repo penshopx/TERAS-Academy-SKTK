@@ -57,6 +57,7 @@
     "test:browser-reminder-preferences": "NODE_ENV=test tsx ./src/browser-reminder-preferences.integration.ts",
     "test:agentic-contracts": "NODE_ENV=test tsx --test ./src/lib/agentic.test.ts",
     "test:agentic-integration": "NODE_ENV=test tsx ./src/trainer-intelligence.integration-runner.ts",
+    "test:agent-observability": "NODE_ENV=test tsx ./src/agent-observability.integration.ts",
     "test:browser-admin-access": "NODE_ENV=test tsx ./src/browser-admin-access.integration.ts",
     "test:certification-preparation-journey": "bash ../../scripts/certification-preparation-journey.integration.test.sh",
     "test:path-a-golden-journey": "bash ../../scripts/path-a-golden-journey.integration.test.sh",

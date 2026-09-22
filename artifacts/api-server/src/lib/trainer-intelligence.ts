@@ -239,7 +239,7 @@ export async function createTrainerIntelligenceRun(trainerId: string, complete: 
     id: runId, agentId: TRAINER_INTELLIGENCE_AGENT.id, agentVersion: TRAINER_INTELLIGENCE_AGENT.version,
     actorPersonId: trainerId, objective: CANONICAL_OBJECTIVE,
     policyDecision, toolRefs: projection.toolRefs, evidenceRefs: envelope.sourceRefs,
-    provider, model, status, resultSummary: { claimCount: envelope.claims.length, limitationCount: envelope.limitations.length, advisory: true },
+    provider, model, status, resultSummary: { claimCount: envelope.claims.length, actionCount: envelope.recommendedActions.length, limitationCount: envelope.limitations.length, fallbackUsed: status === "PARTIAL", advisory: true },
     resultHash: resultHash(result), startedAt, completedAt,
   });
   return result;

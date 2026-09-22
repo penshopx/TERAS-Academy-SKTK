@@ -23,7 +23,7 @@ import {
   ListAdminReadinessRulesResponse,
   ListAdminReminderEscalationsQueryParams, ListAdminReminderEscalationsResponse,
   ResolveAdminReminderEscalationBody, ResolveAdminReminderEscalationParams, ResolveAdminReminderEscalationResponse,
-  GetAdminReadinessExportTrendsResponse, RecordAdminReadinessExportTrendBody,
+  GetAdminReadinessExportTrendsResponse, RecordAdminReadinessExportTrendBody, GetAdminAgentObservabilityResponse,
 } from "@workspace/api-zod";
 import {
   adminAccessRequestsTable, adminAuditEventsTable, assessmentAttemptsTable, cohortsTable, db, enrollmentsTable, evidenceReviewsTable,
@@ -36,7 +36,7 @@ import {
   diagnosticRecommendationsTable,
   diagnosticProvenanceExceptionsTable,
   readinessAuditExportAggregatesTable,
-  readinessAuditExportAttemptsTable,
+  readinessAuditExportAttemptsTable, agentRunsTable,
 } from "@workspace/db";
 import { authorizeAdmin, authorizeLocalUser, authorizeSuperAdmin, type AdminActor } from "../lib/authorization";
 import { pinPublishedBaseline } from "../lib/baseline-authoring";
@@ -872,6 +872,48 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
   }));
 });
 router.get("/admin/users", async (req, res): Promise<void> => { const actor = await authorizeAdmin(req, res); if (!actor) return; const people = await db.select().from(peopleTable); const rows = (await Promise.all(people.map(p => user(p.id)))).filter(Boolean) as any[]; res.json(ListAdminUsersResponse.parse(actor.roles.includes("super_admin") ? rows : rows.filter(person => !person.roles.some((role: string) => role === "admin" || role === "super_admin")))); });
+router.get("/admin/agent-observability", async (req, res): Promise<void> => {
+  if (!await authorizeAdmin(req, res)) return;
+  const to = new Date();
+  const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const rows = await db.select({
+    agentVersion: agentRunsTable.agentVersion, provider: agentRunsTable.provider, model: agentRunsTable.model,
+    status: agentRunsTable.status, resultSummary: agentRunsTable.resultSummary,
+    startedAt: agentRunsTable.startedAt, completedAt: agentRunsTable.completedAt,
+  }).from(agentRunsTable).where(gte(agentRunsTable.createdAt, from));
+  const statusCounts: Record<string, number> = {};
+  let claimCount = 0; let actionCount = 0; let fallbackCount = 0;
+  const latencies: number[] = [];
+  const dimensions = new Map<string, { agentVersion: string; provider: string | null; model: string | null; runCount: number }>();
+  for (const row of rows) {
+    statusCounts[row.status] = (statusCounts[row.status] ?? 0) + 1;
+    const summary = row.resultSummary && typeof row.resultSummary === "object" ? row.resultSummary as Record<string, unknown> : {};
+    if (typeof summary.claimCount === "number" && Number.isFinite(summary.claimCount) && summary.claimCount >= 0) claimCount += summary.claimCount;
+    if (typeof summary.actionCount === "number" && Number.isFinite(summary.actionCount) && summary.actionCount >= 0) actionCount += summary.actionCount;
+    if (summary.fallbackUsed === true) fallbackCount++;
+    if (row.startedAt && row.completedAt) {
+      const latency = row.completedAt.getTime() - row.startedAt.getTime();
+      if (Number.isFinite(latency) && latency >= 0) latencies.push(latency);
+    }
+    const key = `${row.agentVersion}\u0000${row.provider ?? ""}\u0000${row.model ?? ""}`;
+    const dimension = dimensions.get(key) ?? { agentVersion: row.agentVersion, provider: row.provider, model: row.model, runCount: 0 };
+    dimension.runCount++;
+    dimensions.set(key, dimension);
+  }
+  latencies.sort((a, b) => a - b);
+  const p95 = latencies.length ? latencies[Math.ceil(latencies.length * 0.95) - 1]! : null;
+  res.json(GetAdminAgentObservabilityResponse.parse({
+    windowDays: 30, from, to, statusCounts,
+    totals: {
+      runCount: rows.length, completedCount: statusCounts.COMPLETED ?? 0,
+      partialCount: statusCounts.PARTIAL ?? 0, failedCount: statusCounts.FAILED ?? 0,
+      fallbackCount, fallbackRate: rows.length ? fallbackCount / rows.length : 0,
+      averageTerminalLatencyMs: latencies.length ? latencies.reduce((sum, value) => sum + value, 0) / latencies.length : null,
+      p95TerminalLatencyMs: p95, claimCount, actionCount,
+    },
+    dimensions: [...dimensions.values()],
+  }));
+});
 router.post("/admin/users", async (req, res): Promise<void> => { const actor = await authorizeAdmin(req, res); if (!actor) return; const input = parsed(CreateAdminUserBody, req.body, res); if (!input) return; try { const outcome = await createManagedUser(input, actor); if (outcome.kind === "forbidden") { res.status(403).json({ error: "Only super administrators may grant privileged roles" }); return; } res.status(201).json(CreateAdminUserResponse.parse(outcome.value)); } catch (error) { res.status(conflict(error) ? 409 : 400).json({ error: conflict(error) ? "User or external identity already exists" : "Could not create user" }); } });
 router.patch("/admin/users/:personId", async (req, res): Promise<void> => { const actor = await authorizeAdmin(req, res); const params = parsed(UpdateAdminUserParams, req.params, res); const input = parsed(UpdateAdminUserBody, req.body, res); if (!actor || !params || !input) return; try { const outcome = await updateManagedUser(params.personId, input, actor, { activeAdminFixtureIds: req.integrationActiveAdminFixtureIds }); if (outcome.kind === "forbidden") { res.status(403).json({ error: "Only super administrators may manage privileged users" }); return; } if (outcome.kind === "not_found") { res.status(404).json({ error: "User not found" }); return; } if (outcome.kind === "last_admin" || outcome.kind === "last_super_admin") { res.status(409).json({ error: "Cannot deactivate the final active super administrator or effective administrator" }); return; } res.json(UpdateAdminUserResponse.parse(outcome.value)); } catch (error) { res.status(conflict(error) ? 409 : 400).json({ error: "External identity or email already exists" }); } });
 router.put("/admin/users/:personId/roles", async (req, res): Promise<void> => { const actor = await authorizeAdmin(req, res); const params = parsed(ReplaceAdminUserRolesParams, req.params, res); const input = parsed(ReplaceAdminUserRolesBody, req.body, res); if (!actor || !params || !input) return; const outcome = await replaceManagedUserRoles(params.personId, input.roles, actor, { activeAdminFixtureIds: req.integrationActiveAdminFixtureIds }); if (outcome.kind === "forbidden") { res.status(403).json({ error: "Only super administrators may grant or revoke privileged roles" }); return; } if (outcome.kind === "not_found") { res.status(404).json({ error: "User not found" }); return; } if (outcome.kind === "last_admin" || outcome.kind === "last_super_admin") { res.status(409).json({ error: "Cannot remove the final active super administrator or effective administrator role" }); return; } res.json(ReplaceAdminUserRolesResponse.parse(outcome.value)); });

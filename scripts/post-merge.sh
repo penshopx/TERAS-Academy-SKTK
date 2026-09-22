@@ -224,6 +224,8 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
 # applied in the common pass so both existing and new installations agree.
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0051_agent_run_ledger.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0052_agent_run_observability_index.sql
 pnpm --filter @workspace/scripts run seed
 if [ "$(pnpm --silent --filter @workspace/scripts run demo:fixtures-enabled)" = "1" ]; then
   pnpm --filter @workspace/scripts run seed:demo

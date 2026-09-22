@@ -1288,6 +1288,19 @@ paths:
                 $ref: "#/components/schemas/AdminOperationalSummary"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/agent-observability:
+    get:
+      operationId: getAdminAgentObservability
+      tags: [admin]
+      summary: Read privacy-preserving aggregate Trainer Intelligence Agent metrics
+      responses:
+        "200":
+          description: Aggregate metrics for the bounded recent window; no per-run records are returned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminAgentObservability" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /admin/reminder-escalations:
     get:
       operationId: listAdminReminderEscalations
@@ -3853,6 +3866,40 @@ components:
           type: array
           items: { $ref: "#/components/schemas/AdminOperationalAction" }
         generatedAt: { type: string, format: date-time }
+    AdminAgentObservability:
+      type: object
+      required: [windowDays, from, to, statusCounts, totals, dimensions]
+      properties:
+        windowDays: { type: integer, const: 30 }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        statusCounts:
+          type: object
+          additionalProperties: { type: integer, minimum: 0 }
+        totals:
+          type: object
+          required: [runCount, completedCount, partialCount, failedCount, fallbackCount, fallbackRate, averageTerminalLatencyMs, p95TerminalLatencyMs, claimCount, actionCount]
+          properties:
+            runCount: { type: integer, minimum: 0 }
+            completedCount: { type: integer, minimum: 0 }
+            partialCount: { type: integer, minimum: 0 }
+            failedCount: { type: integer, minimum: 0 }
+            fallbackCount: { type: integer, minimum: 0 }
+            fallbackRate: { type: number, minimum: 0, maximum: 1 }
+            averageTerminalLatencyMs: { type: number, minimum: 0, nullable: true }
+            p95TerminalLatencyMs: { type: number, minimum: 0, nullable: true }
+            claimCount: { type: integer, minimum: 0 }
+            actionCount: { type: integer, minimum: 0 }
+        dimensions:
+          type: array
+          items:
+            type: object
+            required: [agentVersion, provider, model, runCount]
+            properties:
+              agentVersion: { type: string }
+              provider: { type: string, nullable: true }
+              model: { type: string, nullable: true }
+              runCount: { type: integer, minimum: 0 }
     AdminReminderEscalation:
       type: object
       required: [id, trainerId, trainerName, target, targetAt, lastAttemptAt, reason, emailNotification, webhookNotification, status, resolution]

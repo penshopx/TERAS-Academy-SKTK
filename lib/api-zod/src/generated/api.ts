@@ -4679,6 +4679,62 @@ export const GetAdminOperationalSummaryResponse = zod.object({
 
 
 /**
+ * @summary Read privacy-preserving aggregate Trainer Intelligence Agent metrics
+ */
+export const getAdminAgentObservabilityResponseStatusCountsMinOne = 0;
+
+export const getAdminAgentObservabilityResponseTotalsRunCountMin = 0;
+
+export const getAdminAgentObservabilityResponseTotalsCompletedCountMin = 0;
+
+export const getAdminAgentObservabilityResponseTotalsPartialCountMin = 0;
+
+export const getAdminAgentObservabilityResponseTotalsFailedCountMin = 0;
+
+export const getAdminAgentObservabilityResponseTotalsFallbackCountMin = 0;
+
+export const getAdminAgentObservabilityResponseTotalsFallbackRateMin = 0;
+export const getAdminAgentObservabilityResponseTotalsFallbackRateMax = 1;
+
+export const getAdminAgentObservabilityResponseTotalsAverageTerminalLatencyMsMin = 0;
+
+export const getAdminAgentObservabilityResponseTotalsP95TerminalLatencyMsMin = 0;
+
+export const getAdminAgentObservabilityResponseTotalsClaimCountMin = 0;
+
+export const getAdminAgentObservabilityResponseTotalsActionCountMin = 0;
+
+export const getAdminAgentObservabilityResponseDimensionsItemRunCountMin = 0;
+
+
+
+export const GetAdminAgentObservabilityResponse = zod.object({
+  "windowDays": zod.literal(30),
+  "from": zod.coerce.date(),
+  "to": zod.coerce.date(),
+  "statusCounts": zod.record(zod.string(), zod.int().min(getAdminAgentObservabilityResponseStatusCountsMinOne)),
+  "totals": zod.object({
+  "runCount": zod.int().min(getAdminAgentObservabilityResponseTotalsRunCountMin),
+  "completedCount": zod.int().min(getAdminAgentObservabilityResponseTotalsCompletedCountMin),
+  "partialCount": zod.int().min(getAdminAgentObservabilityResponseTotalsPartialCountMin),
+  "failedCount": zod.int().min(getAdminAgentObservabilityResponseTotalsFailedCountMin),
+  "fallbackCount": zod.int().min(getAdminAgentObservabilityResponseTotalsFallbackCountMin),
+  "fallbackRate": zod.number().min(getAdminAgentObservabilityResponseTotalsFallbackRateMin).max(getAdminAgentObservabilityResponseTotalsFallbackRateMax),
+  "averageTerminalLatencyMs": zod.number().min(getAdminAgentObservabilityResponseTotalsAverageTerminalLatencyMsMin).nullable(),
+  "p95TerminalLatencyMs": zod.number().min(getAdminAgentObservabilityResponseTotalsP95TerminalLatencyMsMin).nullable(),
+  "claimCount": zod.int().min(getAdminAgentObservabilityResponseTotalsClaimCountMin),
+  "actionCount": zod.int().min(getAdminAgentObservabilityResponseTotalsActionCountMin)
+}),
+  "dimensions": zod.array(zod.object({
+  "agentVersion": zod.string(),
+  "provider": zod.string().nullable(),
+  "model": zod.string().nullable(),
+  "runCount": zod.int().min(getAdminAgentObservabilityResponseDimensionsItemRunCountMin)
+}))
+})
+
+
+/**
  * @summary Audit permanently failed trainer reminder escalations
  */
 export const listAdminReminderEscalationsQueryLimitDefault = 25;
