@@ -24,11 +24,15 @@ async function run() {
   if (process.env.NODE_ENV !== "test") {
     throw new Error("Competency integration migration may only run with NODE_ENV=test");
   }
-  const migrationUrl = new URL("../../../lib/db/migrations/0016_competency_frameworks.sql", import.meta.url);
-  const migration = await readFile(migrationUrl, "utf8");
   // Use the application's pool so PGOPTIONS/search_path and DATABASE_URL are
   // identical for bootstrap, fixtures, route transactions, and assertions.
-  await pool.query(migration);
+  for (const migrationName of [
+    "0016_competency_frameworks.sql",
+    "0054_path_b_regulatory_competency_foundation.sql",
+  ]) {
+    const migrationUrl = new URL(`../../../lib/db/migrations/${migrationName}`, import.meta.url);
+    await pool.query(await readFile(migrationUrl, "utf8"));
+  }
 
   await db.insert(programsTable).values({
     id: ids.program, domain: "integration", name: "Competency test program",
