@@ -14,3 +14,9 @@ Passing architecture, isolation, and adversarial tests establishes an architectu
 **Why:** Test success cannot measure real provider latency, fallback frequency, usage distribution, or operational grounding anomalies. Telemetry must not become a second store of learner identities, evidence content, prompts, or domain records.
 
 **How to apply:** Keep the current read-only foundation stable, measure only non-identifying run health and quality aggregates, review operational evidence, then explicitly lock the operational baseline before expanding to another agent capability.
+
+The canonical operational metric gate requires at least 100 terminal real runs distributed across 14 calendar days. Initial thresholds are: completed rate at least 95%, failed rate at most 1%, fallback rate at most 5%, and p95 terminal latency at most 15 seconds.
+
+**Why:** A small or short-lived sample can hide provider instability and usage variation. Fixed, versioned thresholds prevent the acceptance criteria from moving after results are observed.
+
+**How to apply:** Only a qualifying production environment may pass the canonical metric gate. Development and test results remain NOT_READY. A metric PASS is necessary but does not itself prove privacy, authorization, append-only protection, or domain non-mutation; those require separate regression evidence before governance declares the operational baseline verified.

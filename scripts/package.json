@@ -34,6 +34,8 @@
     "test:app-storage-sidecar-smoke-contract": "bash ./app-storage-sidecar-smoke-contract.test.sh",
     "gate:certification-preparation": "bash ./certification-preparation-gate.sh",
     "gate:path-a-golden-journey": "bash ./path-a-golden-journey-gate.sh",
+    "gate:agent-quality": "tsx ./src/agent-quality-gate.ts",
+    "test:agent-quality-gate": "tsx ./src/agent-quality-gate.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
