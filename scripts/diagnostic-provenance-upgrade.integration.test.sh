@@ -277,4 +277,90 @@ fi
 assert_output_is_aggregate_only "$parallel_a_output"
 assert_output_is_aggregate_only "$parallel_b_output"
 
+exception_count_before_retention="$(
+  psql "$DATABASE_URL" -Atqc \
+    "SELECT count(*) FROM teras_diagnostic_provenance_exceptions"
+)"
+exception_group_count="$(
+  psql "$DATABASE_URL" -Atqc "
+    SELECT count(*)
+    FROM (
+      SELECT entity_type, reason
+      FROM teras_diagnostic_provenance_exceptions
+      GROUP BY entity_type, reason
+    ) grouped_exceptions
+  "
+)"
+
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+INSERT INTO teras_diagnostic_provenance_check_runs (checked_at)
+SELECT clock_timestamp() - make_interval(secs => generated.offset_seconds)
+FROM generate_series(1, 35) AS generated(offset_seconds);
+
+INSERT INTO teras_diagnostic_provenance_check_counts
+  (check_run_id, entity_type, reason, exception_count)
+SELECT
+  run.id,
+  'profile',
+  'NO_VALID_RESPONSE_CHAIN',
+  3
+FROM teras_diagnostic_provenance_check_runs run
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM teras_diagnostic_provenance_check_counts count_snapshot
+  WHERE count_snapshot.check_run_id = run.id
+);
+SQL
+
+retention_first_output="$(mktemp)"
+retention_second_output="$(mktemp)"
+trap 'rm -f "$check_sql" "$baseline_output" "$second_output" "$parallel_a_output" "$parallel_b_output" "$retention_first_output" "$retention_second_output" "$lock_ready_file"; cleanup' EXIT
+
+run_schema_check "$retention_first_output"
+first_retained_state="$(psql "$DATABASE_URL" -Atqc "
+  SELECT
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_runs),
+    (SELECT max(id) FROM teras_diagnostic_provenance_check_runs),
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_counts
+      WHERE check_run_id = (SELECT max(id) FROM teras_diagnostic_provenance_check_runs)),
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_counts count_snapshot
+      WHERE NOT EXISTS (
+        SELECT 1 FROM teras_diagnostic_provenance_check_runs run
+        WHERE run.id = count_snapshot.check_run_id
+      )),
+    (SELECT count(*) FROM teras_diagnostic_provenance_exceptions)
+")"
+expected_first_retained_state="30|$(
+  psql "$DATABASE_URL" -Atqc \
+    "SELECT max(id) FROM teras_diagnostic_provenance_check_runs"
+)|$exception_group_count|0|$exception_count_before_retention"
+if [ "$first_retained_state" != "$expected_first_retained_state" ]; then
+  echo "First retention cleanup produced unexpected state: $first_retained_state" >&2
+  exit 1
+fi
+
+first_latest_run_id="$(
+  psql "$DATABASE_URL" -Atqc \
+    "SELECT max(id) FROM teras_diagnostic_provenance_check_runs"
+)"
+run_schema_check "$retention_second_output"
+second_retained_state="$(psql "$DATABASE_URL" -Atqc "
+  SELECT
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_runs),
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_runs WHERE id = $first_latest_run_id),
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_counts
+      WHERE check_run_id = $first_latest_run_id),
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_counts count_snapshot
+      WHERE NOT EXISTS (
+        SELECT 1 FROM teras_diagnostic_provenance_check_runs run
+        WHERE run.id = count_snapshot.check_run_id
+      )),
+    (SELECT count(*) FROM teras_diagnostic_provenance_exceptions)
+")"
+expected_second_retained_state="30|1|$exception_group_count|0|$exception_count_before_retention"
+if [ "$second_retained_state" != "$expected_second_retained_state" ]; then
+  echo "Repeated retention cleanup produced unexpected state: $second_retained_state" >&2
+  exit 1
+fi
+
 echo "Diagnostic provenance upgrade migration passed"
