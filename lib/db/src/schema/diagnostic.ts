@@ -223,7 +223,7 @@ export const trainerReminderPreferencesTable = pgTable("teras_trainer_reminder_p
   quietHoursEnd: text("quiet_hours_end"),
   ...audit,
 }, table => [
-  index("teras_trainer_reminder_preferences_trainer_created_idx").on(table.trainerId, table.createdAt),
+  index("teras_trainer_reminder_preferences_trainer_created_id_idx").on(table.trainerId, table.createdAt, table.id),
   check("teras_trainer_reminder_preferences_quiet_hours_check", sql`
     (${table.quietHoursStart} IS NULL AND ${table.quietHoursEnd} IS NULL)
     OR (${table.quietHoursStart} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'

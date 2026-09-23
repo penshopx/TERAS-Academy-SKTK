@@ -48,6 +48,7 @@
     "test:trainer-follow-up-notifications": "NODE_ENV=test tsx --test ./src/lib/trainer-follow-up-notifications.test.ts",
     "test:trainer-follow-up-notifications:integration": "NODE_ENV=test tsx ./src/trainer-follow-up-notifications.integration-runner.ts",
     "test:trainer-reminder-preference-history": "NODE_ENV=test tsx ./src/trainer-reminder-preference-history.integration-runner.ts",
+    "test:trainer-reminder-preference-query": "NODE_ENV=test tsx --test ./src/operational-query-plan.contract.test.ts && NODE_ENV=test tsx ./src/trainer-reminder-preference-query.integration-runner.ts",
     "test:browser-idempotency-guard": "tsx ./src/browser-idempotency-guard.test.ts",
     "test:browser-idempotency-workflow-contract": "tsx ./src/browser-idempotency-workflow-contract.test.ts",
     "test:browser-identity-contract": "tsx ./src/browser-test-identity-contract.test.ts",

@@ -55,3 +55,4 @@
 - [Anonymous outcome delivery queues](anonymous-outcome-delivery-queues.md) — persist only an idempotency key and coarse outcome fields; retry unchanged and delete only after acceptance.
 - [Bounded historical scope projections](bounded-historical-scope-projections.md) — authorize against a maintained union projection, not repeated JSON scans across immutable history.
 - [Advisory lock isolation tests](advisory-lock-isolation-tests.md) — prove exact lock contention before asserting unrelated requests remain independent.
+- [Concurrent index retry safety](concurrent-index-retry.md) — an interrupted concurrent build can keep an invalid same-name index; validate replacement before dropping the old one.
