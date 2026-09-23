@@ -5,7 +5,7 @@ import { JSDOM } from "jsdom";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
-import { adminErrorMessage, filterQueueItems, getReminderDeliveryRefetchInterval, hasPermanentReminderEscalations, isAdminForbidden, isAdminMfaRequired, queueStateFromSearch, ReminderEscalationHistory, reminderDeliveryPollingInterval, reminderEscalationStateFromSearch, shouldEnableAdminQueries, validateQueueFilters } from "../pages/admin";
+import { adminErrorMessage, filterQueueItems, getReminderDeliveryRefetchInterval, getReminderEscalationHistoryRefetchInterval, hasPermanentReminderEscalations, isAdminForbidden, isAdminMfaRequired, queueStateFromSearch, ReminderEscalationHistory, reminderDeliveryPollingInterval, reminderEscalationStateFromSearch, shouldEnableAdminQueries, validateQueueFilters } from "../pages/admin";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
 Object.assign(globalThis, {
@@ -150,6 +150,56 @@ const escalation = (id: string, status: "open" | "resolved") => ({
   webhookNotification: null,
   status,
   resolution: null,
+});
+
+test("history polls only for visible pending or sending channels", () => {
+  const page = (offset: number, emailStatus: "pending" | "sending" | "sent" | "failed") => ({
+    items: [{ ...escalation(`item-${offset}`, "open"), emailNotification: { status: emailStatus, attemptedAt: null, sentAt: null, reason: null } }],
+    pagination: { offset, returned: 1, total: 2, hasMore: offset === 0 },
+    counts: { open: 2, resolved: 0, total: 2 },
+  });
+  assert.equal(getReminderEscalationHistoryRefetchInterval(undefined, 0), false);
+  assert.equal(getReminderEscalationHistoryRefetchInterval({ pages: [page(0, "pending")] }, 0), reminderDeliveryPollingInterval);
+  assert.equal(getReminderEscalationHistoryRefetchInterval({ pages: [page(0, "sending")] }, 0), reminderDeliveryPollingInterval);
+  assert.equal(getReminderEscalationHistoryRefetchInterval({ pages: [page(0, "sent"), page(1, "pending")] }, 0), false);
+  assert.equal(getReminderEscalationHistoryRefetchInterval({ pages: [page(0, "sent"), page(1, "pending")] }, 1), reminderDeliveryPollingInterval);
+  assert.equal(getReminderEscalationHistoryRefetchInterval({ pages: [page(0, "sent"), page(1, "failed")] }, 1), false);
+});
+
+test("history refreshes a temporary channel status and keeps loaded pages after final status", async () => {
+  const requests: number[] = [];
+  const loadPage = async (params?: { offset?: number }) => {
+    const offset = params?.offset ?? 0;
+    requests.push(offset);
+    const firstPageRefetch = requests.filter(value => value === 0).length > 1;
+    return {
+      items: offset === 0
+        ? [{ ...escalation("one", "open"), emailNotification: { status: firstPageRefetch ? "sent" as const : "pending" as const, attemptedAt: null, sentAt: null, reason: null } }]
+        : [escalation("one", "open"), escalation("two", "open")],
+      pagination: { offset, limit: 25, returned: offset === 0 ? 1 : 2, total: 2, hasMore: offset === 0 },
+      counts: { open: 2, resolved: 0, total: 2 },
+    };
+  };
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <ReminderEscalationHistory enabled onResolve={() => undefined} loadPage={loadPage} />
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => assert.match(view.getByTestId("reminder-escalation-one").textContent ?? "", /Menunggu/));
+  fireEvent.click(view.getByTestId("button-load-more-reminder-escalations"));
+  await waitFor(() => assert.ok(view.getByTestId("reminder-escalation-two")));
+  const cachedHistory = () => queryClient.getQueryCache().getAll()[0]?.state.data as Parameters<typeof getReminderEscalationHistoryRefetchInterval>[0];
+  assert.equal(getReminderEscalationHistoryRefetchInterval(cachedHistory(), 1), reminderDeliveryPollingInterval);
+  await queryClient.refetchQueries();
+  await waitFor(() => assert.match(view.getByTestId("reminder-escalation-one").textContent ?? "", /Terkirim/));
+  assert.equal(view.getAllByTestId("reminder-escalation-one").length, 1);
+  assert.ok(view.getByTestId("reminder-escalation-two"));
+  assert.deepEqual(requests, [0, 1, 0, 1]);
+  assert.equal(getReminderEscalationHistoryRefetchInterval(cachedHistory(), 1), false);
+  view.unmount();
+  queryClient.clear();
 });
 
 test("reminder escalation filters and pagination drive API requests and rendered history", async () => {

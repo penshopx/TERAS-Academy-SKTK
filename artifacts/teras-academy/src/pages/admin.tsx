@@ -42,12 +42,14 @@ type UserForm = z.infer<typeof userSchema>;
 const queryOptions = { staleTime: 30_000, refetchOnMount: "always" as const };
 export const reminderDeliveryPollingInterval = 5_000;
 
+function hasReminderDeliveryInProgress(item: Pick<AdminReminderEscalation, "emailNotification" | "webhookNotification">) {
+  return [item.emailNotification, item.webhookNotification].some(notification =>
+    notification?.status === "pending" || notification?.status === "sending"
+  );
+}
+
 export function getReminderDeliveryRefetchInterval(summary?: Pick<AdminOperationalSummary, "failedTrainerReminders">) {
-  const hasDeliveryInProgress = summary?.failedTrainerReminders.some(item =>
-    [item.emailNotification, item.webhookNotification].some(notification =>
-      notification?.status === "pending" || notification?.status === "sending"
-    )
-  ) ?? false;
+  const hasDeliveryInProgress = summary?.failedTrainerReminders.some(hasReminderDeliveryInProgress) ?? false;
   return hasDeliveryInProgress ? reminderDeliveryPollingInterval : false;
 }
 
@@ -479,6 +481,15 @@ type ReminderEscalationPage = {
   counts: { open: number; resolved: number; total: number };
 };
 
+export function getReminderEscalationHistoryRefetchInterval(
+  data: { pages: ReminderEscalationPage[] } | undefined,
+  displayedOffset: number,
+) {
+  return data?.pages.some(page =>
+    page.pagination.offset <= displayedOffset && page.items.some(hasReminderDeliveryInProgress)
+  ) ? reminderDeliveryPollingInterval : false;
+}
+
 export type ReminderEscalationUrlState = {
   status: ReminderEscalationStatusFilter;
   offset: number;
@@ -539,6 +550,7 @@ export function ReminderEscalationHistory({ enabled, onResolve, loadPage = listA
     enabled,
     staleTime: queryOptions.staleTime,
     refetchOnMount: queryOptions.refetchOnMount,
+    refetchInterval: query => getReminderEscalationHistoryRefetchInterval(query.state.data, offset),
   });
   const loadedPages = history.data?.pages ?? [];
   const displayedPages = loadedPages.filter(page => page.pagination.offset <= offset);
