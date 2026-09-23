@@ -80,7 +80,13 @@ function ReminderPreferences() {
       queryClient.invalidateQueries({ queryKey: getGetTrainerReminderPreferenceHistoryQueryKey() });
       toast({ title: "Reminder preferences saved", description: "The scheduler will use these settings for future email attempts." });
     },
-    onError: () => toast({ title: "Preferences not saved", description: "Please check the settings and try again.", variant: "destructive" }),
+    onError: (error) => toast({
+      title: "Preferences not saved",
+      description: error.status === 400
+        ? "Check the delivery time zone and quiet hours (start and end times, or the full-day confirmation), then save again."
+        : "The service or network is unavailable. Your settings were not saved; please try again later.",
+      variant: "destructive",
+    }),
   });
   const save = () => {
     if (isFullDayQuietHours) {

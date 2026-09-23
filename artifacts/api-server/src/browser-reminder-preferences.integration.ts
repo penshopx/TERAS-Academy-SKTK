@@ -85,16 +85,21 @@ async function main() {
       quietHoursStart?: string | null;
       quietHoursEnd?: string | null;
     }> = [];
-    let failNextPreferenceUpdate = true;
+    let nextFailure: "validation" | "service" | "network" | null = "validation";
     await page.route("**/api/trainer/reminder-preferences", async route => {
       if (route.request().method() === "PUT") {
         submitted.push(route.request().postDataJSON());
-        if (failNextPreferenceUpdate) {
-          failNextPreferenceUpdate = false;
+        const failure = nextFailure;
+        nextFailure = null;
+        if (failure === "network") {
+          await route.abort("failed");
+          return;
+        }
+        if (failure) {
           await route.fulfill({
-            status: 503,
+            status: failure === "validation" ? 400 : 503,
             contentType: "application/json",
-            body: JSON.stringify({ message: "Reminder preferences are temporarily unavailable." }),
+            body: JSON.stringify({ error: "INTERNAL DATABASE DETAILS MUST NOT APPEAR", message: "INTERNAL DATABASE DETAILS MUST NOT APPEAR" }),
           });
           return;
         }
@@ -144,6 +149,10 @@ async function main() {
     await confirmFullDayPause.focus();
     await page.keyboard.press("Enter");
     await page.getByText("Preferences not saved", { exact: true }).waitFor();
+    await page.getByText("Check the delivery time zone and quiet hours (start and end times, or the full-day confirmation), then save again.", { exact: true }).waitFor();
+    if (await page.getByText("INTERNAL DATABASE DETAILS MUST NOT APPEAR").count()) {
+      throw new Error("The validation response leaked internal server details.");
+    }
     const deliveryStatus = page.getByTestId("trainer-reminder-delivery-status");
     await deliveryStatus.getByText("Delivery active", { exact: true }).waitFor();
     if ((await deliveryStatus.textContent())?.includes("Delivery paused")) {
@@ -158,18 +167,29 @@ async function main() {
 
     await savePreferences.focus();
     await page.keyboard.press("Enter");
+    nextFailure = "service";
+    await confirmFullDayPause.focus();
+    await page.keyboard.press("Enter");
+    await page.getByText("The service or network is unavailable. Your settings were not saved; please try again later.", { exact: true }).waitFor();
+    if (await page.getByText("INTERNAL DATABASE DETAILS MUST NOT APPEAR").count()) {
+      throw new Error("The service response leaked internal server details.");
+    }
+    if (await page.getByLabel("Quiet hours start").inputValue() !== "20:00") {
+      throw new Error("The service failure discarded the trainer's settings.");
+    }
+
+    await savePreferences.focus();
+    await page.keyboard.press("Enter");
     await confirmFullDayPause.focus();
     await page.keyboard.press("Enter");
     await page.getByText("Reminder preferences saved", { exact: true }).waitFor();
-    const failedFullDaySubmission = submitted.at(0);
-    const fullDaySubmission = submitted.at(1);
+    const failedFullDaySubmissions = submitted.slice(0, 2);
+    const fullDaySubmission = submitted.at(2);
     if (
-      !failedFullDaySubmission
+      failedFullDaySubmissions.length !== 2
       || !fullDaySubmission
-      || submitted.at(2) !== undefined
-      || failedFullDaySubmission.confirmFullDayQuietHours !== true
-      || failedFullDaySubmission.quietHoursStart !== "20:00"
-      || failedFullDaySubmission.quietHoursEnd !== "20:00"
+      || submitted.at(3) !== undefined
+      || failedFullDaySubmissions.some(submission => submission.confirmFullDayQuietHours !== true || submission.quietHoursStart !== "20:00" || submission.quietHoursEnd !== "20:00")
       || fullDaySubmission.confirmFullDayQuietHours !== true
       || fullDaySubmission.quietHoursStart !== "20:00"
       || fullDaySubmission.quietHoursEnd !== "20:00"
@@ -188,15 +208,23 @@ async function main() {
     if (await page.getByRole("alertdialog").isVisible()) {
       throw new Error("A normal quiet-hours interval opened the full-day confirmation dialog.");
     }
-    const normalSubmission = submitted.at(2);
+    const normalSubmission = submitted.at(3);
     if (
       !normalSubmission
-      || submitted.at(3) !== undefined
+      || submitted.at(4) !== undefined
       || normalSubmission.confirmFullDayQuietHours !== false
       || normalSubmission.quietHoursStart !== "20:00"
       || normalSubmission.quietHoursEnd !== "21:00"
     ) {
       throw new Error(`Normal quiet hours used an unexpected mutation payload: ${JSON.stringify(submitted)}`);
+    }
+
+    nextFailure = "network";
+    await page.getByRole("button", { name: "Save reminder preferences" }).click();
+    await page.getByText("Reminder preferences saved", { exact: true }).waitFor({ state: "hidden" });
+    await page.getByText("The service or network is unavailable. Your settings were not saved; please try again later.", { exact: true }).waitFor();
+    if (submitted.at(4)?.quietHoursEnd !== "21:00" || submitted.at(5) !== undefined) {
+      throw new Error("The network failure lost or duplicated the trainer's submission.");
     }
 
     process.stdout.write("browser reminder preferences integration passed\n");
