@@ -177,10 +177,10 @@ export const diagnosticFollowUpReminderDeliveriesTable = pgTable("teras_diagnost
   uniqueIndex("teras_diagnostic_follow_up_reminder_delivery_unique").on(table.followUpId, table.reminderKind, table.channel),
   index("teras_diagnostic_follow_up_reminder_delivery_status_idx").on(table.status, table.lastAttemptAt),
   index("teras_diagnostic_follow_up_reminder_failed_history_idx")
-    .on(table.lastAttemptAt.desc(), table.id.desc())
+    .on(table.lastAttemptAt.desc().nullsFirst(), table.id.desc().nullsFirst())
     .where(sql`${table.status} = 'permanently_failed' AND ${table.escalationResolvedAt} IS NULL`),
   index("teras_diagnostic_follow_up_reminder_resolved_history_idx")
-    .on(table.escalationResolvedAt.desc(), table.id.desc())
+    .on(table.escalationResolvedAt.desc().nullsFirst(), table.id.desc().nullsFirst())
     .where(sql`${table.status} = 'permanently_failed' AND ${table.escalationResolvedAt} IS NOT NULL`),
   check("teras_diagnostic_follow_up_reminder_delivery_channel_check", sql`${table.channel} IN ('email')`),
   check("teras_diagnostic_follow_up_reminder_delivery_kind_check", sql`${table.reminderKind} IN ('due_soon','overdue')`),

@@ -1,10 +1,10 @@
 ---
 name: Drizzle index ordering parity
-description: How clean-bootstrap integration tests should handle index definitions also owned by SQL migrations.
+description: Why Drizzle and SQL migrations must explicitly agree on descending index NULL ordering.
 ---
 
-Treat the SQL migration as authoritative when a clean Drizzle schema push creates an index with a different NULL ordering. Remove the pushed index in the disposable database before applying an idempotent migration that otherwise uses `CREATE INDEX IF NOT EXISTS`.
+Align descending index NULL ordering explicitly in both Drizzle declarations and authoritative SQL migrations; a disposable bootstrap should not need to remove an index before an idempotent migration can preserve a fast query plan.
 
-**Why:** Drizzle can emit descending indexes with `NULLS LAST`, while PostgreSQL SQL using bare `DESC` defaults to `NULLS FIRST`. An idempotent migration then keeps the pushed index by name, and query-plan regression tests can scan thousands of rows despite appearing to use the expected index.
+**Why:** Drizzle can emit descending indexes with `NULLS LAST`, while PostgreSQL SQL using bare `DESC` defaults to `NULLS FIRST`. An idempotent migration keeps a mismatched pushed index by name, and query-plan regression tests can scan thousands of rows despite appearing to use the expected index.
 
-**How to apply:** In clean-bootstrap integration setup, compare the actual index definition with the migration contract. If the migration is authoritative and uses `IF NOT EXISTS`, drop only the disposable copy before applying that migration.
+**How to apply:** When a nullable descending index is defined in both sources, specify the same NULL ordering in each, including tie-breaker columns for exact definition parity. Verify the query plan on a clean disposable schema without dropping the pushed index.

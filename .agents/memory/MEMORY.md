@@ -46,7 +46,7 @@
 - [Selective query-plan fixtures](selective-query-plan-fixtures.md) — plan regression fixtures need substantial non-target data so parent index scans are genuinely advantageous.
 - [Strict IANA time-zone validation](strict-iana-time-zone-validation.md) — Intl accepts fixed UTC offsets, so successful formatting alone does not prove an IANA identifier.
 - [Passport full-history parity](passport-full-history-parity.md) — full exports must traverse the same cursor pages as the visible Passport contract, then concatenate them unchanged.
-- [Drizzle index ordering parity](drizzle-index-ordering-parity.md) — clean schema pushes can preserve a different NULL ordering than authoritative SQL migrations.
+- [Drizzle index ordering parity](drizzle-index-ordering-parity.md) — explicitly align DESC NULL ordering with SQL migrations so clean schema pushes retain fast index plans.
 - [Webhook secret rotation](webhook-secret-rotation.md) — identify signing keys separately from signature algorithms and expire retired keys at receiver-controlled deadlines.
 - [PostgreSQL trigger fixtures](postgres-trigger-fixtures.md) — CREATE TRIGGER predicates cannot use bind parameters; prefer isolated, scoped triggers over interpolated DDL.
 - [Concurrent expected rejections](concurrent-expected-rejections.md) — attach rejection assertions when starting an expected-failing query, before releasing the lock that triggers it.
