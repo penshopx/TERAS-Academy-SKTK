@@ -93,6 +93,20 @@ async function main() {
   if ((sends as number) !== 1) throw new Error("Latest enabled trainer reminder preference was not honored");
 
   await db.delete(diagnosticFollowUpReminderDeliveriesTable);
+  sends = 0;
+  const tiedAt = new Date("2026-09-10T10:03:00Z");
+  await db.insert(trainerReminderPreferencesTable).values([
+    { id: "preference-tie-z-enabled", trainerId: "trainer-a", emailEnabled: true, timeZone: "Asia/Jakarta", createdAt: tiedAt, createdBy: "trainer-a" },
+    { id: "preference-tie-a-disabled", trainerId: "trainer-a", emailEnabled: false, timeZone: "Asia/Jakarta", createdAt: tiedAt, createdBy: "trainer-a" },
+    { id: "preference-other-trainer", trainerId: "trainer-b", emailEnabled: false, timeZone: "Asia/Jakarta", createdAt: new Date("2026-09-10T10:04:00Z"), createdBy: "trainer-b" },
+  ]);
+  await dispatchTrainerFollowUpReminders(now, { sendEmail });
+  const tiedDelivery = await db.select().from(diagnosticFollowUpReminderDeliveriesTable);
+  if (sends !== 1 || tiedDelivery.length !== 1 || tiedDelivery[0]?.followUpId !== "follow-up" || tiedDelivery[0]?.status !== "sent") {
+    throw new Error("Reminder dispatch did not select the highest-ID tied revision for its trainer");
+  }
+
+  await db.delete(diagnosticFollowUpReminderDeliveriesTable);
   await db.update(enrollmentsTable).set({ trainerId: "trainer-b" }).where(eq(enrollmentsTable.id, "enrollment"));
   sends = 0;
   await dispatchTrainerFollowUpReminders(now, { sendEmail });
