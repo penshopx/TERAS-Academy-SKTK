@@ -97,6 +97,14 @@ export type ReminderDeliveryAvailability = {
 };
 
 const INVALID_TIME_ZONE_MESSAGE = "The saved time zone is invalid. Choose a valid IANA time zone to resume reminder delivery.";
+const INVALID_QUIET_HOURS_MESSAGE = "The saved quiet hours are invalid. Choose valid start and end times or turn off quiet hours to resume reminder delivery.";
+const QUIET_HOUR_PATTERN = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+
+export function hasValidQuietHours(preferences: Pick<ReminderPreferences, "quietHoursStart" | "quietHoursEnd">) {
+  const { quietHoursStart: start, quietHoursEnd: end } = preferences;
+  return (start === null && end === null)
+    || (typeof start === "string" && typeof end === "string" && QUIET_HOUR_PATTERN.test(start) && QUIET_HOUR_PATTERN.test(end));
+}
 
 export function isValidIanaTimeZone(timeZone: string) {
   if (/^[+-]\d{2}(?::?\d{2})?$/.test(timeZone)) return false;
@@ -109,6 +117,7 @@ export function isValidIanaTimeZone(timeZone: string) {
 }
 
 export function isWithinQuietHours(now: Date, preferences: Pick<ReminderPreferences, "timeZone" | "quietHoursStart" | "quietHoursEnd">) {
+  if (!hasValidQuietHours(preferences)) return false;
   if (!preferences.quietHoursStart || !preferences.quietHoursEnd) return false;
   if (!isValidIanaTimeZone(preferences.timeZone)) return false;
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -132,6 +141,9 @@ export function reminderDeliveryAvailability(
 ): ReminderDeliveryAvailability {
   if (!isValidIanaTimeZone(preferences.timeZone)) {
     return { deliveryStatus: "disabled", nextDeliveryAt: null, configurationIssue: INVALID_TIME_ZONE_MESSAGE };
+  }
+  if (!hasValidQuietHours(preferences)) {
+    return { deliveryStatus: "disabled", nextDeliveryAt: null, configurationIssue: INVALID_QUIET_HOURS_MESSAGE };
   }
   if (!preferences.emailEnabled) return { deliveryStatus: "disabled", nextDeliveryAt: null, configurationIssue: null };
   if (!isWithinQuietHours(now, preferences)) return { deliveryStatus: "active", nextDeliveryAt: null, configurationIssue: null };
@@ -471,7 +483,7 @@ export async function dispatchTrainerFollowUpReminders(
     if (!trainer?.email || trainer.status !== "active" || !recommendation || !learner || !followUp.targetAt) continue;
     if (!currentScopes.get(trainer.id)?.has(`${profile.learnerId}:${profile.pathwayId}`)) continue;
     const preferences = await latestReminderPreferences(trainer.id);
-    if (!preferences.emailEnabled || !isValidIanaTimeZone(preferences.timeZone) || isWithinQuietHours(now, preferences)) continue;
+    if (!preferences.emailEnabled || !isValidIanaTimeZone(preferences.timeZone) || !hasValidQuietHours(preferences) || isWithinQuietHours(now, preferences)) continue;
 
     const deliveryId = `follow-up-reminder-${crypto.randomUUID()}`;
     await db.insert(diagnosticFollowUpReminderDeliveriesTable).values({

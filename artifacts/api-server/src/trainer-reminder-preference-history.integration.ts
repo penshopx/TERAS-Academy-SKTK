@@ -5,7 +5,7 @@ import {
   personRolesTable,
   trainerReminderPreferencesTable,
 } from "@workspace/db";
-import { inArray } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import { createIntegrationTestApp } from "./integration-test-app";
 import type { TestAuthorizationIdentity } from "./lib/authorization";
 
@@ -35,6 +35,8 @@ type ActivePreferences = {
   timeZone: string;
   quietHoursStart: string | null;
   quietHoursEnd: string | null;
+  deliveryStatus: string;
+  configurationIssue: string | null;
   updatedAt: string;
 };
 
@@ -214,6 +216,38 @@ async function run() {
         && activeB.quietHoursEnd === "05:00"
         && activeB.updatedAt === historyB[0]?.recordedAt,
       `Trainer B active preferences were affected by another trainer's revisions: ${JSON.stringify(activeB)}`,
+    );
+
+    // Simulate legacy data (or a direct DB edit) that predates the current check constraint.
+    await db.execute(sql`ALTER TABLE teras_trainer_reminder_preferences DROP CONSTRAINT teras_trainer_reminder_preferences_quiet_hours_check`);
+    await db.execute(sql`UPDATE teras_trainer_reminder_preferences SET quiet_hours_start = '25:00' WHERE id = ${preferenceIds[2]}`);
+    await db.execute(sql`UPDATE teras_trainer_reminder_preferences SET quiet_hours_end = '07:99' WHERE id = ${preferenceIds[0]}`);
+    await db.execute(sql`UPDATE teras_trainer_reminder_preferences SET quiet_hours_end = NULL WHERE id = ${preferenceIds[4]}`);
+
+    const brokenActiveA = await requestActivePreferences({ userId: trainerASubject, role: "trainer" });
+    assert(
+      brokenActiveA.quietHoursStart === null && brokenActiveA.quietHoursEnd === null
+        && brokenActiveA.deliveryStatus === "disabled"
+        && brokenActiveA.configurationIssue?.includes("quiet hours")
+        && brokenActiveA.updatedAt === historyA[0]?.recordedAt,
+      `Invalid active quiet hours must return a repair hint, not a server error: ${JSON.stringify(brokenActiveA)}`,
+    );
+    const brokenActiveB = await requestActivePreferences({ userId: trainerBSubject, role: "trainer" });
+    assert(
+      brokenActiveB.quietHoursStart === null && brokenActiveB.quietHoursEnd === null
+        && brokenActiveB.deliveryStatus === "disabled"
+        && brokenActiveB.configurationIssue?.includes("quiet hours"),
+      `Incomplete active quiet hours must return a repair hint: ${JSON.stringify(brokenActiveB)}`,
+    );
+    const brokenHistoryA = await requestHistory({ userId: trainerASubject, role: "trainer" });
+    const brokenHistoryB = await requestHistory({ userId: trainerBSubject, role: "trainer" });
+    assert(Array.isArray(brokenHistoryA) && Array.isArray(brokenHistoryB), "Corrupt history must still load");
+    assert(
+      brokenHistoryA[0]?.quietHoursStart === "25:00"
+        && brokenHistoryA[2]?.quietHoursEnd === "07:99"
+        && brokenHistoryB[0]?.quietHoursStart === "22:00"
+        && brokenHistoryB[0]?.quietHoursEnd === null,
+      "Revision history must preserve the original saved values without failing validation",
     );
 
     const learnerResponse = await requestHistory(

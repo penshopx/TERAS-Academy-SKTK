@@ -2339,7 +2339,7 @@ export const GetTrainerReminderPreferencesResponse = zod.object({
   "nextDeliveryAt": zod.coerce.date().nullable(),
   "configurationIssue": zod.string().nullable(),
   "updatedAt": zod.coerce.date().nullable()
-})
+}).describe('Invalid legacy quiet hours are returned as null for both times, with delivery disabled and a configurationIssue explaining how to repair them.')
 
 
 /**
@@ -2372,24 +2372,20 @@ export const UpdateTrainerReminderPreferencesResponse = zod.object({
   "nextDeliveryAt": zod.coerce.date().nullable(),
   "configurationIssue": zod.string().nullable(),
   "updatedAt": zod.coerce.date().nullable()
-})
+}).describe('Invalid legacy quiet hours are returned as null for both times, with delivery disabled and a configurationIssue explaining how to repair them.')
 
 
 /**
  * @summary List operational revisions of the current trainer's email reminder preferences
  */
-export const getTrainerReminderPreferenceHistoryResponseQuietHoursStartRegExp = new RegExp('^([01][0-9]|2[0-3]):[0-5][0-9]$');
-export const getTrainerReminderPreferenceHistoryResponseQuietHoursEndRegExp = new RegExp('^([01][0-9]|2[0-3]):[0-5][0-9]$');
-
-
 export const GetTrainerReminderPreferenceHistoryResponseItem = zod.object({
   "id": zod.string(),
   "emailEnabled": zod.boolean(),
   "timeZone": zod.string(),
-  "quietHoursStart": zod.string().regex(getTrainerReminderPreferenceHistoryResponseQuietHoursStartRegExp).nullable(),
-  "quietHoursEnd": zod.string().regex(getTrainerReminderPreferenceHistoryResponseQuietHoursEndRegExp).nullable(),
+  "quietHoursStart": zod.string().nullable(),
+  "quietHoursEnd": zod.string().nullable(),
   "recordedAt": zod.coerce.date()
-})
+}).describe('Immutable revision history retains raw legacy quiet-hour strings, even when they do not match the current input format.')
 export const GetTrainerReminderPreferenceHistoryResponse = zod.array(GetTrainerReminderPreferenceHistoryResponseItem)
 
 

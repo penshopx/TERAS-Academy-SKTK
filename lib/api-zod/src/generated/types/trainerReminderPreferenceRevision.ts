@@ -6,19 +6,16 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * Immutable revision history retains raw legacy quiet-hour strings, even when they do not match the current input format.
+ */
 export interface TrainerReminderPreferenceRevision {
   id: string;
   emailEnabled: boolean;
   timeZone: string;
-  /**
-     * @nullable
-     * @pattern ^([01][0-9]|2[0-3]):[0-5][0-9]$
-     */
+  /** @nullable */
   quietHoursStart: string | null;
-  /**
-     * @nullable
-     * @pattern ^([01][0-9]|2[0-3]):[0-5][0-9]$
-     */
+  /** @nullable */
   quietHoursEnd: string | null;
   recordedAt: Date;
 }

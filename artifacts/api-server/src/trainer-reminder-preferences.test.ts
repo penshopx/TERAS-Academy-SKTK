@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import app from "./app";
-import { isValidIanaTimeZone, isWithinQuietHours, reminderDeliveryAvailability } from "./lib/trainer-follow-up-notifications";
+import { hasValidQuietHours, isValidIanaTimeZone, isWithinQuietHours, reminderDeliveryAvailability } from "./lib/trainer-follow-up-notifications";
 
 test("reminder preferences accept recognized IANA time zones", () => {
   assert.equal(isValidIanaTimeZone("Asia/Jakarta"), true);
@@ -29,6 +29,25 @@ test("legacy invalid reminder time zones return a controlled repair response", (
     nextDeliveryAt: null,
     configurationIssue: "The saved time zone is invalid. Choose a valid IANA time zone to resume reminder delivery.",
   });
+});
+
+test("legacy invalid quiet hours disable delivery and request repair", () => {
+  for (const [quietHoursStart, quietHoursEnd] of [
+    ["25:00", "07:00"],
+    ["20:00", "07:99"],
+    ["20:00:00", "07:00"],
+    [null, "07:00"],
+    ["20:00", null],
+  ] as const) {
+    const preferences = { emailEnabled: true, timeZone: "Asia/Jakarta", quietHoursStart, quietHoursEnd };
+    assert.equal(hasValidQuietHours(preferences), false);
+    assert.equal(isWithinQuietHours(new Date("2026-09-12T14:00:00Z"), preferences), false);
+    assert.deepEqual(reminderDeliveryAvailability(new Date("2026-09-12T14:00:00Z"), preferences), {
+      deliveryStatus: "disabled",
+      nextDeliveryAt: null,
+      configurationIssue: "The saved quiet hours are invalid. Choose valid start and end times or turn off quiet hours to resume reminder delivery.",
+    });
+  }
 });
 
 test("saving an invalid reminder time zone returns a clear validation response before persistence", async () => {

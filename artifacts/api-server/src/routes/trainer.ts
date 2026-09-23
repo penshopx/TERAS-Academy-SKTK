@@ -7,7 +7,7 @@ import { evidenceRecords, gapRecords, pathwayHasModule, remediationRecords, work
 import { authorizeWorkspaceRole } from "../lib/authorization";
 import { learningNextAction } from "../lib/learning-transition";
 import { latestPracticeReviewRows, latestPracticeReviews, practiceQueueState, recentPracticeReviewRows, scopedPracticeQueue, trainerBottlenecks } from "../lib/trainer-bottlenecks";
-import { isValidIanaTimeZone, reminderDeliveryAvailability } from "../lib/trainer-follow-up-notifications";
+import { hasValidQuietHours, isValidIanaTimeZone, reminderDeliveryAvailability } from "../lib/trainer-follow-up-notifications";
 import { createTrainerIntelligenceRun } from "../lib/trainer-intelligence";
 
 const router: IRouter = Router();
@@ -35,8 +35,11 @@ const DEFAULT_REMINDER_PREFERENCES: ReminderPreferencesResponseSource = {
 };
 
 function reminderPreferencesResponse(preferences: ReminderPreferencesResponseSource) {
+  const validQuietHours = hasValidQuietHours(preferences);
   return {
     ...preferences,
+    quietHoursStart: validQuietHours ? preferences.quietHoursStart : null,
+    quietHoursEnd: validQuietHours ? preferences.quietHoursEnd : null,
     ...reminderDeliveryAvailability(new Date(), preferences),
   };
 }

@@ -7,6 +7,9 @@
  */
 import type { TrainerReminderPreferencesDeliveryStatus } from './trainerReminderPreferencesDeliveryStatus';
 
+/**
+ * Invalid legacy quiet hours are returned as null for both times, with delivery disabled and a configurationIssue explaining how to repair them.
+ */
 export interface TrainerReminderPreferences {
   emailEnabled: boolean;
   timeZone: string;
