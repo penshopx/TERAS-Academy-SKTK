@@ -57,6 +57,7 @@
     "test:browser-idempotency": "NODE_ENV=test tsx ./src/browser-idempotency.integration.ts",
     "test:browser-diagnostic-follow-up": "NODE_ENV=test tsx ./src/browser-diagnostic-follow-up.integration.ts",
     "test:browser-reminder-preferences": "NODE_ENV=test tsx ./src/browser-reminder-preferences.integration.ts",
+    "test:browser-operational-confirmations": "NODE_ENV=test tsx ./src/browser-operational-confirmations.integration.ts",
     "test:browser-baseline-selection": "NODE_ENV=test tsx ./src/browser-baseline-selection.integration.ts",
     "test:browser-portfolio-file-limit": "NODE_ENV=test tsx ./src/browser-portfolio-file-limit.integration.ts",
     "test:agentic-contracts": "NODE_ENV=test tsx --test ./src/lib/agentic.test.ts",

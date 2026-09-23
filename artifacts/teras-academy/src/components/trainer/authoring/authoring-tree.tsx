@@ -140,7 +140,7 @@ export function AuthoringTree({ course, selected, onSelect }: AuthoringTreeProps
             {isArchived ? "[ARCHIVED] " : ""}{label || `Untitled ${entity}`}
           </span>
           
-          <div className="hidden group-focus-within:flex group-hover:flex items-center gap-1 shrink-0 bg-background/80 backdrop-blur-sm rounded-sm px-1">
+          <div className="flex items-center gap-1 shrink-0 bg-background/80 backdrop-blur-sm rounded-sm px-1">
             {!isCourse && (
               <>
                 <button title="Move Up" className="p-1 hover:text-primary transition-colors focus:outline-none focus:ring-1 focus:ring-primary" onClick={(e) => { e.stopPropagation(); handleAction('REORDER', entity, id, { direction: 'UP' }); }} data-testid={`button-up-${id}`}><ArrowUp className="w-3 h-3" /></button>
