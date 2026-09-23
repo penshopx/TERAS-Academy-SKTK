@@ -5,12 +5,26 @@ import test from "node:test";
 import {
   createSignedPermanentFailureWebhookRequest,
   dueReminderKind,
+  invalidTimeZoneAuditEvent,
   latestFollowUps,
   sendPermanentFailureFallback,
   verifySignedPermanentFailureWebhookRequest,
 } from "./trainer-follow-up-notifications";
 
 const now = new Date("2026-09-10T12:00:00.000Z");
+
+test("invalid time zone incident identifies the trainer but never exposes preferences or learner data", () => {
+  const event = invalidTimeZoneAuditEvent("trainer-a", "revision-a");
+  assert.equal(event.entityId, "trainer-a");
+  assert.equal(event.entityType, "trainer_reminder_preference");
+  assert.equal(event.action, "delivery_blocked");
+  assert.deepEqual(event.after, { issue: "invalid_time_zone" });
+  assert.equal(event.before, null);
+  assert.deepEqual(invalidTimeZoneAuditEvent("trainer-a", "revision-a"), event);
+  assert.notEqual(invalidTimeZoneAuditEvent("trainer-a", "revision-b").id, event.id);
+  assert.notEqual(invalidTimeZoneAuditEvent("trainer-b", "revision-a").id, event.id);
+  assert.doesNotMatch(JSON.stringify(event), /revision-a|learner|Bad\/Zone/);
+});
 
 test("only active follow-ups near or past their target are eligible", () => {
   assert.equal(dueReminderKind({ status: "planned", targetAt: new Date("2026-09-17T12:00:00.000Z") }, now), "due_soon");

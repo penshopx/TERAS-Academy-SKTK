@@ -1,5 +1,6 @@
 import { db, pool } from "@workspace/db";
 import {
+  adminAuditEventsTable,
   competencyFrameworksTable,
   diagnosticFollowUpFailureNotificationsTable,
   diagnosticFollowUpReminderDeliveriesTable,
@@ -67,6 +68,40 @@ async function main() {
   });
   await dispatchTrainerFollowUpReminders(now, { sendEmail });
   if (sends !== 0 || (await db.select().from(diagnosticFollowUpReminderDeliveriesTable)).length !== 0) throw new Error("Disabled trainer reminder preference was ignored");
+
+  await db.insert(trainerReminderPreferencesTable).values({
+    id: "preference-invalid",
+    trainerId: "trainer-a",
+    emailEnabled: true,
+    timeZone: "Bad/Zone",
+    createdAt: new Date("2026-09-10T10:00:30Z"),
+    createdBy: "trainer-a",
+  });
+  await Promise.all([
+    dispatchTrainerFollowUpReminders(now, { sendEmail }),
+    dispatchTrainerFollowUpReminders(now, { sendEmail }),
+  ]);
+  await dispatchTrainerFollowUpReminders(now, { sendEmail });
+  const blockedEvents = await db.select().from(adminAuditEventsTable);
+  if (sends !== 0 || (await db.select().from(diagnosticFollowUpReminderDeliveriesTable)).length !== 0) throw new Error("Invalid time zone caused a delivery attempt");
+  if (blockedEvents.length !== 1 || blockedEvents[0]?.entityId !== "trainer-a"
+    || blockedEvents[0]?.action !== "delivery_blocked" || blockedEvents[0]?.entityType !== "trainer_reminder_preference"
+    || JSON.stringify(blockedEvents[0]).includes("Bad/Zone") || JSON.stringify(blockedEvents[0]).includes("learner")) {
+    throw new Error("Invalid time zone incident was not safely deduplicated for the trainer");
+  }
+  await db.insert(trainerReminderPreferencesTable).values({
+    id: "preference-invalid-again",
+    trainerId: "trainer-a",
+    emailEnabled: true,
+    timeZone: "+01:00",
+    createdAt: new Date("2026-09-10T10:00:45Z"),
+    createdBy: "trainer-a",
+  });
+  await dispatchTrainerFollowUpReminders(now, { sendEmail });
+  if ((await db.select().from(adminAuditEventsTable)).length !== 2
+    || sends !== 0 || (await db.select().from(diagnosticFollowUpReminderDeliveriesTable)).length !== 0) {
+    throw new Error("A new invalid preference revision was not reported separately or caused a delivery");
+  }
 
   await db.insert(trainerReminderPreferencesTable).values({
     id: "preference-quiet",

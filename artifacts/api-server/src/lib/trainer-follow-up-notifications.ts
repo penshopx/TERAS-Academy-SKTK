@@ -1,4 +1,5 @@
 import {
+  adminAuditEventsTable,
   db,
   diagnosticFollowUpFailureNotificationsTable,
   diagnosticFollowUpReminderDeliveriesTable,
@@ -10,7 +11,7 @@ import {
 } from "@workspace/db";
 import { ReplitConnectors } from "@replit/connectors-sdk";
 import { and, asc, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { logger } from "./logger";
 import { workspaceAssignmentContexts } from "./teras";
 
@@ -84,6 +85,7 @@ export type WebhookVerificationKey = WebhookSigningKey & {
   acceptUntil?: Date;
 };
 type ReminderPreferences = {
+  id?: string;
   emailEnabled: boolean;
   timeZone: string;
   quietHoursStart: string | null;
@@ -166,6 +168,23 @@ async function latestReminderPreferences(trainerId: string): Promise<ReminderPre
     .orderBy(desc(trainerReminderPreferencesTable.createdAt), desc(trainerReminderPreferencesTable.id))
     .limit(1);
   return latest ?? { emailEnabled: true, timeZone: "Asia/Jakarta", quietHoursStart: null, quietHoursEnd: null };
+}
+
+// The revision is the deduplication boundary: repeated scheduler runs (and
+// multiple due follow-ups) cannot flood the admin audit history. A new invalid
+// revision can still be reported after the trainer changes their preferences.
+export function invalidTimeZoneAuditEvent(trainerId: string, preferenceRevisionId: string) {
+  const digest = createHash("sha256").update(JSON.stringify([trainerId, preferenceRevisionId])).digest("hex");
+  return {
+    id: `trainer-reminder-invalid-time-zone-${digest}`,
+    actorClerkUserId: "system:trainer-follow-up-reminder-scheduler",
+    action: "delivery_blocked",
+    entityType: "trainer_reminder_preference",
+    entityId: trainerId,
+    before: null,
+    after: { issue: "invalid_time_zone" },
+    createdBy: "trainer-follow-up-reminder-scheduler",
+  };
 }
 
 async function sendReminderEmail(input: ReminderEmailInput) {
@@ -483,7 +502,16 @@ export async function dispatchTrainerFollowUpReminders(
     if (!trainer?.email || trainer.status !== "active" || !recommendation || !learner || !followUp.targetAt) continue;
     if (!currentScopes.get(trainer.id)?.has(`${profile.learnerId}:${profile.pathwayId}`)) continue;
     const preferences = await latestReminderPreferences(trainer.id);
-    if (!preferences.emailEnabled || !isValidIanaTimeZone(preferences.timeZone) || !hasValidQuietHours(preferences) || isWithinQuietHours(now, preferences)) continue;
+    if (!preferences.emailEnabled) continue;
+    if (!isValidIanaTimeZone(preferences.timeZone)) {
+      if (preferences.id) {
+        await db.insert(adminAuditEventsTable)
+          .values(invalidTimeZoneAuditEvent(trainer.id, preferences.id))
+          .onConflictDoNothing();
+      }
+      continue;
+    }
+    if (!hasValidQuietHours(preferences) || isWithinQuietHours(now, preferences)) continue;
 
     const deliveryId = `follow-up-reminder-${crypto.randomUUID()}`;
     await db.insert(diagnosticFollowUpReminderDeliveriesTable).values({
