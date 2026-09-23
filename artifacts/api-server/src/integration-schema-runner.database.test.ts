@@ -502,6 +502,97 @@ test("cleanup combines a failed lock check with other failures and continues cle
   }
 });
 
+test("cleanup times out one stale schema, releases its lock, and continues with later schemas", {
+  skip: !databaseUrl,
+}, async () => {
+  const cleaner = new Client({ connectionString: databaseUrl });
+  const inspector = new Client({ connectionString: databaseUrl });
+  const contractPrefix =
+    `schema_timeout_${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`;
+  const schemaNames = [
+    `${contractPrefix}_first`,
+    `${contractPrefix}_second`,
+  ];
+  let timedOutName = "";
+  await cleaner.connect();
+  await inspector.connect();
+  const originalQuery = cleaner.query.bind(cleaner);
+  try {
+    for (const name of schemaNames) {
+      await cleaner.query(`CREATE SCHEMA "${name}"`);
+      await cleaner.query(
+        `COMMENT ON SCHEMA "${name}" IS '${JSON.stringify({
+          kind: "teras-integration-test",
+          version: 1,
+          schemaPrefix: contractPrefix,
+          createdAt: "2000-01-01T00:00:00.000Z",
+        })}'`,
+      );
+    }
+
+    let hangPending = true;
+    const hangingCleaner = Object.create(cleaner) as InstanceType<typeof Client>;
+    hangingCleaner.query = (async (query: unknown, values?: unknown[]) => {
+      if (
+        hangPending &&
+        typeof query === "string" &&
+        query.startsWith("DROP SCHEMA")
+      ) {
+        hangPending = false;
+        timedOutName = query.match(/"([^"]+)"/)?.[1] ?? "";
+        return originalQuery("SELECT pg_sleep(1)") as never;
+      }
+      return originalQuery(query as never, values as never);
+    }) as InstanceType<typeof Client>["query"];
+
+    let reportedError: unknown;
+    try {
+      await cleanupStaleIntegrationSchemas(
+        hangingCleaner,
+        contractPrefix,
+        staleSchemaAgeMs,
+        50,
+      );
+    } catch (error) {
+      reportedError = error;
+    }
+
+    assert.ok(timedOutName);
+    assert.ok(reportedError instanceof AggregateError);
+    assert.equal(reportedError.errors.length, 1);
+    assert.match(reportedError.errors[0].message, new RegExp(timedOutName));
+    assert.match(
+      String(reportedError.errors[0].cause),
+      /statement timeout|timed out/i,
+    );
+    const cleanedName = schemaNames.find((name) => name !== timedOutName);
+    assert.ok(cleanedName);
+    assert.equal(await schemaExists(inspector, timedOutName), true);
+    assert.equal(await schemaExists(inspector, cleanedName), false);
+
+    const lock = await inspector.query<{ acquired: boolean }>(
+      "SELECT pg_try_advisory_lock(hashtextextended($1, $2)) AS acquired",
+      [timedOutName, 847_201],
+    );
+    assert.equal(lock.rows[0]?.acquired, true);
+    await inspector.query(
+      "SELECT pg_advisory_unlock(hashtextextended($1, $2))",
+      [timedOutName, 847_201],
+    );
+  } finally {
+    await originalQuery("SET statement_timeout = 0");
+    for (const name of schemaNames) {
+      await originalQuery(`DROP SCHEMA IF EXISTS "${name}" CASCADE`);
+      await originalQuery(
+        "SELECT pg_advisory_unlock(hashtextextended($1, $2))",
+        [name, 847_201],
+      );
+    }
+    await cleaner.end();
+    await inspector.end();
+  }
+});
+
 test("the next harness run reaps a schema orphaned by forced termination without touching active or unknown schemas", {
   skip: !databaseUrl,
 }, async () => {

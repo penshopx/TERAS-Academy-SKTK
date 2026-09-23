@@ -26,6 +26,7 @@ const DEFAULT_SETUP_TIMEOUT_MS = 2 * 60 * 1000;
 const DEFAULT_TEST_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_CONNECTION_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_CLEANUP_TIMEOUT_MS = 30 * 1000;
+const DEFAULT_STALE_SCHEMA_OPERATION_TIMEOUT_MS = 5 * 1000;
 const SCHEMA_METADATA_KIND = "teras-integration-test";
 const SCHEMA_METADATA_VERSION = 1;
 const ADVISORY_LOCK_SEED = 847_201;
@@ -163,7 +164,12 @@ export async function cleanupStaleIntegrationSchemas(
   admin: InstanceType<typeof Client>,
   schemaPrefix: string,
   staleSchemaAgeMs: number,
+  operationTimeoutMs = DEFAULT_STALE_SCHEMA_OPERATION_TIMEOUT_MS,
 ) {
+  assertPositiveTimeout(
+    "Stale integration schema operation timeout",
+    operationTimeoutMs,
+  );
   const schemas = await admin.query<{ schema_name: string; comment: string | null }>(
     `
       SELECT n.nspname AS schema_name, obj_description(n.oid, 'pg_namespace') AS comment
@@ -184,11 +190,16 @@ export async function cleanupStaleIntegrationSchemas(
     })) {
       continue;
     }
+    await admin.query(`SET statement_timeout = ${Math.ceil(operationTimeoutMs)}`);
     let lock: { rows: Array<{ acquired: boolean }> };
     try {
-      lock = await admin.query<{ acquired: boolean }>(
-        "SELECT pg_try_advisory_lock(hashtextextended($1, $2)) AS acquired",
-        [schemaName, ADVISORY_LOCK_SEED],
+      lock = await withTimeout(
+        admin.query<{ acquired: boolean }>(
+          "SELECT pg_try_advisory_lock(hashtextextended($1, $2)) AS acquired",
+          [schemaName, ADVISORY_LOCK_SEED],
+        ),
+        operationTimeoutMs,
+        `Cleanup advisory lock check timed out after ${operationTimeoutMs}ms for integration schema ${schemaName}`,
       );
     } catch (error) {
       cleanupErrors.push(
@@ -197,6 +208,7 @@ export async function cleanupStaleIntegrationSchemas(
           { cause: error },
         ),
       );
+      await admin.query("SET statement_timeout = 0");
       continue;
     }
     if (!canDropStaleIntegrationSchema({
@@ -207,19 +219,28 @@ export async function cleanupStaleIntegrationSchemas(
       staleSchemaAgeMs,
       advisoryLockAcquired: lock.rows[0]?.acquired ?? false,
     })) {
+      await admin.query("SET statement_timeout = 0");
       continue;
     }
     try {
-      await admin.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
+      await withTimeout(
+        admin.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`),
+        operationTimeoutMs,
+        `Stale integration schema cleanup timed out after ${operationTimeoutMs}ms for integration schema ${schemaName}`,
+      );
     } catch (error) {
       cleanupErrors.push(
         new Error(`Failed to drop stale integration schema ${schemaName}`, { cause: error }),
       );
     }
     try {
-      await admin.query(
-        "SELECT pg_advisory_unlock(hashtextextended($1, $2))",
-        [schemaName, ADVISORY_LOCK_SEED],
+      await withTimeout(
+        admin.query(
+          "SELECT pg_advisory_unlock(hashtextextended($1, $2))",
+          [schemaName, ADVISORY_LOCK_SEED],
+        ),
+        operationTimeoutMs,
+        `Cleanup advisory lock release timed out after ${operationTimeoutMs}ms for integration schema ${schemaName}`,
       );
     } catch (error) {
       cleanupErrors.push(
@@ -229,6 +250,7 @@ export async function cleanupStaleIntegrationSchemas(
         ),
       );
     }
+    await admin.query("SET statement_timeout = 0");
   }
   if (cleanupErrors.length > 0) {
     throw new AggregateError(
