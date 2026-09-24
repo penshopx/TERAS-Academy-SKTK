@@ -74,6 +74,28 @@ test("fallback webhook signatures are stable, payload-bound, and timestamp-bound
   );
 });
 
+test("signed webhook verification accepts exact age and clock-skew limits, but rejects replay outside them", () => {
+  const input = {
+    trainerName: "Trainer A",
+    target: "Supervised practice",
+    lastAttemptAt: new Date("2026-09-10T11:45:00.000Z"),
+    reason: "Layanan email tidak dapat menyelesaikan pengiriman.",
+    idempotencyKey: "notification-123",
+  };
+  const signingKey = { id: "operations-2026-09", secret: "test-webhook-secret" };
+  const toleranceMs = 5 * 60_000;
+  const signedAt = new Date(now.getTime());
+  const request = createSignedPermanentFailureWebhookRequest(input, signingKey, signedAt);
+
+  assert.equal(request.headers["Idempotency-Key"], input.idempotencyKey);
+  assert.equal(JSON.parse(request.body).idempotencyKey, input.idempotencyKey);
+  assert.equal(verifySignedPermanentFailureWebhookRequest(request, [signingKey], new Date(signedAt.getTime() + toleranceMs)), true);
+  assert.equal(verifySignedPermanentFailureWebhookRequest(request, [signingKey], new Date(signedAt.getTime() + toleranceMs + 1)), false);
+  assert.equal(verifySignedPermanentFailureWebhookRequest(request, [signingKey], new Date(signedAt.getTime() - toleranceMs)), true);
+  assert.equal(verifySignedPermanentFailureWebhookRequest(request, [signingKey], new Date(signedAt.getTime() - toleranceMs - 1)), false);
+  assert.equal(verifySignedPermanentFailureWebhookRequest(request, [signingKey], signedAt), true);
+});
+
 test("secret rotation preserves payload and accepts the old key only during its transition window", () => {
   const input = {
     trainerName: "Trainer A",

@@ -18,6 +18,8 @@ import { workspaceAssignmentContexts } from "./teras";
 const DUE_SOON_DAYS = 7;
 const MAX_ATTEMPTS = 3;
 const RETRY_AFTER_MINUTES = 30;
+// Receiver contract: signed timestamps are accepted up to five minutes old
+// or five minutes ahead of the receiver clock (both limits inclusive).
 const WEBHOOK_REPLAY_TOLERANCE_MS = 5 * 60_000;
 
 export type ReminderKind = "due_soon" | "overdue";
@@ -288,7 +290,9 @@ export function verifySignedPermanentFailureWebhookRequest(
   const timestampSeconds = request.headers["X-Teras-Webhook-Timestamp"];
   if (!/^\d+$/.test(timestampSeconds)) return false;
   const timestampMs = Number(timestampSeconds) * 1_000;
-  if (!Number.isSafeInteger(timestampMs) || Math.abs(now.getTime() - timestampMs) > replayToleranceMs) return false;
+  if (!Number.isSafeInteger(timestampMs)) return false;
+  const ageMs = now.getTime() - timestampMs;
+  if (ageMs > replayToleranceMs || ageMs < -replayToleranceMs) return false;
   const keyId = request.headers["X-Teras-Webhook-Key-Id"];
   const key = verificationKeys.find(candidate => candidate.id === keyId);
   if (!key?.secret || (key.acceptUntil && now.getTime() > key.acceptUntil.getTime())) return false;
