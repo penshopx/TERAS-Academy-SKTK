@@ -274,6 +274,97 @@ test("reminder escalation filters and pagination drive API requests and rendered
   ]);
 });
 
+test("failed escalation page preserves history, filter and totals until retry appends it once", async () => {
+  const requests: Array<{ status?: string; limit?: number; offset?: number }> = [];
+  let secondPageAttempts = 0;
+  const loadPage = async (params?: { status?: "open" | "resolved"; limit?: number; offset?: number }) => {
+    requests.push(params ?? {});
+    if (params?.offset === 2) {
+      secondPageAttempts++;
+      if (secondPageAttempts === 1) throw new Error("Layanan sementara tidak tersedia");
+      return {
+        items: [escalation("two", "open"), escalation("three", "open")],
+        pagination: { offset: 2, limit: 25, returned: 2, total: 3, hasMore: false },
+        counts: { open: 3, resolved: 4, total: 7 },
+      };
+    }
+    return {
+      items: [escalation("one", "open"), escalation("two", "open")],
+      pagination: { offset: 0, limit: 25, returned: 2, total: 3, hasMore: true },
+      counts: { open: 3, resolved: 4, total: 7 },
+    };
+  };
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <ReminderEscalationHistory enabled onResolve={() => undefined} loadPage={loadPage} />
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => assert.ok(view.getByTestId("reminder-escalation-one")));
+  fireEvent.click(view.getByTestId("button-load-more-reminder-escalations"));
+  await waitFor(() => assert.match(view.getByTestId("reminder-escalation-page-error").textContent ?? "", /Gagal memuat halaman berikutnya/));
+  assert.equal(view.getByTestId("reminder-escalation-one").textContent?.includes("Target one"), true);
+  assert.equal(view.getAllByTestId("reminder-escalation-two").length, 1);
+  assert.equal(view.queryByTestId("reminder-escalation-three"), null);
+  assert.equal(view.getByTestId("filter-reminder-escalations-open").getAttribute("aria-pressed"), "true");
+  assert.match(view.getByTestId("reminder-escalation-total").textContent ?? "", /7 total/);
+  assert.match(view.getByText(/Menampilkan 2 dari 3 eskalasi terbuka/).textContent ?? "", /2 dari 3/);
+  assert.equal(window.location.search, "");
+  assert.match(view.getByTestId("button-load-more-reminder-escalations").textContent ?? "", /Coba lagi/);
+
+  fireEvent.click(view.getByTestId("button-load-more-reminder-escalations"));
+  await waitFor(() => assert.ok(view.getByTestId("reminder-escalation-three")));
+  assert.equal(view.queryByTestId("reminder-escalation-page-error"), null);
+  assert.equal(view.getAllByTestId("reminder-escalation-two").length, 1);
+  assert.match(view.getByText(/Menampilkan 3 dari 3 eskalasi terbuka/).textContent ?? "", /3 dari 3/);
+  assert.equal(view.getByTestId("filter-reminder-escalations-open").getAttribute("aria-pressed"), "true");
+  assert.match(view.getByTestId("reminder-escalation-total").textContent ?? "", /7 total/);
+  assert.equal(window.location.search, "?escalationStatus=open&escalationOffset=2");
+  assert.deepEqual(requests, [
+    { status: "open", limit: 25, offset: 0 },
+    { status: "open", limit: 25, offset: 2 },
+    { status: "open", limit: 25, offset: 2 },
+  ]);
+  view.unmount();
+  queryClient.clear();
+});
+
+test("failed shared escalation page waits for an explicit retry instead of looping", async () => {
+  window.history.replaceState({}, "", "/admin?escalationStatus=resolved&escalationOffset=2");
+  const requests: number[] = [];
+  const loadPage = async (params?: { offset?: number }) => {
+    const offset = params?.offset ?? 0;
+    requests.push(offset);
+    if (offset === 2 && requests.filter(value => value === 2).length === 1) throw new Error("Sementara gagal");
+    return {
+      items: offset === 0 ? [escalation("resolved-one", "resolved")] : [escalation("resolved-two", "resolved")],
+      pagination: { offset, limit: 25, returned: offset === 0 ? 2 : 1, total: 3, hasMore: offset === 0 },
+      counts: { open: 4, resolved: 3, total: 7 },
+    };
+  };
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <ReminderEscalationHistory enabled onResolve={() => undefined} loadPage={loadPage} />
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => assert.ok(view.getByTestId("reminder-escalation-page-error")));
+  assert.deepEqual(requests, [0, 2]);
+  assert.ok(view.getByTestId("reminder-escalation-resolved-one"));
+  assert.equal(view.getByTestId("filter-reminder-escalations-resolved").getAttribute("aria-pressed"), "true");
+  assert.match(view.getByTestId("reminder-escalation-total").textContent ?? "", /7 total/);
+  fireEvent.click(view.getByTestId("button-load-more-reminder-escalations"));
+  await waitFor(() => assert.ok(view.getByTestId("reminder-escalation-resolved-two")));
+  assert.deepEqual(requests, [0, 2, 2]);
+  assert.equal(view.queryByTestId("reminder-escalation-page-error"), null);
+  assert.equal(view.getAllByTestId("reminder-escalation-resolved-one").length, 1);
+  assert.equal(window.location.search, "?escalationStatus=resolved&escalationOffset=2");
+  view.unmount();
+  queryClient.clear();
+});
+
 test("shared reminder escalation links restore status and page without changing audit details", async () => {
   window.history.replaceState({}, "", "/admin?escalationStatus=resolved&escalationOffset=25");
   const resolution = { id: "resolution-1", reminderDeliveryId: "resolved-one", note: "Sudah dihubungi", resolvedByPersonId: "admin-1", resolvedAt: "2030-01-09T05:00:00.000Z" };

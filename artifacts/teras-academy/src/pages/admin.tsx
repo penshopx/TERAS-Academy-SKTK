@@ -557,7 +557,7 @@ export function ReminderEscalationHistory({ enabled, onResolve, loadPage = listA
   const displayedLastPage = displayedPages.at(-1);
   useEffect(() => {
     const loadedLastPage = loadedPages.at(-1);
-    if (!enabled || history.isFetchingNextPage || !loadedLastPage || loadedLastPage.pagination.offset >= offset || !loadedLastPage.pagination.hasMore) return;
+    if (!enabled || history.isFetchingNextPage || history.isFetchNextPageError || !loadedLastPage || loadedLastPage.pagination.offset >= offset || !loadedLastPage.pagination.hasMore) return;
     void history.fetchNextPage();
   }, [enabled, history, loadedPages, offset]);
   const items = mergeReminderEscalationPages(displayedPages);
@@ -614,7 +614,7 @@ export function ReminderEscalationHistory({ enabled, onResolve, loadPage = listA
         </div>
       </CardHeader>
       <CardContent>
-        <State loading={history.isLoading} error={history.error} empty={!history.isLoading && items.length === 0}>
+        <State loading={history.isLoading} error={history.data ? null : history.error} empty={!history.isLoading && items.length === 0}>
           <p className="mb-3 text-sm text-muted-foreground" aria-live="polite">Menampilkan {items.length} dari {filteredTotal} eskalasi {status === "open" ? "terbuka" : "selesai"}.</p>
           <div className="divide-y">{items.map(item => <article key={item.id} className="grid gap-3 py-4 first:pt-0 md:grid-cols-[1fr_auto] md:items-start" data-testid={`reminder-escalation-${item.id}`}>
             <div>
@@ -630,7 +630,8 @@ export function ReminderEscalationHistory({ enabled, onResolve, loadPage = listA
               {item.status === "open" && <Button size="sm" onClick={() => onResolve(item)} data-testid={`button-resolve-history-reminder-${item.id}`}>Tandai ditangani</Button>}
             </div>
           </article>)}</div>
-          {displayedLastPage?.pagination.hasMore && <div className="mt-4 flex justify-center"><Button type="button" variant="outline" onClick={loadNextPage} disabled={history.isFetchingNextPage} data-testid="button-load-more-reminder-escalations">{history.isFetchingNextPage ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Memuat…</> : "Muat halaman berikutnya"}</Button></div>}
+          {history.isFetchNextPageError && <p className="mt-4 text-sm text-destructive" role="alert" data-testid="reminder-escalation-page-error">Gagal memuat halaman berikutnya. {adminErrorMessage(history.error)}</p>}
+          {displayedLastPage?.pagination.hasMore && <div className="mt-4 flex justify-center"><Button type="button" variant="outline" onClick={loadNextPage} disabled={history.isFetchingNextPage} data-testid="button-load-more-reminder-escalations">{history.isFetchingNextPage ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Memuat…</> : history.isFetchNextPageError ? "Coba lagi" : "Muat halaman berikutnya"}</Button></div>}
         </State>
       </CardContent>
     </Card>
