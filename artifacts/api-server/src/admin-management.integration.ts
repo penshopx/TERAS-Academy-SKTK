@@ -219,6 +219,51 @@ async function run() {
         && (event.after as { ruleVersion?: number } | null)?.ruleVersion === readinessVersions.find(rule => rule.id === event.entityId)?.ruleVersion)),
       "Readiness publication audits must preserve both admin actors and their resulting versions",
     );
+    await db.execute(sql`
+      CREATE FUNCTION reject_readiness_publish_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM teras_readiness_gates
+          WHERE id = NEW.entity_id AND active = true AND rule_version = 3
+        ) THEN
+          RAISE EXCEPTION 'readiness version must exist before its audit insert';
+        END IF;
+        RAISE EXCEPTION 'forced readiness publish audit failure';
+      END
+      $$
+    `);
+    try {
+      await db.execute(sql`
+        CREATE TRIGGER reject_readiness_publish_audit
+        BEFORE INSERT ON teras_admin_audit_events
+        FOR EACH ROW
+        WHEN (NEW.action = 'publish_rule_version' AND NEW.entity_type = 'readiness_rule')
+        EXECUTE FUNCTION reject_readiness_publish_audit()
+      `);
+      response = await request("/admin/readiness-rules", { ...readinessRule, name: "Failed audited version", threshold: 95 });
+      assert(response.status >= 400 && response.status !== 201, `Failed audit must not return a successful publication: ${response.status}`);
+      const rulesAfterFailure = await db.select().from(readinessGatesTable)
+        .where(and(eq(readinessGatesTable.pathwayId, ids.pathway), eq(readinessGatesTable.code, readinessCode)));
+      assert(
+        rulesAfterFailure.length === 2
+        && readinessVersions.every(before => rulesAfterFailure.some(after =>
+          after.id === before.id && after.ruleVersion === before.ruleVersion && after.active === before.active)),
+        "Failed audit must roll back the new version and restore the previous active status",
+      );
+      const auditsAfterFailure = await db.select().from(adminAuditEventsTable)
+        .where(and(
+          eq(adminAuditEventsTable.action, "publish_rule_version"),
+          eq(adminAuditEventsTable.entityType, "readiness_rule"),
+          eq(adminAuditEventsTable.actorAuthSubject, `admin-${suffix}`),
+        ));
+      assert(
+        auditsAfterFailure.length === 0,
+        "Failed audit must not leave a partial publication event",
+      );
+    } finally {
+      await db.execute(sql`DROP TRIGGER IF EXISTS reject_readiness_publish_audit ON teras_admin_audit_events`);
+      await db.execute(sql`DROP FUNCTION IF EXISTS reject_readiness_publish_audit()`);
+    }
     for (const [id, programId] of [[ids.cohort, ids.program], [ids.otherCohort, ids.otherProgram]] as const) {
       response = await request("/admin/cohorts", { id, programId, name: `Cohort ${id}`, status: "active", startsOn: null, endsOn: null });
       assert(response.status === 201, `Cohort create failed: ${await response.text()}`);
@@ -245,6 +290,8 @@ async function run() {
     const audit = JSON.parse(auditText) as any[];
     assert(audit.some((event: any) => event.entityId === ids.enrollment && event.action === "create"), "Admin audit event was not recorded");
   } finally {
+    await db.execute(sql`DROP TRIGGER IF EXISTS reject_readiness_publish_audit ON teras_admin_audit_events`);
+    await db.execute(sql`DROP FUNCTION IF EXISTS reject_readiness_publish_audit()`);
     if (promotionRequestId) {
       await db.delete(adminAuditEventsTable).where(eq(adminAuditEventsTable.entityId, promotionRequestId));
       await db.delete(adminAccessRequestsTable).where(eq(adminAccessRequestsTable.id, promotionRequestId));
