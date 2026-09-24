@@ -72,7 +72,7 @@ export type PermanentFailureFallbackInput = Omit<PermanentFailureNotificationInp
 export type SignedWebhookRequest = {
   body: string;
   headers: {
-    "Content-Type": "application/json";
+    "Content-Type": string;
     "Idempotency-Key": string;
     "X-Teras-Webhook-Key-Id": string;
     "X-Teras-Webhook-Timestamp": string;
@@ -287,6 +287,7 @@ export function verifySignedPermanentFailureWebhookRequest(
 ) {
   if (!Number.isFinite(now.getTime())) throw new Error("Webhook verification time is invalid");
   if (!Number.isFinite(replayToleranceMs) || replayToleranceMs < 0) throw new Error("Webhook replay tolerance is invalid");
+  if (request.headers["Content-Type"] !== "application/json") return false;
   const timestampSeconds = request.headers["X-Teras-Webhook-Timestamp"];
   if (!/^\d+$/.test(timestampSeconds)) return false;
   const timestampMs = Number(timestampSeconds) * 1_000;
@@ -304,7 +305,16 @@ export function verifySignedPermanentFailureWebhookRequest(
   const expectedDigest = createHmac("sha256", key.secret)
     .update(`${request.headers["X-Teras-Webhook-Timestamp"]}.${request.body}`, "utf8")
     .digest("hex");
-  return timingSafeEqual(Buffer.from(suppliedDigest, "hex"), Buffer.from(expectedDigest, "hex"));
+  if (!timingSafeEqual(Buffer.from(suppliedDigest, "hex"), Buffer.from(expectedDigest, "hex"))) return false;
+  try {
+    const payload: unknown = JSON.parse(request.body);
+    return typeof payload === "object" && payload !== null && !Array.isArray(payload)
+      && "idempotencyKey" in payload && typeof payload.idempotencyKey === "string"
+      && payload.idempotencyKey.length > 0
+      && payload.idempotencyKey === request.headers["Idempotency-Key"];
+  } catch {
+    return false;
+  }
 }
 
 export async function sendPermanentFailureFallback(input: PermanentFailureFallbackInput) {

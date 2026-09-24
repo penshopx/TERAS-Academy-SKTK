@@ -144,7 +144,7 @@ test("fallback transport preserves signed headers and raw body while rejecting t
     request.on("end", () => {
       const body = Buffer.concat(chunks).toString("utf8");
       const headers = {
-        "Content-Type": request.headers["content-type"] as "application/json",
+        "Content-Type": String(request.headers["content-type"] ?? ""),
         "Idempotency-Key": String(request.headers["idempotency-key"] ?? ""),
         "X-Teras-Webhook-Key-Id": String(request.headers["x-teras-webhook-key-id"] ?? ""),
         "X-Teras-Webhook-Timestamp": String(request.headers["x-teras-webhook-timestamp"] ?? ""),
@@ -204,5 +204,23 @@ test("fallback transport preserves signed headers and raw body while rejecting t
     body: staleRequest.body,
   });
   assert.equal(staleResponse.status, 401);
-  assert.deepEqual(received.map(item => item.accepted), [true, false, false]);
+
+  // Neither transport-header change alters the signed body or its valid HMAC.
+  assert.equal(verifySignedPermanentFailureWebhookRequest(currentRequest, [signingKey], new Date()), true);
+  const wrongContentTypeResponse = await fetch(url, {
+    method: "POST",
+    headers: { ...currentRequest.headers, "Content-Type": "text/plain" },
+    body: currentRequest.body,
+  });
+  assert.equal(wrongContentTypeResponse.status, 401);
+
+  const wrongIdempotencyKeyResponse = await fetch(url, {
+    method: "POST",
+    headers: { ...currentRequest.headers, "Idempotency-Key": "another-notification" },
+    body: currentRequest.body,
+  });
+  assert.equal(wrongIdempotencyKeyResponse.status, 401);
+  assert.deepEqual(received.map(item => item.accepted), [true, false, false, false, false]);
+  assert.equal(received[3]?.body, currentRequest.body);
+  assert.equal(received[4]?.body, currentRequest.body);
 });
