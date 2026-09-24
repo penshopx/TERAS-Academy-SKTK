@@ -10,6 +10,14 @@ const evidenceQuestion = `evidence-${suffix}`;
 const unansweredQuestion = `login keselamatan frobnicator-${suffix}`;
 const sensitiveQuestion = "Nama Rahasia Nusantara EMPABC123 membahas kondisi kesehatan pribadi";
 const createdArticleIds = new Set([articleId]);
+const failedCreateId = `knowledge-audit-rollback-create-${suffix}`;
+const failedUpdateId = `knowledge-audit-rollback-update-${suffix}`;
+const auditTriggerName = `reject_knowledge_audit_${suffix.replaceAll("-", "_")}`;
+const auditTrigger = sql.raw(auditTriggerName);
+const dropAuditFailureTrigger = async () => {
+  await db.execute(sql`DROP TRIGGER IF EXISTS ${auditTrigger} ON teras_admin_audit_events`);
+  await db.execute(sql`DROP FUNCTION IF EXISTS ${auditTrigger}()`);
+};
 const app = createIntegrationTestApp(req => {
   const role = req.header("x-test-role") as "admin" | "learner" | "trainer" | "assessor" | undefined;
   return { userId: role ? `knowledge-${role}-${suffix}` : null, role: role ?? null };
@@ -78,6 +86,55 @@ async function run() {
     });
     const draft = await readResponse(response, 201) as any;
     assert.equal(draft.status, "draft");
+
+    response = await request("/admin/knowledge", "admin", {
+      id: failedUpdateId, category: "help", title: `Rollback draft ${suffix}`,
+      body: "Original draft body.", audience: ["learner"],
+    });
+    await readResponse(response, 201);
+    createdArticleIds.add(failedUpdateId);
+    const [beforeUpdate] = await db.select().from(knowledgeArticlesTable).where(eq(knowledgeArticlesTable.id, failedUpdateId));
+    const auditFor = (id: string) => db.select().from(adminAuditEventsTable).where(and(
+      eq(adminAuditEventsTable.entityType, "knowledge_article"),
+      eq(adminAuditEventsTable.entityId, id),
+    ));
+    const beforeUpdateAudits = await auditFor(failedUpdateId);
+    try {
+      await db.execute(sql`
+        CREATE FUNCTION ${auditTrigger}() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          RAISE EXCEPTION 'forced knowledge audit failure';
+        END
+        $$
+      `);
+      await db.execute(sql`
+        CREATE TRIGGER ${auditTrigger}
+        BEFORE INSERT ON teras_admin_audit_events
+        FOR EACH ROW WHEN (
+          NEW.entity_type = 'knowledge_article'
+          AND NEW.entity_id LIKE 'knowledge-audit-rollback-%'
+          AND NEW.action IN ('create', 'update')
+        )
+        EXECUTE FUNCTION ${auditTrigger}()
+      `);
+      response = await request("/admin/knowledge", "admin", {
+        id: failedCreateId, category: "help", title: `Must not exist ${suffix}`,
+        body: "Create must roll back.", audience: ["learner"],
+      });
+      assert(response.status >= 400, "Rejected create audit must fail the API request");
+      assert.deepEqual(await db.select().from(knowledgeArticlesTable).where(eq(knowledgeArticlesTable.id, failedCreateId)), [], "Failed create audit must roll back the new article");
+      assert.deepEqual(await auditFor(failedCreateId), [], "Failed create must not leave an audit event");
+
+      response = await request(`/admin/knowledge/${failedUpdateId}`, "admin", {
+        title: `Must not be saved ${suffix}`, body: "Update must roll back.",
+      }, "PATCH");
+      assert(response.status >= 400, "Rejected update audit must fail the API request");
+      const [afterUpdate] = await db.select().from(knowledgeArticlesTable).where(eq(knowledgeArticlesTable.id, failedUpdateId));
+      assert.deepEqual(afterUpdate, beforeUpdate, "Failed update audit must roll back the draft and its version");
+      assert.deepEqual(await auditFor(failedUpdateId), beforeUpdateAudits, "Failed update must not append an audit event");
+    } finally {
+      await dropAuditFailureTrigger();
+    }
 
     response = await request("/assistant/knowledge/search", "learner", { category: "help", question: evidenceQuestion });
     assert.equal((await readResponse(response, 200) as any).found, false, "Draft must not be visible to assistants");
@@ -173,6 +230,7 @@ async function run() {
     assert.deepEqual(parallelStatuses.sort(), [200, 409], "Parallel family edits must produce exactly one successor draft");
     console.log("Knowledge lifecycle integration checks passed");
   } finally {
+    await dropAuditFailureTrigger();
     await db.delete(adminAuditEventsTable).where(inArray(adminAuditEventsTable.entityId, [...createdArticleIds]));
     await db.execute(sql`delete from teras_knowledge_articles where parent_article_id = ${articleId}`);
     await db.delete(knowledgeArticlesTable).where(eq(knowledgeArticlesTable.id, articleId));
