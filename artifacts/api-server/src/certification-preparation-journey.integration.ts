@@ -5,14 +5,14 @@
  */
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   assessmentAttemptsTable, assessmentCriteriaTable, assessmentsTable, baselineModulesTable, contentResourcesTable, courseVersionsTable, coursesTable, db, evidenceRequirementsTable,
   competencyFrameworksTable, competencyUnitsTable, diagnosticGapsTable, diagnosticOptionsTable, diagnosticQuestionsTable,
     diagnosticRecommendationsTable, diagnosticTemplatesTable, pathwayCompetencyUnitsTable, competencyUnitPracticeTasksTable,
-  evidenceReviewsTable, enrollmentsTable, gapEventsTable, learningRecordLinksTable, learningTransitionEventsTable, reassessmentLinksTable, readinessEventsTable, readinessTransferEventsTable,
+  evidenceReviewsTable, enrollmentsTable, gapEventsTable, gapsTable, learningRecordLinksTable, learningTransitionEventsTable, reassessmentLinksTable, readinessEventsTable, readinessTransferEventsTable,
   learningBaselinesTable, learningBaselineVersionsTable, modulesTable, pathwaysTable, pathwayBaselineModulesTable, pathwayModuleContractsTable,
-    practiceAttemptsTable, practiceReviewsTable, remediationActivitiesTable, remediationEventsTable,
+    practiceAttemptsTable, practiceReviewsTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable,
     practiceTasksTable, readinessGatesTable,
 } from "@workspace/db";
 import { createIntegrationTestApp } from "./integration-test-app";
@@ -331,6 +331,52 @@ async function main() {
       activityType: "Practice",
       idempotencyKey: id("remediation-open"),
     };
+    if (pathAGoldenJourney) {
+      const failedBody = { ...remediationBody, idempotencyKey: id("remediation-rollback") };
+      const remediationCounts = async () => [
+        (await db.select().from(gapsTable)).length,
+        (await db.select().from(remediationPlansTable)).length,
+        (await db.select().from(remediationActivitiesTable)).length,
+        (await db.select().from(gapEventsTable)).length,
+        (await db.select().from(remediationEventsTable)).length,
+      ];
+      const beforeFailedOpen = await remediationCounts();
+      // This gate runs against a disposable database. The trigger targets only
+      // the rollback fixture's final insert, never the normal journey.
+      try {
+        await db.execute(sql`
+          CREATE FUNCTION reject_remediation_rollback_event() RETURNS trigger LANGUAGE plpgsql AS $$
+          BEGIN
+            RAISE EXCEPTION 'forced remediation final insert failure';
+          END
+          $$
+        `);
+        await db.execute(sql`
+          CREATE TRIGGER reject_remediation_rollback_event
+          BEFORE INSERT ON teras_remediation_events
+          FOR EACH ROW WHEN (
+            NEW.status = 'Open'
+            AND NEW.idempotency_key LIKE 'gate-%-remediation-rollback'
+          )
+          EXECUTE FUNCTION reject_remediation_rollback_event()
+        `);
+        const failedOpen = await request("/trainer/remediation", "trainer", failedBody);
+        assert.equal(failedOpen.status, 500, `final remediation event insert must fail: ${await failedOpen.text()}`);
+        assert.deepEqual(await remediationCounts(), beforeFailedOpen,
+          "failed final insert must roll back gap, plan, activity, gap event and remediation event");
+        assert.deepEqual(await db.select().from(remediationEventsTable).where(eq(remediationEventsTable.idempotencyKey, failedBody.idempotencyKey)), [],
+          "failed idempotency key must not be consumed");
+      } finally {
+        await db.execute(sql`DROP TRIGGER IF EXISTS reject_remediation_rollback_event ON teras_remediation_events`);
+        await db.execute(sql`DROP FUNCTION IF EXISTS reject_remediation_rollback_event()`);
+      }
+      // The exact same request now succeeds, confirming the injected final
+      // insert failure (rather than an invalid diagnostic chain) caused the 500.
+      const recovered = await expect("/trainer/remediation", "trainer", failedBody);
+      assert.equal((await db.select().from(remediationEventsTable).where(eq(remediationEventsTable.idempotencyKey, failedBody.idempotencyKey))).length, 1,
+        "retry after rollback must create exactly one remediation event");
+      assert(recovered.gapId && recovered.remediationPlanId && recovered.remediationActivityId);
+    }
     const remediation = await expect("/trainer/remediation", "trainer", remediationBody);
     const { gapId, remediationPlanId: planId, remediationActivityId } = remediation;
     const remediationRetry = await expect("/trainer/remediation", "trainer", remediationBody, 200);
