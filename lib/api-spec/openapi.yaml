@@ -1320,7 +1320,12 @@ paths:
     get:
       operationId: getAdminAgentObservability
       tags: [admin]
-      summary: Read privacy-preserving aggregate Trainer Intelligence Agent metrics
+      summary: Read bounded privacy-preserving agent run health
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string, maxLength: 1024 }
+          description: Opaque next-page cursor returned by this endpoint
       responses:
         "200":
           description: Aggregate metrics for the bounded recent window; no per-run records are returned
@@ -3926,11 +3931,26 @@ components:
         generatedAt: { type: string, format: date-time }
     AdminAgentObservability:
       type: object
-      required: [windowDays, from, to, statusCounts, totals, dimensions]
+      required: [windowDays, from, to, statusCounts, totals, dimensions, trends, policyCounts, nextCursor, sampleLimit]
       properties:
         windowDays: { type: integer, const: 30 }
         from: { type: string, format: date-time }
         to: { type: string, format: date-time }
+        sampleLimit: { type: integer }
+        nextCursor: { type: ["string", "null"] }
+        policyCounts:
+          type: object
+          additionalProperties: { type: integer, minimum: 0 }
+        trends:
+          type: array
+          items:
+            type: object
+            required: [day, runCount, fallbackCount, partialCount]
+            properties:
+              day: { type: string, format: date }
+              runCount: { type: integer }
+              fallbackCount: { type: integer }
+              partialCount: { type: integer }
         statusCounts:
           type: object
           additionalProperties: { type: integer, minimum: 0 }

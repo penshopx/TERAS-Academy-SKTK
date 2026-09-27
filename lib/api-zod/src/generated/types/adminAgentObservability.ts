@@ -6,13 +6,20 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AdminAgentObservabilityDimensionsItem } from './adminAgentObservabilityDimensionsItem';
+import type { AdminAgentObservabilityPolicyCounts } from './adminAgentObservabilityPolicyCounts';
 import type { AdminAgentObservabilityStatusCounts } from './adminAgentObservabilityStatusCounts';
 import type { AdminAgentObservabilityTotals } from './adminAgentObservabilityTotals';
+import type { AdminAgentObservabilityTrendsItem } from './adminAgentObservabilityTrendsItem';
 
 export interface AdminAgentObservability {
   windowDays: 30;
   from: Date;
   to: Date;
+  sampleLimit: number;
+  /** @nullable */
+  nextCursor: string | null;
+  policyCounts: AdminAgentObservabilityPolicyCounts;
+  trends: AdminAgentObservabilityTrendsItem[];
   statusCounts: AdminAgentObservabilityStatusCounts;
   totals: AdminAgentObservabilityTotals;
   dimensions: AdminAgentObservabilityDimensionsItem[];

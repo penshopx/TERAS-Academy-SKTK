@@ -4747,8 +4747,18 @@ export const GetAdminOperationalSummaryResponse = zod.object({
 
 
 /**
- * @summary Read privacy-preserving aggregate Trainer Intelligence Agent metrics
+ * @summary Read bounded privacy-preserving agent run health
  */
+export const getAdminAgentObservabilityQueryCursorMax = 1024;
+
+
+
+export const GetAdminAgentObservabilityQueryParams = zod.object({
+  "cursor": zod.coerce.string().max(getAdminAgentObservabilityQueryCursorMax).optional().describe('Opaque next-page cursor returned by this endpoint')
+})
+
+export const getAdminAgentObservabilityResponsePolicyCountsMinOne = 0;
+
 export const getAdminAgentObservabilityResponseStatusCountsMinOne = 0;
 
 export const getAdminAgentObservabilityResponseTotalsRunCountMin = 0;
@@ -4780,6 +4790,15 @@ export const GetAdminAgentObservabilityResponse = zod.object({
   "windowDays": zod.literal(30),
   "from": zod.coerce.date(),
   "to": zod.coerce.date(),
+  "sampleLimit": zod.int(),
+  "nextCursor": zod.string().nullable(),
+  "policyCounts": zod.record(zod.string(), zod.int().min(getAdminAgentObservabilityResponsePolicyCountsMinOne)),
+  "trends": zod.array(zod.object({
+  "day": zod.coerce.date(),
+  "runCount": zod.int(),
+  "fallbackCount": zod.int(),
+  "partialCount": zod.int()
+})),
   "statusCounts": zod.record(zod.string(), zod.int().min(getAdminAgentObservabilityResponseStatusCountsMinOne)),
   "totals": zod.object({
   "runCount": zod.int().min(getAdminAgentObservabilityResponseTotalsRunCountMin),

@@ -235,6 +235,8 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0052_agent_run_observability_index.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0056_agent_run_observability_cursor.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0053_baseline_pathway_scope_projection.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0054_path_b_regulatory_competency_foundation.sql

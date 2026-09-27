@@ -335,6 +335,7 @@ export const agentRunsTable = pgTable("teras_agent_runs", {
   index("teras_agent_runs_actor_created_idx").on(table.actorPersonId, table.createdAt.desc(), table.id.desc()),
   index("teras_agent_runs_agent_created_idx").on(table.agentId, table.createdAt.desc(), table.id.desc()),
   index("teras_agent_runs_observability_idx").on(table.createdAt.desc(), table.agentVersion, table.provider, table.model),
+  index("teras_agent_runs_observability_cursor_idx").on(table.createdAt.desc(), table.id.desc()),
   check("teras_agent_runs_policy_check", sql`${table.policyDecision} IN ('ALLOW_READ','ALLOW_PROPOSE','REQUIRES_APPROVAL','DENY')`),
   check("teras_agent_runs_status_check", sql`${table.status} IN ('PLANNED','RUNNING','COMPLETED','FAILED','PARTIAL')`),
 ]);

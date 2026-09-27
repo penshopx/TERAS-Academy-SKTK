@@ -96,6 +96,7 @@ import type {
   ExportAdminReadinessHistoryParams,
   ForbiddenResponse,
   Gap,
+  GetAdminAgentObservabilityParams,
   GetAssessmentParams,
   GetLearnerJourneyPageParams,
   HealthStatus,
@@ -6617,20 +6618,27 @@ export function useGetAdminOperationalSummary<TData = Awaited<ReturnType<typeof 
 
 
 
-export const getGetAdminAgentObservabilityUrl = () => {
+export const getGetAdminAgentObservabilityUrl = (params?: GetAdminAgentObservabilityParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/admin/agent-observability`
+  return stringifiedParams.length > 0 ? `/api/admin/agent-observability?${stringifiedParams}` : `/api/admin/agent-observability`
 }
 
 /**
- * @summary Read privacy-preserving aggregate Trainer Intelligence Agent metrics
+ * @summary Read bounded privacy-preserving agent run health
  */
-export const getAdminAgentObservability = async ( options?: Parameters<typeof customFetch>[1]): Promise<AdminAgentObservability> => {
+export const getAdminAgentObservability = async (params?: GetAdminAgentObservabilityParams, options?: Parameters<typeof customFetch>[1]): Promise<AdminAgentObservability> => {
 
-  return customFetch<AdminAgentObservability>(getGetAdminAgentObservabilityUrl(),
+  return customFetch<AdminAgentObservability>(getGetAdminAgentObservabilityUrl(params),
   {
     ...options,
     method: 'GET'
@@ -6643,23 +6651,23 @@ export const getAdminAgentObservability = async ( options?: Parameters<typeof cu
 
 
 
-export const getGetAdminAgentObservabilityQueryKey = () => {
+export const getGetAdminAgentObservabilityQueryKey = (params?: GetAdminAgentObservabilityParams,) => {
     return [
-    `/api/admin/agent-observability`
+    `/api/admin/agent-observability`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetAdminAgentObservabilityQueryOptions = <TData = Awaited<ReturnType<typeof getAdminAgentObservability>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminAgentObservability>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetAdminAgentObservabilityQueryOptions = <TData = Awaited<ReturnType<typeof getAdminAgentObservability>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>(params?: GetAdminAgentObservabilityParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminAgentObservability>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetAdminAgentObservabilityQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminAgentObservabilityQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminAgentObservability>>> = ({ signal }) => getAdminAgentObservability({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminAgentObservability>>> = ({ signal }) => getAdminAgentObservability(params, { signal, ...requestOptions });
 
 
 
@@ -6673,15 +6681,15 @@ export type GetAdminAgentObservabilityQueryError = ErrorType<UnauthorizedRespons
 
 
 /**
- * @summary Read privacy-preserving aggregate Trainer Intelligence Agent metrics
+ * @summary Read bounded privacy-preserving agent run health
  */
 
 export function useGetAdminAgentObservability<TData = Awaited<ReturnType<typeof getAdminAgentObservability>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminAgentObservability>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: GetAdminAgentObservabilityParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminAgentObservability>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetAdminAgentObservabilityQueryOptions(options)
+  const queryOptions = getGetAdminAgentObservabilityQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

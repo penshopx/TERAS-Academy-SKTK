@@ -57,3 +57,4 @@
 - [Advisory lock isolation tests](advisory-lock-isolation-tests.md) — prove exact lock contention before asserting unrelated requests remain independent.
 - [Concurrent index retry safety](concurrent-index-retry.md) — an interrupted concurrent build can keep an invalid same-name index; validate replacement before dropping the old one.
 - [Operational dialog browser fixtures](operational-dialog-browser-fixtures.md) — mock the surrounding eager screens, not just the targeted confirmation endpoint.
+- [Private ledger cursors](private-ledger-cursors.md) — encrypt keyset cursors when their tie-breaker is a stable private ID; preserve PostgreSQL timestamp precision.

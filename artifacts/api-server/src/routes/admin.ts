@@ -3,6 +3,7 @@
 // @ts-nocheck
 import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
+import { AGENT_HEALTH_PAGE_SIZE, AGENT_HEALTH_WINDOW_MS, openAgentCursor, sealAgentCursor, safeAgentDimension } from "../lib/agent-observability";
 import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import {
   CreateAdminCohortBody, CreateAdminCohortResponse, CreateAdminEnrollmentBody, CreateAdminEnrollmentResponse,
@@ -876,40 +877,67 @@ router.get("/admin/summary", async (req, res): Promise<void> => {
 router.get("/admin/users", async (req, res): Promise<void> => { const actor = await authorizeAdmin(req, res); if (!actor) return; const people = await db.select().from(peopleTable); const rows = (await Promise.all(people.map(p => user(p.id)))).filter(Boolean) as any[]; res.json(ListAdminUsersResponse.parse(actor.roles.includes("super_admin") ? rows : rows.filter(person => !person.roles.some((role: string) => role === "admin" || role === "super_admin")))); });
 router.get("/admin/agent-observability", async (req, res): Promise<void> => {
   if (!await authorizeAdmin(req, res)) return;
-  const to = new Date();
-  const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const position = req.query.cursor === undefined ? null : openAgentCursor(req.query.cursor);
+  if (req.query.cursor !== undefined && !position) { res.status(400).json({ error: "Invalid or expired cursor" }); return; }
+  const to = position ? new Date(position.to) : new Date();
+  const from = position ? new Date(position.from) : new Date(to.getTime() - AGENT_HEALTH_WINDOW_MS);
   const rows = await db.select({
-    agentVersion: agentRunsTable.agentVersion, provider: agentRunsTable.provider, model: agentRunsTable.model,
-    status: agentRunsTable.status, resultSummary: agentRunsTable.resultSummary,
+    id: agentRunsTable.id, createdAt: agentRunsTable.createdAt,
+    createdAtExact: sql<string>`${agentRunsTable.createdAt}::text`,
+    agentId: agentRunsTable.agentId, agentVersion: agentRunsTable.agentVersion,
+    provider: agentRunsTable.provider, model: agentRunsTable.model,
+    status: agentRunsTable.status, policyDecision: agentRunsTable.policyDecision,
+    // Only fixed numeric/boolean fields; never select the free-form result JSON itself.
+    claimCount: sql<number>`CASE WHEN ${agentRunsTable.resultSummary}->>'claimCount' ~ '^[0-9]{1,6}$' THEN (${agentRunsTable.resultSummary}->>'claimCount')::int ELSE 0 END`,
+    actionCount: sql<number>`CASE WHEN ${agentRunsTable.resultSummary}->>'actionCount' ~ '^[0-9]{1,6}$' THEN (${agentRunsTable.resultSummary}->>'actionCount')::int ELSE 0 END`,
+    fallbackUsed: sql<boolean>`(${agentRunsTable.resultSummary}->>'fallbackUsed' = 'true')`,
     startedAt: agentRunsTable.startedAt, completedAt: agentRunsTable.completedAt,
-  }).from(agentRunsTable).where(gte(agentRunsTable.createdAt, from));
+  }).from(agentRunsTable).where(and(gte(agentRunsTable.createdAt, from), lte(agentRunsTable.createdAt, to),
+    position ? or(sql`${agentRunsTable.createdAt} < ${position.createdAt}::timestamptz`,
+      and(sql`${agentRunsTable.createdAt} = ${position.createdAt}::timestamptz`, lt(agentRunsTable.id, position.id))) : undefined
+  )).orderBy(desc(agentRunsTable.createdAt), desc(agentRunsTable.id)).limit(AGENT_HEALTH_PAGE_SIZE + 1);
+  const page = rows.slice(0, AGENT_HEALTH_PAGE_SIZE);
   const statusCounts: Record<string, number> = {};
+  const policyCounts: Record<string, number> = {};
+  const trends = new Map<string, { day: string; runCount: number; fallbackCount: number; partialCount: number }>();
   let claimCount = 0; let actionCount = 0; let fallbackCount = 0;
   const latencies: number[] = [];
   const dimensions = new Map<string, { agentVersion: string; provider: string | null; model: string | null; runCount: number }>();
-  for (const row of rows) {
+  for (const row of page) {
     statusCounts[row.status] = (statusCounts[row.status] ?? 0) + 1;
-    const summary = row.resultSummary && typeof row.resultSummary === "object" ? row.resultSummary as Record<string, unknown> : {};
-    if (typeof summary.claimCount === "number" && Number.isFinite(summary.claimCount) && summary.claimCount >= 0) claimCount += summary.claimCount;
-    if (typeof summary.actionCount === "number" && Number.isFinite(summary.actionCount) && summary.actionCount >= 0) actionCount += summary.actionCount;
-    if (summary.fallbackUsed === true) fallbackCount++;
+    policyCounts[row.policyDecision] = (policyCounts[row.policyDecision] ?? 0) + 1;
+    claimCount += row.claimCount;
+    actionCount += row.actionCount;
+    if (row.fallbackUsed) fallbackCount++;
+    const day = row.createdAt.toISOString().slice(0, 10);
+    const trend = trends.get(day) ?? { day, runCount: 0, fallbackCount: 0, partialCount: 0 };
+    trend.runCount++;
+    if (row.fallbackUsed) trend.fallbackCount++;
+    if (row.status === "PARTIAL") trend.partialCount++;
+    trends.set(day, trend);
     if (row.startedAt && row.completedAt) {
       const latency = row.completedAt.getTime() - row.startedAt.getTime();
       if (Number.isFinite(latency) && latency >= 0) latencies.push(latency);
     }
-    const key = `${row.agentVersion}\u0000${row.provider ?? ""}\u0000${row.model ?? ""}`;
-    const dimension = dimensions.get(key) ?? { agentVersion: row.agentVersion, provider: row.provider, model: row.model, runCount: 0 };
+    const safe = safeAgentDimension(row.agentId, row.agentVersion, row.provider, row.model);
+    const key = JSON.stringify(safe);
+    const dimension = dimensions.get(key) ?? { ...safe, runCount: 0 };
     dimension.runCount++;
     dimensions.set(key, dimension);
   }
   latencies.sort((a, b) => a - b);
   const p95 = latencies.length ? latencies[Math.ceil(latencies.length * 0.95) - 1]! : null;
   res.json(GetAdminAgentObservabilityResponse.parse({
-    windowDays: 30, from, to, statusCounts,
+    windowDays: 30, from, to, statusCounts, policyCounts,
+    sampleLimit: AGENT_HEALTH_PAGE_SIZE,
+    nextCursor: rows.length > AGENT_HEALTH_PAGE_SIZE ? sealAgentCursor({
+      from: from.toISOString(), to: to.toISOString(), createdAt: page.at(-1)!.createdAtExact, id: page.at(-1)!.id,
+    }) : null,
+    trends: [...trends.values()].sort((a, b) => a.day.localeCompare(b.day)),
     totals: {
-      runCount: rows.length, completedCount: statusCounts.COMPLETED ?? 0,
+      runCount: page.length, completedCount: statusCounts.COMPLETED ?? 0,
       partialCount: statusCounts.PARTIAL ?? 0, failedCount: statusCounts.FAILED ?? 0,
-      fallbackCount, fallbackRate: rows.length ? fallbackCount / rows.length : 0,
+      fallbackCount, fallbackRate: page.length ? fallbackCount / page.length : 0,
       averageTerminalLatencyMs: latencies.length ? latencies.reduce((sum, value) => sum + value, 0) / latencies.length : null,
       p95TerminalLatencyMs: p95, claimCount, actionCount,
     },

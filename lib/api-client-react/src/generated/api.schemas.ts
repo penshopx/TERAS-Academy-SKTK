@@ -1865,6 +1865,15 @@ export interface AdminOperationalSummary {
   generatedAt: string;
 }
 
+export type AdminAgentObservabilityPolicyCounts = {[key: string]: number};
+
+export type AdminAgentObservabilityTrendsItem = {
+  day: string;
+  runCount: number;
+  fallbackCount: number;
+  partialCount: number;
+};
+
 export type AdminAgentObservabilityStatusCounts = {[key: string]: number};
 
 export type AdminAgentObservabilityTotals = {
@@ -1905,6 +1914,11 @@ export interface AdminAgentObservability {
   windowDays: 30;
   from: string;
   to: string;
+  sampleLimit: number;
+  /** @nullable */
+  nextCursor: string | null;
+  policyCounts: AdminAgentObservabilityPolicyCounts;
+  trends: AdminAgentObservabilityTrendsItem[];
   statusCounts: AdminAgentObservabilityStatusCounts;
   totals: AdminAgentObservabilityTotals;
   dimensions: AdminAgentObservabilityDimensionsItem[];
@@ -3656,6 +3670,14 @@ export const ExportAdminReadinessHistoryStatus = {
   Developing: 'Developing',
   Ready_for_Official_Assessment: 'Ready for Official Assessment',
 } as const;
+
+export type GetAdminAgentObservabilityParams = {
+/**
+ * Opaque next-page cursor returned by this endpoint
+ * @maxLength 1024
+ */
+cursor?: string;
+};
 
 export type ListAdminReminderEscalationsParams = {
 status?: ListAdminReminderEscalationsStatus;
