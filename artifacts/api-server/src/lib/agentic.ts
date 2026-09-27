@@ -9,6 +9,14 @@ export const TRAINER_INTELLIGENCE_AGENT = {
   purpose: "Read-only, assignment-scoped trainer analysis",
 } as const;
 
+export const EVIDENCE_TRIAGE_AGENT = {
+  id: "evidence-triage",
+  version: "1.0.0",
+  maxPermission: "PROPOSE",
+  execution: "NONE",
+  purpose: "Read-only preparation evidence triage for assigned Path A contexts",
+} as const;
+
 export const TRAINER_INTELLIGENCE_TOOLS = [
   { id: "get_trainer_assignment_projection", permission: "READ", risk: "READ_ONLY", approval: "NONE", idempotency: "NOT_APPLICABLE" },
 ] as const;
@@ -63,6 +71,6 @@ export function resultHash(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 export function policyFor(agentId: string, requested: "READ" | "PROPOSE"): PolicyDecision {
-  if (agentId !== TRAINER_INTELLIGENCE_AGENT.id) return "DENY";
+  if (agentId !== TRAINER_INTELLIGENCE_AGENT.id && agentId !== EVIDENCE_TRIAGE_AGENT.id) return "DENY";
   return requested === "READ" ? "ALLOW_READ" : "ALLOW_PROPOSE";
 }

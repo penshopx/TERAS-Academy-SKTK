@@ -143,6 +143,7 @@ import type {
   RoleAssignmentInput,
   TrainerDashboard,
   TrainerEvidenceReviewInput,
+  TrainerEvidenceTriageRun,
   TrainerIntelligenceRun,
   TrainerPracticeReviewInput,
   TrainerRemediationOpen,
@@ -2513,6 +2514,77 @@ export const useCreateTrainerIntelligenceRun = <TError = ErrorType<BadRequestRes
         TContext
       > => {
       return useMutation(getCreateTrainerIntelligenceRunMutationOptions(options));
+    }
+
+export const getCreateTrainerEvidenceTriageRunUrl = () => {
+
+
+
+
+  return `/api/trainer/evidence-triage/runs`
+}
+
+/**
+ * @summary Explicitly request read-only evidence triage for assigned Path A
+ */
+export const createTrainerEvidenceTriageRun = async ( options?: Parameters<typeof customFetch>[1]): Promise<TrainerEvidenceTriageRun> => {
+
+  return customFetch<TrainerEvidenceTriageRun>(getCreateTrainerEvidenceTriageRunUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCreateTrainerEvidenceTriageRunMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTrainerEvidenceTriageRun>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTrainerEvidenceTriageRun>>, TError,void, TContext> => {
+
+const mutationKey = ['createTrainerEvidenceTriageRun'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTrainerEvidenceTriageRun>>, void> = () => {
+
+
+          return  createTrainerEvidenceTriageRun(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTrainerEvidenceTriageRunMutationResult = NonNullable<Awaited<ReturnType<typeof createTrainerEvidenceTriageRun>>>
+
+    export type CreateTrainerEvidenceTriageRunMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | ErrorResponse>
+
+    /**
+ * @summary Explicitly request read-only evidence triage for assigned Path A
+ */
+export const useCreateTrainerEvidenceTriageRun = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTrainerEvidenceTriageRun>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTrainerEvidenceTriageRun>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getCreateTrainerEvidenceTriageRunMutationOptions(options));
     }
 
 export const getGetTrainerReminderPreferencesUrl = () => {

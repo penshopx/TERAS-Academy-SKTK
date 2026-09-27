@@ -3459,6 +3459,80 @@ export interface TrainerIntelligenceRun {
   model: string | null;
 }
 
+export interface TrainerEvidenceTriageItem {
+  learnerId: string;
+  learnerName: string;
+  pathwayId: string;
+  moduleId: string;
+  evidenceRef: string;
+}
+
+export type TrainerEvidenceTriageCategoryCategory = typeof TrainerEvidenceTriageCategoryCategory[keyof typeof TrainerEvidenceTriageCategoryCategory];
+
+
+export const TrainerEvidenceTriageCategoryCategory = {
+  NEEDS_REVISION: 'NEEDS_REVISION',
+  INCOMPLETE_QUALITY: 'INCOMPLETE_QUALITY',
+  TYPE_MISMATCH: 'TYPE_MISMATCH',
+  MISSING_SUBMISSION: 'MISSING_SUBMISSION',
+  AWAITING_REVIEW: 'AWAITING_REVIEW',
+} as const;
+
+export type TrainerEvidenceTriageCategoryPriority = typeof TrainerEvidenceTriageCategoryPriority[keyof typeof TrainerEvidenceTriageCategoryPriority];
+
+
+export const TrainerEvidenceTriageCategoryPriority = {
+  High: 'High',
+  Normal: 'Normal',
+} as const;
+
+export interface TrainerEvidenceTriageCategory {
+  category: TrainerEvidenceTriageCategoryCategory;
+  label: string;
+  priority: TrainerEvidenceTriageCategoryPriority;
+  count: number;
+  action: string;
+  items: TrainerEvidenceTriageItem[];
+  omittedCount: number;
+}
+
+export type TrainerEvidenceTriageRunStatus = typeof TrainerEvidenceTriageRunStatus[keyof typeof TrainerEvidenceTriageRunStatus];
+
+
+export const TrainerEvidenceTriageRunStatus = {
+  PLANNED: 'PLANNED',
+  RUNNING: 'RUNNING',
+  COMPLETED: 'COMPLETED',
+  FAILED: 'FAILED',
+  PARTIAL: 'PARTIAL',
+} as const;
+
+export type TrainerEvidenceTriageRunPolicyDecision = typeof TrainerEvidenceTriageRunPolicyDecision[keyof typeof TrainerEvidenceTriageRunPolicyDecision];
+
+
+export const TrainerEvidenceTriageRunPolicyDecision = {
+  ALLOW_READ: 'ALLOW_READ',
+  ALLOW_PROPOSE: 'ALLOW_PROPOSE',
+  REQUIRES_APPROVAL: 'REQUIRES_APPROVAL',
+  DENY: 'DENY',
+} as const;
+
+export interface TrainerEvidenceTriageRun {
+  runId: string;
+  status: TrainerEvidenceTriageRunStatus;
+  agentId: string;
+  agentVersion: string;
+  policyDecision: TrainerEvidenceTriageRunPolicyDecision;
+  asOf: string;
+  categories: TrainerEvidenceTriageCategory[];
+  limitations: string[];
+  advisoryNotice: string;
+  /** @nullable */
+  provider: string | null;
+  /** @nullable */
+  model: string | null;
+}
+
 export interface AssessorDashboard {
   assessor: LearnerProfile;
   pendingAssessmentCount: number;

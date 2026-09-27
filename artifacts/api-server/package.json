@@ -62,6 +62,7 @@
     "test:browser-portfolio-file-limit": "NODE_ENV=test tsx ./src/browser-portfolio-file-limit.integration.ts",
     "test:agentic-contracts": "NODE_ENV=test tsx --test ./src/lib/agentic.test.ts",
     "test:agentic-integration": "NODE_ENV=test tsx ./src/trainer-intelligence.integration-runner.ts",
+    "test:evidence-triage": "NODE_ENV=test tsx ./src/evidence-triage.integration-runner.ts",
     "test:agent-observability": "NODE_ENV=test tsx ./src/agent-observability.integration.ts",
     "test:browser-admin-access": "NODE_ENV=test tsx ./src/browser-admin-access.integration.ts",
     "test:regulatory-references": "bash ./path-b-regulatory.integration.test.sh",

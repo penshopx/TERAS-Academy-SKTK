@@ -2324,6 +2324,38 @@ export const CreateTrainerIntelligenceRunResponse = zod.object({
 
 
 /**
+ * @summary Explicitly request read-only evidence triage for assigned Path A
+ */
+export const CreateTrainerEvidenceTriageRunResponse = zod.object({
+  "runId": zod.string(),
+  "status": zod.enum(['PLANNED', 'RUNNING', 'COMPLETED', 'FAILED', 'PARTIAL']),
+  "agentId": zod.string(),
+  "agentVersion": zod.string(),
+  "policyDecision": zod.enum(['ALLOW_READ', 'ALLOW_PROPOSE', 'REQUIRES_APPROVAL', 'DENY']),
+  "asOf": zod.coerce.date(),
+  "categories": zod.array(zod.object({
+  "category": zod.enum(['NEEDS_REVISION', 'INCOMPLETE_QUALITY', 'TYPE_MISMATCH', 'MISSING_SUBMISSION', 'AWAITING_REVIEW']),
+  "label": zod.string(),
+  "priority": zod.enum(['High', 'Normal']),
+  "count": zod.int(),
+  "action": zod.string(),
+  "items": zod.array(zod.object({
+  "learnerId": zod.string(),
+  "learnerName": zod.string(),
+  "pathwayId": zod.string(),
+  "moduleId": zod.string(),
+  "evidenceRef": zod.string()
+})),
+  "omittedCount": zod.int()
+})),
+  "limitations": zod.array(zod.string()),
+  "advisoryNotice": zod.string(),
+  "provider": zod.string().nullable(),
+  "model": zod.string().nullable()
+})
+
+
+/**
  * @summary Get the current trainer email reminder preferences
  */
 export const getTrainerReminderPreferencesResponseQuietHoursStartRegExp = new RegExp('^([01][0-9]|2[0-3]):[0-5][0-9]$');

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
-import { CreateTrainerIntelligenceRunResponse, GetTrainerDashboardResponse, GetTrainerReminderPreferenceHistoryResponse, GetTrainerReminderPreferencesResponse, GetTrainerReviewQueueResponse, OpenTrainerRemediationBody, OpenTrainerRemediationResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse, UpdateTrainerReminderPreferencesBody, UpdateTrainerReminderPreferencesResponse } from "@workspace/api-zod";
+import { CreateTrainerEvidenceTriageRunResponse, CreateTrainerIntelligenceRunResponse, GetTrainerDashboardResponse, GetTrainerReminderPreferenceHistoryResponse, GetTrainerReminderPreferencesResponse, GetTrainerReviewQueueResponse, OpenTrainerRemediationBody, OpenTrainerRemediationResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse, UpdateTrainerReminderPreferencesBody, UpdateTrainerReminderPreferencesResponse } from "@workspace/api-zod";
 import { db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, trainerReminderPreferencesTable } from "@workspace/db";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { evidenceRecords, gapRecords, pathwayHasModule, remediationRecords, workspaceAssignmentContexts } from "../lib/teras";
@@ -9,6 +9,7 @@ import { learningNextAction } from "../lib/learning-transition";
 import { latestPracticeReviewRows, latestPracticeReviews, practiceQueueState, recentPracticeReviewRows, scopedPracticeQueue, trainerBottlenecks } from "../lib/trainer-bottlenecks";
 import { hasValidQuietHours, isValidIanaTimeZone, reminderDeliveryAvailability } from "../lib/trainer-follow-up-notifications";
 import { createTrainerIntelligenceRun } from "../lib/trainer-intelligence";
+import { createEvidenceTriageRun } from "../lib/evidence-triage";
 
 const router: IRouter = Router();
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
@@ -218,6 +219,14 @@ router.post("/trainer/intelligence/runs", async (req, res): Promise<void> => {
   if (req.body && Object.keys(req.body).length > 0) { res.status(400).json({ error: "Trainer intelligence accepts no request fields." }); return; }
   const result = await createTrainerIntelligenceRun(trainerId);
   res.json(CreateTrainerIntelligenceRunResponse.parse(result));
+});
+router.post("/trainer/evidence-triage/runs", async (req, res): Promise<void> => {
+  const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;
+  if (req.body && (typeof req.body !== "object" || Array.isArray(req.body) || Object.keys(req.body).length > 0)) {
+    res.status(400).json({ error: "Evidence triage accepts no request fields." }); return;
+  }
+  const result = await createEvidenceTriageRun(trainerId);
+  res.json(CreateTrainerEvidenceTriageRunResponse.parse(result));
 });
 router.get("/trainer/reminder-preferences", async (req, res): Promise<void> => {
   const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;

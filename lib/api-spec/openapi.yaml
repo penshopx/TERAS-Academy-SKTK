@@ -523,6 +523,22 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "500": { description: Server failure, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
+  /trainer/evidence-triage/runs:
+    post:
+      operationId: createTrainerEvidenceTriageRun
+      tags: [trainer]
+      summary: Explicitly request read-only evidence triage for assigned Path A
+      responses:
+        "200":
+          description: Evidence triage advisory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainerEvidenceTriageRun"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { description: Server failure, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
   /trainer/reminder-preferences:
     get:
       operationId: getTrainerReminderPreferences
@@ -5043,6 +5059,41 @@ components:
         provider: { type: ["string", "null"] }
         model: { type: ["string", "null"] }
       required: [runId, status, agentId, agentVersion, policyDecision, asOf, claims, limitations, recommendedActions, sourceRefs, advisoryNotice, provider, model]
+    TrainerEvidenceTriageItem:
+      type: object
+      properties:
+        learnerId: { type: string }
+        learnerName: { type: string }
+        pathwayId: { type: string }
+        moduleId: { type: string }
+        evidenceRef: { type: string }
+      required: [learnerId, learnerName, pathwayId, moduleId, evidenceRef]
+    TrainerEvidenceTriageCategory:
+      type: object
+      properties:
+        category: { type: string, enum: [NEEDS_REVISION, INCOMPLETE_QUALITY, TYPE_MISMATCH, MISSING_SUBMISSION, AWAITING_REVIEW] }
+        label: { type: string }
+        priority: { type: string, enum: [High, Normal] }
+        count: { type: integer }
+        action: { type: string }
+        items: { type: array, items: { $ref: "#/components/schemas/TrainerEvidenceTriageItem" } }
+        omittedCount: { type: integer }
+      required: [category, label, priority, count, action, items, omittedCount]
+    TrainerEvidenceTriageRun:
+      type: object
+      properties:
+        runId: { type: string }
+        status: { type: string, enum: [PLANNED, RUNNING, COMPLETED, FAILED, PARTIAL] }
+        agentId: { type: string }
+        agentVersion: { type: string }
+        policyDecision: { type: string, enum: [ALLOW_READ, ALLOW_PROPOSE, REQUIRES_APPROVAL, DENY] }
+        asOf: { type: string, format: date-time }
+        categories: { type: array, items: { $ref: "#/components/schemas/TrainerEvidenceTriageCategory" } }
+        limitations: { type: array, items: { type: string } }
+        advisoryNotice: { type: string }
+        provider: { type: ["string", "null"] }
+        model: { type: ["string", "null"] }
+      required: [runId, status, agentId, agentVersion, policyDecision, asOf, categories, limitations, advisoryNotice, provider, model]
     TrainerBottleneckSummary:
       type: object
       properties:
