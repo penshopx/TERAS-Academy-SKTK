@@ -367,6 +367,35 @@ async function run() {
         && !malformedResult.stderr.includes(retiredPublicPem),
       `Malformed ${malformed.label} rejection must not expose public key material`);
     }
+    const invalidPemValues = [
+      { label: "empty PEM", value: "" },
+      { label: "truncated PEM", value: `${publicPem.slice(0, 40)}secret-truncated-key` },
+      { label: "non-PEM text", value: "secret-not-a-pem" },
+      { label: "private key PEM", value: privatePem },
+    ];
+    for (const invalid of invalidPemValues) {
+      const manifest = {
+        ...publicKeys,
+        keys: [
+          publicKeys.keys[1],
+          { ...publicKeys.keys[0], publicKeyPem: invalid.value },
+        ],
+      };
+      await writeFile(keysPath, JSON.stringify(manifest));
+      const invalidResult = await runVerifier(exported);
+      assert(!invalidResult.accepted, `Official verifier must reject ${invalid.label}`);
+      assert(invalidResult.stderr.trim() === "FAILED: invalid public key manifest: keys[1].publicKeyPem must be a valid public key PEM",
+        `${invalid.label} rejection must identify the manifest index and field without exposing crypto parser details`);
+      assert(!invalidResult.stderr.includes(invalid.value || publicPem)
+        && !invalidResult.stderr.includes(privatePem)
+        && !invalidResult.stderr.includes("secret-"),
+      `${invalid.label} rejection must not expose key material`);
+    }
+    await writeFile(keysPath, `${publicPem.slice(0, 40)}secret-truncated-key`);
+    const truncatedStandalonePem = await runVerifier(exported);
+    assert(!truncatedStandalonePem.accepted, "Official verifier must reject truncated standalone PEM");
+    assert(truncatedStandalonePem.stderr.trim() === "FAILED: invalid public key manifest: keys[0].publicKeyPem must be a valid public key PEM",
+      "Standalone PEM rejection must identify the same manifest field without crypto parser details");
     const invalidJsonKeyDocuments = [
       {
         label: "truncated JSON",

@@ -48,6 +48,7 @@ try {
     throw new Error("invalid public key manifest: keys must be an array");
   }
   const keyIdByVersion = new Map();
+  const parsedPublicKeys = new Map();
   for (const [index, candidate] of keyDocument.keys.entries()) {
     if (typeof candidate?.keyId !== "string") {
       throw new Error(`invalid public key manifest: keys[${index}].keyId must be a string`);
@@ -61,6 +62,15 @@ try {
     if (typeof candidate.publicKeyPem !== "string") {
       throw new Error(`invalid public key manifest: keys[${index}].publicKeyPem must be a string`);
     }
+    const invalidPemMessage = `invalid public key manifest: keys[${index}].publicKeyPem must be a valid public key PEM`;
+    if (!candidate.publicKeyPem.trimStart().startsWith("-----BEGIN PUBLIC KEY-----")) {
+      throw new Error(invalidPemMessage);
+    }
+    try {
+      parsedPublicKeys.set(index, createPublicKey(candidate.publicKeyPem));
+    } catch {
+      throw new Error(invalidPemMessage);
+    }
     const existingKeyId = keyIdByVersion.get(candidate.version);
     if (existingKeyId !== undefined && existingKeyId !== candidate.keyId) {
       throw new Error(
@@ -69,10 +79,10 @@ try {
     }
     keyIdByVersion.set(candidate.version, candidate.keyId);
   }
-  const key = keyDocument.keys.find(candidate => candidate.keyId === signature.keyId
+  const keyIndex = keyDocument.keys.findIndex(candidate => candidate.keyId === signature.keyId
     && candidate.version === signature.keyVersion && candidate.algorithm === "Ed25519");
-  if (!key) throw new Error(`public key not found for ${signature.keyId} version ${signature.keyVersion}`);
-  const publicKey = createPublicKey(key.publicKeyPem);
+  if (keyIndex === -1) throw new Error(`public key not found for ${signature.keyId} version ${signature.keyVersion}`);
+  const publicKey = parsedPublicKeys.get(keyIndex);
   if (publicKey.asymmetricKeyType !== "ed25519"
     || !verify(null, Buffer.from(expected, "hex"), publicKey, Buffer.from(signature.value, "base64"))) {
     throw new Error("digital signature verification failed");
