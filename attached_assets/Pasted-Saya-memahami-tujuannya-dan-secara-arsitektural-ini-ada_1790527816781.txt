@@ -1,0 +1,78 @@
+Saya memahami tujuannya, dan secara arsitektural ini adalah milestone yang logis — Evidence Triage Agent memang agen read-only yang tepat untuk dibangun di atas control plane yang sudah tervalidasi.
+
+Namun, sebelum saya mulai, saya harus menarik perhatian Anda pada **inkonsistensi dengan kesepakatan yang sudah kita kunci sebelumnya**. Saya tidak bisa melanjutkan tanpa mengklarifikasi ini terlebih dahulu, karena prinsip disiplin arsitektural yang kita pegang bersama.
+
+## Inkonsistensi dengan Urutan Terkunci
+
+Dalam percakapan sebelumnya, kita secara eksplisit mengunci urutan ini:
+
+```text
+Verified Operational Baseline (Path A)
+        ↓
+Evidence Triage discovery
+        ↓
+Evidence Triage implementation
+```
+
+Dan kita sepakat:
+> *"Menyusun RFC Evidence Triage ditunda. Walaupun hanya discovery, Task #223 masih menunggu dan urutan yang sudah disepakati adalah..."*
+> *"Walaupun hanya discovery, kita bisa mulai menyusun dokumen RFC/Discovery sekarang... Saat baseline tercapai, kita tinggal langsung implementasi tanpa harus discovery dari nol."* — ini pun saya tawarkan, dan Anda pilih untuk **menunda RFC** sampai baseline tercapai.
+
+## Status Saat Ini vs. Prasyarat Evidence Triage
+
+| Prasyarat | Status |
+|---|---|
+| Verified Operational Baseline (Path A) | ⏸ **Belum tercapai** — masih menunggu 100+ real runs + 14 hari |
+| Task #225 — Runbook monitoring | ⏸ **PENDING** (batas konkurensi) |
+| Domain SKTTK konkret (unit, elemen, KUK per bidang) | ❌ **Belum ada** — baru ada pedoman penyusunan (Permen 6/2021) |
+| Canonical evidence queue | ❌ **Belum didefinisikan** |
+| Fact codes yang diizinkan | ❌ **Belum didefinisikan** |
+| Definisi prioritas & tie-breaker | ❌ **Belum didefinisikan** |
+| Kontrak evidence references | ❌ **Belum didefinisikan** |
+| Acceptance criteria false prioritization | ❌ **Belum didefinisikan** |
+
+## Risiko Jika Dipaksakan Sekarang
+
+Jika saya membangun Evidence Triage Agent sekarang, saya akan terpaksa melakukan salah satu dari:
+
+1. **Mengarang domain rules** — melanggar prinsip zero-hallucination yang kita pegang sejak awal Path B. Saya tidak punya SKTTK per bidang konkret (hanya pedoman penyusunan), jadi saya tidak tahu fact codes mana yang valid, queue mana yang canonical, atau tie-breaker mana yang sesuai regulasi.
+
+2. **Mengunci asumsi prematurely** — RFC yang ditulis sekarang akan menjadi de-facto specification, padahal kita belum punya signal operasional dari agent pertama untuk memvalidasi asumsi tersebut.
+
+3. **Melewati Validasi Operasional** — agent kedua di atas agent pertama yang belum teruji secara operasional akan melipatgandakan kompleksitas dan risiko, persis seperti yang kita hindari di keputusan sebelumnya.
+
+## Rekomendasi Jalur Aman
+
+Saya melihat tiga opsi yang menjaga disiplin arsitektural:
+
+### Opsi A — Tegas pada Urutan Terkunci (Paling Konsisten)
+Tunda Evidence Triage sampai:
+1. Path A mencapai Verified Operational Baseline (100+ real runs + 14 hari + semua quality gate PASS)
+2. Task #225 (Runbook) selesai
+3. SKTTK per bidang konkret tersedia (bukan hanya pedoman penyusunan)
+4. Discovery RFC dilakukan dengan data operasional nyata
+
+### Opsi B — Discovery Ringan Tanpa Mengunci Asumsi
+Saya susun **discovery document** yang hanya berisi:
+- Daftar pertanyaan yang perlu dijawab sebelum implementasi
+- Daftar kandidat fact codes dari Permen 6/2021 (tanpa memilih)
+- Daftar kandidat tie-breaker rules (tanpa memilih)
+- Daftar acceptance criteria yang perlu divalidasi
+
+Dokumen ini **tidak menghasilkan kode**, hanya menyiapkan pertanyaan. Saat baseline tercapai, kita tinggal menjawab pertanyaan ini dengan data nyata.
+
+### Opsi C — Ubah Kesepakatan Secara Eksplisit
+Jika Anda memang ingin mengubah urutan, saya perlu **konfirmasi eksplisit** bahwa:
+- Anda sadar ini menyimpang dari urutan terkunci
+- Anda menerima risiko mengarang domain rules atau mengunci asumsi prematurely
+- Anda memberikan assignment eksplisit (task number) untuk Evidence Triage Agent
+
+## Pertanyaan untuk Anda
+
+Sebelum saya mengambil tindakan, tolong konfirmasi:
+
+1. **Apakah Anda ingin mengubah kesepakatan urutan secara eksplisit?** Jika ya, opsi mana (A/B/C)?
+2. **Apakah ada SKTTK per bidang konkret** (misal: SKTTK Pembangkit, SKTTK Transmisi) yang bisa saya gunakan sebagai rujukan domain? Tanpa ini, saya tidak bisa membangun agent tanpa mengarang.
+3. **Apakah Task #225 sudah selesai atau masih PENDING?** Ini mempengaruhi apakah kita bisa lanjut ke task berikutnya.
+
+Saya lebih memilih menunggu klarifikasi daripada membangun sesuatu yang melanggar prinsip yang sudah kita sepakati bersama. Disiplin ini yang membuat fondasi Path B nanti bisa dipercaya secara regulasi.
