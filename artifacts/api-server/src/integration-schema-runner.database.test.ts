@@ -896,6 +896,68 @@ test("a timed out setup is killed, prevents the test file, and cleans up its sch
   }
 });
 
+test("a timed out setup under a real role without CREATEDB kills its database session and removes the schema", {
+  skip: !databaseUrl,
+}, async () => {
+  const admin = new Client({ connectionString: databaseUrl });
+  const contractPrefix = "schema_runner_ci_timeout";
+  const command = [
+    "pnpm",
+    "--filter",
+    "@workspace/api-server",
+    "exec",
+    "tsx",
+    hangFixture,
+  ] as const;
+  let temporaryRoleName = "";
+  await admin.connect();
+  try {
+    await withNoCreateDbRole(admin, async (roleDatabaseUrl, roleName) => {
+      temporaryRoleName = roleName;
+      const previousDatabaseUrl = process.env.DATABASE_URL;
+      process.env.DATABASE_URL = roleDatabaseUrl;
+      try {
+        await withMarkerFile(async (markerFile) => {
+          await assert.rejects(
+            runIsolatedIntegrationTest({
+              schemaPrefix: contractPrefix,
+              testFile: afterSetupFixture,
+              setupCommand: command,
+              setupTimeoutMs: 3_000,
+              setupEnvironment: { SCHEMA_RUNNER_EXPECTED_ROLE: roleName },
+            }),
+            new RegExp(
+              `Integration command ${command.join(" ")} timed out after 3000ms`,
+            ),
+          );
+          const marker = await readFile(markerFile, "utf8");
+          const match = /^backend:(\d+)\nsetup\n$/.exec(marker);
+          assert.ok(match, `Expected the restricted fixture to connect before timing out: ${marker}`);
+          const backend = await admin.query(
+            "SELECT 1 FROM pg_stat_activity WHERE pid = $1",
+            [Number(match[1])],
+          );
+          assert.equal(backend.rowCount, 0);
+          const schemas = await admin.query<{ schema_name: string }>(
+            `SELECT nspname AS schema_name FROM pg_namespace WHERE nspname LIKE $1 ESCAPE '\\'`,
+            [`${contractPrefix.replaceAll("_", "\\_")}_%`],
+          );
+          assert.deepEqual(schemas.rows, []);
+        });
+      } finally {
+        process.env.DATABASE_URL = previousDatabaseUrl;
+      }
+    });
+    const role = await admin.query(
+      "SELECT 1 FROM pg_roles WHERE rolname = $1",
+      [temporaryRoleName],
+    );
+    assert.equal(role.rowCount, 0);
+  } finally {
+    await admin.end();
+  }
+});
+
 test("a timed out setup is killed and removes its empty disposable database", {
   skip: !databaseUrl,
 }, async () => {
