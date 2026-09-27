@@ -22,6 +22,13 @@ try {
     "SELECT current_schema()",
   );
   assert.equal(currentSchema.rows[0]?.current_schema, searchPath);
+  if (process.env.SCHEMA_RUNNER_EXPECTED_ROLE) {
+    const role = await client.query<{ current_role: string; rolcreatedb: boolean }>(
+      "SELECT current_user AS current_role, rolcreatedb FROM pg_roles WHERE rolname = current_user",
+    );
+    assert.equal(role.rows[0]?.current_role, process.env.SCHEMA_RUNNER_EXPECTED_ROLE);
+    assert.equal(role.rows[0]?.rolcreatedb, false);
+  }
   await client.query(`
     CREATE TABLE schema_runner_setup_contract (
       environment_value text NOT NULL

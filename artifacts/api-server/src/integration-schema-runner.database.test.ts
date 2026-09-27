@@ -785,45 +785,54 @@ test("schema mode succeeds while empty-database mode diagnoses CREATEDB for a re
 test("a failing setup command prevents the test file from running", {
   skip: !databaseUrl,
 }, async () => {
-  const client = new Client({ connectionString: databaseUrl });
+  const admin = new Client({ connectionString: databaseUrl });
   const contractPrefix =
     `schema_runner_setup_f_${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`;
-  await client.connect();
+  await admin.connect();
   try {
-    await withMarkerFile(async (markerFile) => {
-      await assert.rejects(
-        runIsolatedIntegrationTest({
-          schemaPrefix: contractPrefix,
-          testFile: afterSetupFixture,
-          setupCommand: [
-            "pnpm",
-            "--filter",
-            "@workspace/api-server",
-            "exec",
-            "tsx",
-            setupFixture,
-          ],
-          setupEnvironment: {
-            SCHEMA_RUNNER_EXPECTED_ENV: "setup-environment-value",
-            SCHEMA_RUNNER_SETUP_SHOULD_FAIL: "true",
-          },
-        }),
-        /failed with exit code 1/,
-      );
+    await withNoCreateDbRole(admin, async (roleDatabaseUrl, roleName) => {
+      const previousDatabaseUrl = process.env.DATABASE_URL;
+      process.env.DATABASE_URL = roleDatabaseUrl;
+      try {
+        await withMarkerFile(async (markerFile) => {
+          await assert.rejects(
+            runIsolatedIntegrationTest({
+              schemaPrefix: contractPrefix,
+              testFile: afterSetupFixture,
+              setupCommand: [
+                "pnpm",
+                "--filter",
+                "@workspace/api-server",
+                "exec",
+                "tsx",
+                setupFixture,
+              ],
+              setupEnvironment: {
+                SCHEMA_RUNNER_EXPECTED_ENV: "setup-environment-value",
+                SCHEMA_RUNNER_EXPECTED_ROLE: roleName,
+                SCHEMA_RUNNER_SETUP_SHOULD_FAIL: "true",
+              },
+            }),
+            /failed with exit code 1/,
+          );
 
-      assert.equal(await readFile(markerFile, "utf8"), "setup\n");
-      const remainingSchemas = await client.query<{ schema_name: string }>(
-        `
-          SELECT schema_name
-          FROM information_schema.schemata
-          WHERE schema_name LIKE $1 ESCAPE '\\'
-        `,
-        [`${contractPrefix.replaceAll("_", "\\_")}_%`],
-      );
-      assert.deepEqual(remainingSchemas.rows, []);
+          assert.equal(await readFile(markerFile, "utf8"), "setup\n");
+          const remainingSchemas = await admin.query<{ schema_name: string }>(
+            `
+              SELECT schema_name
+              FROM information_schema.schemata
+              WHERE schema_name LIKE $1 ESCAPE '\\'
+            `,
+            [`${contractPrefix.replaceAll("_", "\\_")}_%`],
+          );
+          assert.deepEqual(remainingSchemas.rows, []);
+        });
+      } finally {
+        process.env.DATABASE_URL = previousDatabaseUrl;
+      }
     });
   } finally {
-    const remainingSchemas = await client.query<{ schema_name: string }>(
+    const remainingSchemas = await admin.query<{ schema_name: string }>(
       `
         SELECT schema_name
         FROM information_schema.schemata
@@ -832,9 +841,9 @@ test("a failing setup command prevents the test file from running", {
       [`${contractPrefix.replaceAll("_", "\\_")}_%`],
     );
     for (const { schema_name: remainingSchema } of remainingSchemas.rows) {
-      await client.query(`DROP SCHEMA IF EXISTS "${remainingSchema}" CASCADE`);
+      await admin.query(`DROP SCHEMA IF EXISTS "${remainingSchema}" CASCADE`);
     }
-    await client.end();
+    await admin.end();
   }
 });
 
