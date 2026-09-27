@@ -451,9 +451,23 @@ export async function cancelBaselineDraft(
 }
 
 export async function listBaselineVersions(baselineId: string) {
-  return db.select().from(learningBaselineVersionsTable)
+  const table = learningBaselineVersionsTable;
+  return db.select({
+    id: table.id, baselineId: table.baselineId, version: table.version, status: table.status,
+    createdAt: table.createdAt, createdBy: table.createdBy,
+    publishedAt: table.publishedAt, publishedBy: table.publishedBy,
+    cancelledAt: table.cancelledAt, cancelledBy: table.cancelledBy,
+  }).from(table)
     .where(eq(learningBaselineVersionsTable.baselineId, baselineId))
     .orderBy(desc(learningBaselineVersionsTable.version));
+}
+
+export async function getBaselineVersion(baselineId: string, versionId: string) {
+  const [version] = await db.select().from(learningBaselineVersionsTable).where(and(
+    eq(learningBaselineVersionsTable.baselineId, baselineId),
+    eq(learningBaselineVersionsTable.id, versionId),
+  )).limit(1);
+  return version ?? null;
 }
 
 export async function listManagedBaselines(manager: { id: string; global: boolean }) {

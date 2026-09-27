@@ -11,7 +11,7 @@ import {
   UpdateBaselineDraftBody, UpdateBaselineDraftParams, UpdateBaselineDraftResponse,
   PublishBaselineVersionParams, PublishBaselineVersionResponse,
   PreviewBaselinePublicationParams, PreviewBaselinePublicationResponse, PublishBaselineVersionBody,
-  ListBaselineVersionsParams, ListBaselineVersionsResponse,
+  ListBaselineVersionsParams, ListBaselineVersionsResponse, GetBaselineVersionParams, GetBaselineVersionResponse,
   ListManagedBaselinesResponse,
   ListBaselineAuditParams, ListBaselineAuditResponse,
   ValidateAuthoredCourseParams, ValidateAuthoredCourseResponse,
@@ -20,7 +20,7 @@ import { authorizeBaselineManager, authorizeWorkspaceRole, type BaselineManager 
 import { applyCourseAuthoring, authoredCourse, courseAudit, coursePreview, courseVersions, listAuthoredCourses, publishCourse, trainerHasAssignment, validateCourse } from "../lib/course-authoring";
 import { db, enrollmentsTable } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
-import { baselineAudit, baselinePathwayIds, baselinePublicationPreview, cancelBaselineDraft, createBaselineDraft, listBaselineVersions, listManagedBaselines, publishBaseline, snapshotPathwayIds, updateBaselineDraft } from "../lib/baseline-authoring";
+import { baselineAudit, baselinePathwayIds, baselinePublicationPreview, cancelBaselineDraft, createBaselineDraft, getBaselineVersion, listBaselineVersions, listManagedBaselines, publishBaseline, snapshotPathwayIds, updateBaselineDraft } from "../lib/baseline-authoring";
 
 const router: IRouter = Router();
 async function requireBaselineScope(baselineId: string, manager: BaselineManager, res: Response, additionalPathways: Iterable<string> = []) {
@@ -119,6 +119,17 @@ router.get("/trainer/authoring/baselines/:baselineId/versions", async (req, res)
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   if (!await requireBaselineScope(parsed.data.baselineId, manager, res)) return;
   res.json(ListBaselineVersionsResponse.parse(await listBaselineVersions(parsed.data.baselineId)));
+});
+
+router.get("/trainer/authoring/baselines/:baselineId/versions/:versionId", async (req, res): Promise<void> => {
+  const manager = await authorizeBaselineManager(req, res);
+  if (!manager) return;
+  const parsed = GetBaselineVersionParams.safeParse(req.params);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!await requireBaselineScope(parsed.data.baselineId, manager, res)) return;
+  const version = await getBaselineVersion(parsed.data.baselineId, parsed.data.versionId);
+  if (!version) { res.status(404).json({ error: "Baseline version not found" }); return; }
+  res.json(GetBaselineVersionResponse.parse(version));
 });
 
 router.get("/trainer/authoring/baselines/:baselineId/audit", async (req, res): Promise<void> => {

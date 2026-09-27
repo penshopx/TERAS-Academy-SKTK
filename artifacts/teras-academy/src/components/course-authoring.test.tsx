@@ -136,16 +136,11 @@ test("baseline history shows cancelled versions as read-only with audit details"
     versions={[
       {
         id: "v3", baselineId: "baseline-1", version: 3, status: "CANCELLED",
-        snapshot: {
-          baseline: { code: "CANCELLED-CORE", name: "Snapshot yang ditutup" },
-          modules: [{ id: "baseline-module-closed", code: "MOD-CLOSED", name: "Modul cancelled" }],
-          selections: [{ pathwayId: "pathway-closed", baselineModuleId: "baseline-module-closed", sequence: 1 }],
-        },
         createdAt: "2026-09-16T08:00:00.000Z", createdBy: "author-1", publishedAt: null, publishedBy: null,
         cancelledAt: "2026-09-16T09:00:00.000Z", cancelledBy: "manager-fallback",
       },
-      { id: "v2", baselineId: "baseline-1", version: 2, status: "PUBLISHED", snapshot: {}, createdAt: "2026-09-15T08:00:00.000Z", createdBy: "author-1", publishedAt: "2026-09-15T09:00:00.000Z", publishedBy: "manager-1", cancelledAt: null, cancelledBy: null },
-      { id: "v4", baselineId: "baseline-1", version: 4, status: "DRAFT", snapshot: {}, createdAt: "2026-09-16T10:00:00.000Z", createdBy: "author-2", publishedAt: null, publishedBy: null, cancelledAt: null, cancelledBy: null },
+      { id: "v2", baselineId: "baseline-1", version: 2, status: "PUBLISHED", createdAt: "2026-09-15T08:00:00.000Z", createdBy: "author-1", publishedAt: "2026-09-15T09:00:00.000Z", publishedBy: "manager-1", cancelledAt: null, cancelledBy: null },
+      { id: "v4", baselineId: "baseline-1", version: 4, status: "DRAFT", createdAt: "2026-09-16T10:00:00.000Z", createdBy: "author-2", publishedAt: null, publishedBy: null, cancelledAt: null, cancelledBy: null },
     ]}
     audit={[{
       id: "audit-cancel", baselineId: "baseline-1", versionId: "v3", action: "CANCEL_DRAFT", actorId: "manager-2",
@@ -157,9 +152,7 @@ test("baseline history shows cancelled versions as read-only with audit details"
   assert.match(html, /Actor:.*manager-2/);
   assert.match(html, /Alasan pembatalan:.*Diganti oleh draft koreksi/);
   assert.match(html, /Tinjau isi snapshot yang ditutup/);
-  assert.match(html, /CANCELLED-CORE/);
-  assert.match(html, /MOD-CLOSED/);
-  assert.match(html, /pathway-closed/);
+  assert.doesNotMatch(html, /cancelled-baseline-snapshot/, "snapshot is fetched only when a version is opened");
   assert.match(html, /AKTIF/);
   assert.match(html, /DRAFT — dapat ditindaklanjuti/);
   assert.doesNotMatch(html, /Tutup draft|Publikasikan baseline/);
@@ -170,13 +163,12 @@ test("baseline version history remains reviewable without audit enrichment", () 
     activeVersion={null}
     versions={[{
       id: "v5", baselineId: "baseline-1", version: 5, status: "CANCELLED",
-      snapshot: { baseline: { name: "Persisted cancelled snapshot" }, modules: [], selections: [] },
       createdAt: "2026-09-16T08:00:00.000Z", createdBy: "author-1", publishedAt: null, publishedBy: null,
       cancelledAt: "2026-09-16T09:00:00.000Z", cancelledBy: "manager-fallback",
     }]}
     audit={[]}
   />);
-  assert.match(html, /Persisted cancelled snapshot/);
+  assert.match(html, /Tinjau isi snapshot yang ditutup/);
   assert.match(html, /manager-fallback/);
   assert.match(html, /Tidak tersedia pada audit lama/);
 });
@@ -187,8 +179,8 @@ test("baseline publish summaries stay attached to their exact published versions
   const html = renderToStaticMarkup(<BaselineVersionHistory
     activeVersion={2}
     versions={[
-      { id: "v2", baselineId: "baseline-1", version: 2, status: "PUBLISHED", snapshot: {}, createdAt: "2026-09-16T08:00:00.000Z", createdBy: "author-2", publishedAt: "2026-09-16T09:00:00.000Z", publishedBy: "manager-2", cancelledAt: null, cancelledBy: null },
-      { id: "v1", baselineId: "baseline-1", version: 1, status: "PUBLISHED", snapshot: {}, createdAt: "2026-09-15T08:00:00.000Z", createdBy: "author-1", publishedAt: "2026-09-15T09:00:00.000Z", publishedBy: "manager-1", cancelledAt: null, cancelledBy: null },
+      { id: "v2", baselineId: "baseline-1", version: 2, status: "PUBLISHED", createdAt: "2026-09-16T08:00:00.000Z", createdBy: "author-2", publishedAt: "2026-09-16T09:00:00.000Z", publishedBy: "manager-2", cancelledAt: null, cancelledBy: null },
+      { id: "v1", baselineId: "baseline-1", version: 1, status: "PUBLISHED", createdAt: "2026-09-15T08:00:00.000Z", createdBy: "author-1", publishedAt: "2026-09-15T09:00:00.000Z", publishedBy: "manager-1", cancelledAt: null, cancelledBy: null },
     ]}
     audit={[
       { id: "audit-v1", baselineId: "baseline-1", versionId: "v1", action: "PUBLISH", actorId: "manager-1", details: { version: 1, previewFingerprint: fingerprintV1, changedPathwayCount: 1, eligibleCohortCount: 11, preservedEnrollmentCount: 101 }, createdAt: "2026-09-15T09:00:00.000Z" },
@@ -210,7 +202,7 @@ test("legacy published baseline audits show an explicit review-summary fallback"
   const html = renderToStaticMarkup(<BaselineVersionHistory
     activeVersion={1}
     versions={[{
-      id: "legacy-v1", baselineId: "baseline-1", version: 1, status: "PUBLISHED", snapshot: {},
+      id: "legacy-v1", baselineId: "baseline-1", version: 1, status: "PUBLISHED",
       createdAt: "2026-09-15T08:00:00.000Z", createdBy: "author-1", publishedAt: "2026-09-15T09:00:00.000Z", publishedBy: "manager-1", cancelledAt: null, cancelledBy: null,
     }]}
     audit={[{

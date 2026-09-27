@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type BaselineVersionStatus = typeof BaselineVersionStatus[keyof typeof BaselineVersionStatus];
+export type BaselineVersionSummaryStatus = typeof BaselineVersionSummaryStatus[keyof typeof BaselineVersionSummaryStatus];
 
 
-export const BaselineVersionStatus = {
+export const BaselineVersionSummaryStatus = {
   DRAFT: 'DRAFT',
   PUBLISHED: 'PUBLISHED',
   CANCELLED: 'CANCELLED',

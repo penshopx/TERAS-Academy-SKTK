@@ -987,6 +987,18 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
   /trainer/authoring/baselines/{baselineId}/versions/{versionId}:
+    get:
+      operationId: getBaselineVersion
+      tags: [trainer]
+      parameters:
+        - $ref: "#/components/parameters/BaselineId"
+        - $ref: "#/components/parameters/BaselineVersionId"
+      responses:
+        "200": { description: Selected baseline version with full snapshot, content: { application/json: { schema: { $ref: "#/components/schemas/BaselineVersion" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
     patch:
       operationId: updateBaselineDraft
       tags: [trainer]
@@ -1009,7 +1021,7 @@ paths:
       tags: [trainer]
       parameters: [{ $ref: "#/components/parameters/BaselineId" }]
       responses:
-        "200": { description: Baseline version history, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/BaselineVersion" } } } } }
+        "200": { description: Baseline version summaries without snapshots, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/BaselineVersionSummary" } } } } }
   /trainer/authoring/baselines/{baselineId}/audit:
     get:
       operationId: listBaselineAudit
@@ -3437,21 +3449,27 @@ components:
         activeVersion: { type: ["integer", "null"] }
         draftCount: { type: integer, minimum: 0 }
       required: [baselineId, code, name, status, activeVersion, draftCount]
-    BaselineVersion:
+    BaselineVersionSummary:
       type: object
       properties:
         id: { type: string }
         baselineId: { type: string }
         version: { type: integer }
         status: { type: string, enum: [DRAFT, PUBLISHED, CANCELLED] }
-        snapshot: { type: object, additionalProperties: true }
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
         publishedAt: { type: ["string", "null"], format: date-time }
         publishedBy: { type: ["string", "null"] }
         cancelledAt: { type: ["string", "null"], format: date-time }
         cancelledBy: { type: ["string", "null"] }
-      required: [id, baselineId, version, status, snapshot, createdAt, createdBy, publishedAt, publishedBy, cancelledAt, cancelledBy]
+      required: [id, baselineId, version, status, createdAt, createdBy, publishedAt, publishedBy, cancelledAt, cancelledBy]
+    BaselineVersion:
+      allOf:
+        - $ref: "#/components/schemas/BaselineVersionSummary"
+        - type: object
+          properties:
+            snapshot: { type: object, additionalProperties: true }
+          required: [snapshot]
     BaselineDraftCancellation:
       type: object
       additionalProperties: false

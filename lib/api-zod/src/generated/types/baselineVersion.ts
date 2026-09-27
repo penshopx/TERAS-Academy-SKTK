@@ -6,22 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BaselineVersionSnapshot } from './baselineVersionSnapshot';
-import type { BaselineVersionStatus } from './baselineVersionStatus';
+import type { BaselineVersionSummary } from './baselineVersionSummary';
 
-export interface BaselineVersion {
-  id: string;
-  baselineId: string;
-  version: number;
-  status: BaselineVersionStatus;
+export type BaselineVersion = BaselineVersionSummary & {
   snapshot: BaselineVersionSnapshot;
-  createdAt: Date;
-  createdBy: string;
-  /** @nullable */
-  publishedAt: Date | null;
-  /** @nullable */
-  publishedBy: string | null;
-  /** @nullable */
-  cancelledAt: Date | null;
-  /** @nullable */
-  cancelledBy: string | null;
-}
+};

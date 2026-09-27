@@ -4,6 +4,7 @@ import {
   getListBaselineAuditQueryKey,
   getListManagedBaselinesQueryKey,
   getPreviewBaselinePublicationQueryKey,
+  useGetBaselineVersion,
   useCancelBaselineDraft,
   useListBaselineAudit,
   useListBaselineVersions,
@@ -11,7 +12,7 @@ import {
   usePreviewBaselinePublication,
   usePublishBaselineVersion,
   type BaselineAuditEvent,
-  type BaselineVersion,
+  type BaselineVersionSummary,
 } from "@workspace/api-client-react";
 import { clearDraftIdempotencyKey, getDraftIdempotencyKey } from "@/lib/draft-idempotency";
 import { useQueryClient } from "@tanstack/react-query";
@@ -46,7 +47,7 @@ export function BaselineVersionHistory({
   audit,
   activeVersion,
 }: {
-  versions: BaselineVersion[];
+  versions: BaselineVersionSummary[];
   audit: BaselineAuditEvent[];
   activeVersion: number | null;
 }) {
@@ -65,11 +66,6 @@ export function BaselineVersionHistory({
       const actor = event?.actorId
         ?? (version.status === "CANCELLED" ? version.cancelledBy : version.publishedBy)
         ?? version.createdBy;
-      const snapshot = version.snapshot as {
-        baseline?: Record<string, unknown>;
-        modules?: Array<Record<string, unknown>>;
-        selections?: Array<Record<string, unknown>>;
-      };
 
       return <article
         key={version.id}
@@ -93,36 +89,14 @@ export function BaselineVersionHistory({
           <time className="text-muted-foreground">{new Date(occurredAt).toLocaleString("id-ID")}</time>
         </div>
         <p className="mt-2 text-muted-foreground">Actor: <span className="break-all text-foreground">{actor}</span></p>
-        {version.status === "CANCELLED" && (
+         {version.status === "CANCELLED" && (
           <>
             <p className="mt-1 text-muted-foreground">
               Alasan pembatalan: <span className="text-foreground">{reason ?? "Tidak tersedia pada audit lama."}</span>
             </p>
-            <details className="mt-3 rounded border border-border/50 bg-black/20 p-2">
-              <summary className="cursor-pointer font-medium text-foreground">Tinjau isi snapshot yang ditutup</summary>
-              <div className="mt-3 grid gap-3" data-testid="cancelled-baseline-snapshot">
-                <section>
-                  <h5 className="font-medium text-foreground">Metadata baseline</h5>
-                  <pre className="mt-1 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2 text-muted-foreground">
-                    {JSON.stringify(snapshot.baseline ?? {}, null, 2)}
-                  </pre>
-                </section>
-                <section>
-                  <h5 className="font-medium text-foreground">Modul ({snapshot.modules?.length ?? 0})</h5>
-                  <pre className="mt-1 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2 text-muted-foreground">
-                    {JSON.stringify(snapshot.modules ?? [], null, 2)}
-                  </pre>
-                </section>
-                <section>
-                  <h5 className="font-medium text-foreground">Pilihan pathway ({snapshot.selections?.length ?? 0})</h5>
-                  <pre className="mt-1 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2 text-muted-foreground">
-                    {JSON.stringify(snapshot.selections ?? [], null, 2)}
-                  </pre>
-                </section>
-              </div>
-            </details>
           </>
         )}
+         <BaselineSnapshotDetails baselineId={version.baselineId} versionId={version.id} cancelled={version.status === "CANCELLED"} />
         {version.status === "PUBLISHED" && (
           publishEvent
           && typeof publishEvent.details.previewFingerprint === "string"
@@ -137,6 +111,39 @@ export function BaselineVersionHistory({
         )}
       </article>;
     })}
+  </div>;
+}
+
+function BaselineSnapshotDetails({ baselineId, versionId, cancelled }: { baselineId: string; versionId: string; cancelled: boolean }) {
+  const [open, setOpen] = useState(false);
+  return <details className="mt-3 rounded border border-border/50 bg-black/20 p-2" onToggle={event => setOpen(event.currentTarget.open)}>
+    <summary className="cursor-pointer font-medium text-foreground">{cancelled ? "Tinjau isi snapshot yang ditutup" : "Tinjau isi snapshot versi ini"}</summary>
+    {open && <BaselineSnapshotContent baselineId={baselineId} versionId={versionId} cancelled={cancelled} />}
+  </details>;
+}
+
+function BaselineSnapshotContent({ baselineId, versionId, cancelled }: { baselineId: string; versionId: string; cancelled: boolean }) {
+  const version = useGetBaselineVersion(baselineId, versionId);
+  if (version.isLoading) return <p className="mt-3 text-muted-foreground">Memuat snapshot…</p>;
+  if (version.error || !version.data) return <p className="mt-3 text-destructive" role="alert">Snapshot tidak dapat dimuat. Coba tutup dan buka kembali.</p>;
+  const snapshot = version.data.snapshot as {
+    baseline?: Record<string, unknown>;
+    modules?: Array<Record<string, unknown>>;
+    selections?: Array<Record<string, unknown>>;
+  };
+  return <div className="mt-3 grid gap-3" data-testid={cancelled ? "cancelled-baseline-snapshot" : "baseline-snapshot"}>
+    <section>
+      <h5 className="font-medium text-foreground">Metadata baseline</h5>
+      <pre className="mt-1 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2 text-muted-foreground">{JSON.stringify(snapshot.baseline ?? {}, null, 2)}</pre>
+    </section>
+    <section>
+      <h5 className="font-medium text-foreground">Modul ({snapshot.modules?.length ?? 0})</h5>
+      <pre className="mt-1 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2 text-muted-foreground">{JSON.stringify(snapshot.modules ?? [], null, 2)}</pre>
+    </section>
+    <section>
+      <h5 className="font-medium text-foreground">Pilihan pathway ({snapshot.selections?.length ?? 0})</h5>
+      <pre className="mt-1 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2 text-muted-foreground">{JSON.stringify(snapshot.selections ?? [], null, 2)}</pre>
+    </section>
   </div>;
 }
 

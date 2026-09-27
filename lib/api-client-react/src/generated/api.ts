@@ -69,6 +69,7 @@ import type {
   BaselinePublicationPreview,
   BaselinePublishedVersion,
   BaselineVersion,
+  BaselineVersionSummary,
   CapabilityPassport,
   CompetencyFrameworkInput,
   CompetencyFrameworkUpdate,
@@ -4301,6 +4302,82 @@ export function usePreviewBaselinePublication<TData = Awaited<ReturnType<typeof 
 
 
 
+export const getGetBaselineVersionUrl = (baselineId: string,
+    versionId: string,) => {
+
+
+
+
+  return `/api/trainer/authoring/baselines/${baselineId}/versions/${versionId}`
+}
+
+export const getBaselineVersion = async (baselineId: string,
+    versionId: string, options?: Parameters<typeof customFetch>[1]): Promise<BaselineVersion> => {
+
+  return customFetch<BaselineVersion>(getGetBaselineVersionUrl(baselineId,versionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBaselineVersionQueryKey = (baselineId: string,
+    versionId: string,) => {
+    return [
+    `/api/trainer/authoring/baselines/${baselineId}/versions/${versionId}`
+    ] as const;
+    }
+
+
+export const getGetBaselineVersionQueryOptions = <TData = Awaited<ReturnType<typeof getBaselineVersion>>, TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>>(baselineId: string,
+    versionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBaselineVersion>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBaselineVersionQueryKey(baselineId,versionId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBaselineVersion>>> = ({ signal }) => getBaselineVersion(baselineId,versionId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: baselineId !== null && baselineId !== undefined && versionId !== null && versionId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBaselineVersion>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBaselineVersionQueryResult = NonNullable<Awaited<ReturnType<typeof getBaselineVersion>>>
+export type GetBaselineVersionQueryError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>
+
+
+
+export function useGetBaselineVersion<TData = Awaited<ReturnType<typeof getBaselineVersion>>, TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>>(
+ baselineId: string,
+    versionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBaselineVersion>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBaselineVersionQueryOptions(baselineId,versionId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getUpdateBaselineDraftUrl = (baselineId: string,
     versionId: string,) => {
 
@@ -4383,9 +4460,9 @@ export const getListBaselineVersionsUrl = (baselineId: string,) => {
   return `/api/trainer/authoring/baselines/${baselineId}/versions`
 }
 
-export const listBaselineVersions = async (baselineId: string, options?: Parameters<typeof customFetch>[1]): Promise<BaselineVersion[]> => {
+export const listBaselineVersions = async (baselineId: string, options?: Parameters<typeof customFetch>[1]): Promise<BaselineVersionSummary[]> => {
 
-  return customFetch<BaselineVersion[]>(getListBaselineVersionsUrl(baselineId),
+  return customFetch<BaselineVersionSummary[]>(getListBaselineVersionsUrl(baselineId),
   {
     ...options,
     method: 'GET'

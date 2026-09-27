@@ -128,7 +128,12 @@ async function main() {
         return;
       }
       if (url.pathname === `/api/trainer/authoring/baselines/${baselineId}/versions`) {
-        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(versions) });
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(versions.map(({ snapshot: _snapshot, ...summary }) => summary)) });
+        return;
+      }
+      const detail = versions.find(version => url.pathname === `/api/trainer/authoring/baselines/${baselineId}/versions/${version.id}`);
+      if (detail) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(detail) });
         return;
       }
       if (url.pathname === `/api/trainer/authoring/baselines/${baselineId}/audit`) {
@@ -199,6 +204,11 @@ async function main() {
       cancellationTime,
     );
     await cancelledVersion.getByText(displayedCancellationTime, { exact: true }).waitFor();
+    const cancelledDetailPath = `/api/trainer/authoring/baselines/${baselineId}/versions/${cancelledId}`;
+    if (requestedPaths.includes(cancelledDetailPath)) throw new Error("History loaded a snapshot before the version was opened.");
+    await cancelledVersion.getByText("Tinjau isi snapshot yang ditutup").click();
+    await cancelledVersion.getByText("Cancelled snapshot").waitFor();
+    if (!requestedPaths.includes(cancelledDetailPath)) throw new Error("Opening a version did not load its snapshot.");
     if (await cancelledVersion.getByRole("button").count() !== 0 || await cancelledVersion.locator("input, select, textarea").count() !== 0) {
       throw new Error("The cancelled baseline version exposed a mutation control.");
     }

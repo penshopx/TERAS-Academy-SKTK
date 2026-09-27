@@ -1174,23 +1174,20 @@ export interface ManagedBaselineSummary {
   draftCount: number;
 }
 
-export type BaselineVersionStatus = typeof BaselineVersionStatus[keyof typeof BaselineVersionStatus];
+export type BaselineVersionSummaryStatus = typeof BaselineVersionSummaryStatus[keyof typeof BaselineVersionSummaryStatus];
 
 
-export const BaselineVersionStatus = {
+export const BaselineVersionSummaryStatus = {
   DRAFT: 'DRAFT',
   PUBLISHED: 'PUBLISHED',
   CANCELLED: 'CANCELLED',
 } as const;
 
-export type BaselineVersionSnapshot = { [key: string]: unknown };
-
-export interface BaselineVersion {
+export interface BaselineVersionSummary {
   id: string;
   baselineId: string;
   version: number;
-  status: BaselineVersionStatus;
-  snapshot: BaselineVersionSnapshot;
+  status: BaselineVersionSummaryStatus;
   createdAt: string;
   createdBy: string;
   /** @nullable */
@@ -1202,6 +1199,12 @@ export interface BaselineVersion {
   /** @nullable */
   cancelledBy: string | null;
 }
+
+export type BaselineVersionSnapshot = { [key: string]: unknown };
+
+export type BaselineVersion = BaselineVersionSummary & {
+  snapshot: BaselineVersionSnapshot;
+};
 
 export interface BaselineDraftCancellation {
   /**

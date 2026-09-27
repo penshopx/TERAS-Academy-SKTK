@@ -3272,6 +3272,31 @@ export const PreviewBaselinePublicationResponse = zod.object({
 })
 
 
+
+
+
+
+export const GetBaselineVersionParams = zod.object({
+  "baselineId": zod.coerce.string().min(1),
+  "versionId": zod.coerce.string().min(1)
+})
+
+export const GetBaselineVersionResponse = zod.object({
+  "id": zod.string(),
+  "baselineId": zod.string(),
+  "version": zod.int(),
+  "status": zod.enum(['DRAFT', 'PUBLISHED', 'CANCELLED']),
+  "createdAt": zod.coerce.date(),
+  "createdBy": zod.string(),
+  "publishedAt": zod.coerce.date().nullable(),
+  "publishedBy": zod.string().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "cancelledBy": zod.string().nullable()
+}).and(zod.object({
+  "snapshot": zod.record(zod.string(), zod.unknown())
+}))
+
+
 /**
  * @summary Update a baseline draft before publication
  */
@@ -3309,7 +3334,6 @@ export const ListBaselineVersionsResponseItem = zod.object({
   "baselineId": zod.string(),
   "version": zod.int(),
   "status": zod.enum(['DRAFT', 'PUBLISHED', 'CANCELLED']),
-  "snapshot": zod.record(zod.string(), zod.unknown()),
   "createdAt": zod.coerce.date(),
   "createdBy": zod.string(),
   "publishedAt": zod.coerce.date().nullable(),

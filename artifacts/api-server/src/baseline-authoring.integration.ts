@@ -245,6 +245,18 @@ async function main() {
   assert.equal(JSON.stringify(publishAudit[0]!.details).includes(person.id), false, "publish audit excludes learner identity");
   activeRole = "trainer";
   activeLearner = person.id;
+  const versionsResponse = await request(`/trainer/authoring/baselines/${baseline.id}/versions`);
+  assert.equal(versionsResponse.status, 200);
+  const versionSummaries = await versionsResponse.json() as Array<{ id: string; version: number; status: string; snapshot?: unknown }>;
+  assert(versionSummaries.every((version, index) => index === 0 || versionSummaries[index - 1]!.version > version.version), "versions remain ordered newest first");
+  assert.equal(versionSummaries.find(version => version.id === draft.id)?.status, "PUBLISHED");
+  assert.equal(versionSummaries.find(version => version.id === active.id)?.status, "PUBLISHED");
+  assert.equal(versionSummaries[0]?.status, "CANCELLED", "history retains the status of later synthetic versions");
+  assert(versionSummaries.every(version => !Object.hasOwn(version, "snapshot")), "history does not transfer snapshots");
+  const versionDetail = await request(`/trainer/authoring/baselines/${baseline.id}/versions/${draft.id}`);
+  assert.equal(versionDetail.status, 200);
+  assert.deepEqual((await versionDetail.json() as { snapshot: unknown }).snapshot, editedSnapshot);
+  assert.equal((await request(`/trainer/authoring/baselines/${baseline.id}/versions/not-a-version`)).status, 404);
   const auditResponse = await request(`/trainer/authoring/baselines/${baseline.id}/audit`);
   assert.equal(auditResponse.status, 200);
   const auditPayload = await auditResponse.json() as Array<{ action: string; details: Record<string, unknown> }>;
