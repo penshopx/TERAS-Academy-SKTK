@@ -16,7 +16,7 @@ import {
 } from "@workspace/api-client-react";
 import { clearDraftIdempotencyKey, getDraftIdempotencyKey } from "@/lib/draft-idempotency";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, GitCompareArrows, Loader2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, GitCompareArrows, Loader2, RefreshCw, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,18 +28,54 @@ export function isBaselinePreviewConfirmed(confirmedFingerprint: string | null, 
   return Boolean(currentFingerprint && confirmedFingerprint === currentFingerprint);
 }
 
+export type BaselineRefreshSection = "versions" | "audit" | "active";
+
+const baselineRefreshLabels: Record<BaselineRefreshSection, string> = {
+  versions: "riwayat versi",
+  audit: "audit versi",
+  active: "status baseline aktif",
+};
+
 export async function refreshBaselinePublicationHistory({
   baselineId,
   invalidateQueries,
+  sections = ["versions", "audit", "active"],
 }: {
   baselineId: string;
   invalidateQueries: (queryKey: readonly unknown[]) => Promise<unknown>;
+  sections?: BaselineRefreshSection[];
+}): Promise<BaselineRefreshSection[]> {
+  const keys: Record<BaselineRefreshSection, readonly unknown[]> = {
+    versions: getListBaselineVersionsQueryKey(baselineId),
+    audit: getListBaselineAuditQueryKey(baselineId),
+    active: getListManagedBaselinesQueryKey(),
+  };
+  const results = await Promise.allSettled(sections.map(section => Promise.resolve().then(() => invalidateQueries(keys[section]))));
+  return sections.filter((_, index) => results[index].status === "rejected");
+}
+
+export function BaselinePublicationResult({
+  version,
+  failedSections,
+  retrying,
+  onRetry,
+}: {
+  version: number;
+  failedSections: BaselineRefreshSection[];
+  retrying: boolean;
+  onRetry: () => void;
 }) {
-  await Promise.all([
-    invalidateQueries(getListBaselineVersionsQueryKey(baselineId)),
-    invalidateQueries(getListBaselineAuditQueryKey(baselineId)),
-    invalidateQueries(getListManagedBaselinesQueryKey()),
-  ]);
+  return <div className="rounded-md border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm" role="status" data-testid="baseline-publication-result">
+    <p className="font-semibold text-emerald-400">Baseline v{version} berhasil dipublikasikan.</p>
+    <p className="mt-1 text-muted-foreground">Enrollment baru akan memakai versi ini; histori learner lama tetap dipin.</p>
+    {failedSections.length > 0 && <div className="mt-3 rounded border border-amber-500/40 bg-amber-500/10 p-3" role="alert" data-testid="baseline-publication-refresh-warning">
+      <p className="text-amber-300">Publikasi berhasil, tetapi {failedSections.map(section => baselineRefreshLabels[section]).join(", ")} belum dapat diperbarui. Tampilan bagian tersebut mungkin belum mencerminkan hasil terbaru.</p>
+      <Button type="button" variant="outline" size="sm" className="mt-2" onClick={onRetry} disabled={retrying}>
+        {retrying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+        {retrying ? "Mencoba lagi…" : "Coba lagi pembaruan"}
+      </Button>
+    </div>}
+  </div>;
 }
 
 export function BaselineVersionHistory({
@@ -175,6 +211,8 @@ export function BaselinePublicationGate() {
   const [versionId, setVersionId] = useState("");
   const [cancellationReason, setCancellationReason] = useState("");
   const [confirmedFingerprint, setConfirmedFingerprint] = useState<string | null>(null);
+  const [publicationResult, setPublicationResult] = useState<{ baselineId: string; version: number; failedSections: BaselineRefreshSection[] } | null>(null);
+  const [retryingPublicationRefresh, setRetryingPublicationRefresh] = useState(false);
   const baselines = useListManagedBaselines({
     query: { queryKey: getListManagedBaselinesQueryKey() },
   });
@@ -194,6 +232,27 @@ export function BaselinePublicationGate() {
   const cancel = useCancelBaselineDraft();
   const drafts = versions.data?.filter(version => version.status === "DRAFT") ?? [];
   const selectedBaseline = baselines.data?.find(baseline => baseline.baselineId === baselineId);
+
+  const invalidatePublicationQueries = (queryKey: readonly unknown[]) => queryClient.invalidateQueries(
+    { queryKey, exact: true },
+    { throwOnError: true },
+  );
+
+  const retryPublicationRefresh = async () => {
+    if (!publicationResult || retryingPublicationRefresh) return;
+    const current = publicationResult;
+    setRetryingPublicationRefresh(true);
+    try {
+      const failedSections = await refreshBaselinePublicationHistory({
+        baselineId: current.baselineId,
+        invalidateQueries: invalidatePublicationQueries,
+        sections: current.failedSections,
+      });
+      setPublicationResult(previous => previous === current ? { ...current, failedSections } : previous);
+    } finally {
+      setRetryingPublicationRefresh(false);
+    }
+  };
 
   const selectBaseline = (next: string) => {
     setBaselineId(next);
@@ -241,11 +300,15 @@ export function BaselinePublicationGate() {
       onSuccess: async result => {
         setConfirmedFingerprint(null);
         setVersionId("");
-        await refreshBaselinePublicationHistory({
-          baselineId,
-          invalidateQueries: queryKey => queryClient.invalidateQueries({ queryKey }),
-        });
+        setPublicationResult({ baselineId, version: result.version, failedSections: [] });
         toast({ title: `Baseline v${result.version} dipublikasikan`, description: "Enrollment baru akan memakai versi ini; histori learner lama tetap dipin." });
+        const failedSections = await refreshBaselinePublicationHistory({
+          baselineId,
+          invalidateQueries: invalidatePublicationQueries,
+        });
+        setPublicationResult(previous => previous?.baselineId === baselineId && previous.version === result.version
+          ? { ...previous, failedSections }
+          : previous);
       },
       onError: error => toast({
         variant: "destructive",
@@ -261,6 +324,12 @@ export function BaselinePublicationGate() {
       <p className="text-sm text-muted-foreground">Bandingkan draft dengan snapshot aktif, lalu tinjau pathway, cohort, dan enrollment sebelum publikasi.</p>
     </CardHeader>
     <CardContent className="space-y-4">
+      {publicationResult?.baselineId === baselineId && <BaselinePublicationResult
+        version={publicationResult.version}
+        failedSections={publicationResult.failedSections}
+        retrying={retryingPublicationRefresh}
+        onRetry={retryPublicationRefresh}
+      />}
       <label className="grid gap-2 text-sm">
         <span className="font-medium">Baseline dalam scope Anda</span>
         <select

@@ -24,9 +24,11 @@ import {
 } from "./trainer/authoring/validation-panel";
 import {
   baselineCancellationRequest,
+  BaselinePublicationResult,
   BaselineVersionHistory,
   isBaselinePreviewConfirmed,
   refreshBaselinePublicationHistory,
+  type BaselineRefreshSection,
 } from "./trainer/authoring/baseline-publication-gate";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -219,7 +221,7 @@ test("successful baseline publish refreshes versions, audit, and active baseline
   const baselineId = "baseline-1";
   const invalidatedKeys: Array<readonly unknown[]> = [];
 
-  await refreshBaselinePublicationHistory({
+  const failed = await refreshBaselinePublicationHistory({
     baselineId,
     invalidateQueries: async queryKey => {
       invalidatedKeys.push(queryKey);
@@ -231,7 +233,71 @@ test("successful baseline publish refreshes versions, audit, and active baseline
     getListBaselineAuditQueryKey(baselineId),
     getListManagedBaselinesQueryKey(),
   ]);
+  assert.deepEqual(failed, []);
 });
+
+const baselineRefreshCases: Array<{ section: BaselineRefreshSection; label: string; key: readonly unknown[] }> = [
+  { section: "versions", label: "riwayat versi", key: getListBaselineVersionsQueryKey("baseline-1") },
+  { section: "audit", label: "audit versi", key: getListBaselineAuditQueryKey("baseline-1") },
+  { section: "active", label: "status baseline aktif", key: getListManagedBaselinesQueryKey() },
+];
+
+for (const { section, label, key } of baselineRefreshCases) {
+  test(`baseline publish still reports success when ${section} refresh fails and retries just that query`, async () => {
+    const invalidatedKeys: Array<readonly unknown[]> = [];
+    let fail = true;
+    const invalidateQueries = async (queryKey: readonly unknown[]) => {
+      invalidatedKeys.push(queryKey);
+      if (fail && JSON.stringify(queryKey) === JSON.stringify(key)) throw new Error(`${section} unavailable`);
+    };
+    const failed = await refreshBaselinePublicationHistory({ baselineId: "baseline-1", invalidateQueries });
+    assert.deepEqual(failed, [section]);
+    assert.equal(invalidatedKeys.length, 3, "other refreshes must continue despite one failure");
+
+    const markup = renderToStaticMarkup(<BaselinePublicationResult
+      version={7} failedSections={failed} retrying={false} onRetry={() => undefined}
+    />);
+    assert.match(markup, /Baseline v7 berhasil dipublikasikan/);
+    assert.match(markup, new RegExp(label));
+    assert.match(markup, /Coba lagi pembaruan/);
+    assert.match(markup, /role="alert"/);
+
+    fail = false;
+    const remaining = await refreshBaselinePublicationHistory({ baselineId: "baseline-1", invalidateQueries, sections: failed });
+    assert.deepEqual(remaining, []);
+    assert.deepEqual(invalidatedKeys.slice(3), [key]);
+    const recovered = renderToStaticMarkup(<BaselinePublicationResult
+      version={7} failedSections={remaining} retrying={false} onRetry={() => undefined}
+    />);
+    assert.match(recovered, /Baseline v7 berhasil dipublikasikan/);
+    assert.doesNotMatch(recovered, /Coba lagi pembaruan/);
+  });
+
+  test(`real QueryClient exposes ${section} failed refetch to baseline publication recovery`, async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(key, []);
+    const observer = new QueryObserver(queryClient, {
+      queryKey: key,
+      queryFn: async () => { throw new Error(`${section} unavailable`); },
+      staleTime: Infinity,
+      retry: false,
+    });
+    const unsubscribe = observer.subscribe(() => undefined);
+    try {
+      const failed = await refreshBaselinePublicationHistory({
+        baselineId: "baseline-1",
+        invalidateQueries: queryKey => queryClient.invalidateQueries(
+          { queryKey, exact: true },
+          { throwOnError: true },
+        ),
+      });
+      assert.deepEqual(failed, [section]);
+    } finally {
+      unsubscribe();
+      queryClient.clear();
+    }
+  });
+}
 
 test("Adding COURSE_MODULE requires canonical moduleId payload", async () => {
   const code = await readFile(path.join(__dirname, "trainer/authoring/authoring-tree.tsx"), "utf8");
