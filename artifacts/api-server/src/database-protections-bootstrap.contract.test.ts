@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -47,6 +48,50 @@ test("post-merge invokes the canonical database protection bootstrap", () => {
     /^bash scripts\/bootstrap-database-protections\.sh$/m,
     "removing the post-push protection bootstrap must fail this contract",
   );
+});
+
+test("bootstrap stops before psql when schema push fails", () => {
+  const fixtureDirectory = mkdtempSync(resolve(tmpdir(), "database-protection-push-failure-"));
+  const binDirectory = resolve(fixtureDirectory, "bin");
+  const invocationLog = resolve(fixtureDirectory, "psql-invocations.log");
+
+  try {
+    mkdirSync(binDirectory);
+
+    const fakePnpm = resolve(binDirectory, "pnpm");
+    writeFileSync(
+      fakePnpm,
+      "#!/bin/bash\nprintf '%s\\n' 'schema push fixture failed' >&2\nexit 27\n",
+    );
+    chmodSync(fakePnpm, 0o755);
+
+    const fakePsql = resolve(binDirectory, "psql");
+    writeFileSync(fakePsql, "#!/bin/bash\nprintf '%s\\n' called >> \"$PSQL_INVOCATION_LOG\"\n");
+    chmodSync(fakePsql, 0o755);
+
+    const result = spawnSync("bash", [bootstrapPath], {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        DATABASE_URL: "postgresql://unused-by-fake-psql",
+        PATH: `${binDirectory}:${process.env.PATH ?? ""}`,
+        PSQL_INVOCATION_LOG: invocationLog,
+      },
+    });
+
+    assert.equal(result.error, undefined, "bootstrap process must start");
+    assert.notEqual(result.status, 0, "failed schema push must make bootstrap exit non-zero");
+    assert.match(result.stderr, /schema push fixture failed/, "operator must see the push error");
+    assert.match(
+      result.stderr,
+      /Database schema push failed before protection migrations\./,
+      "operator must see why protection migrations did not run",
+    );
+    assert.equal(existsSync(invocationLog), false, "psql must never be invoked");
+  } finally {
+    rmSync(fixtureDirectory, { recursive: true, force: true });
+  }
 });
 
 test("bootstrap reports a real psql failure and stops before later migrations", () => {
