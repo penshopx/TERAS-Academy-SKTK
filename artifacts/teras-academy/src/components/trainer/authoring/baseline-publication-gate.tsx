@@ -222,15 +222,17 @@ export function BaselinePublicationGate() {
   const audit = useListBaselineAudit(baselineId, {
     query: { enabled: Boolean(baselineId), queryKey: getListBaselineAuditQueryKey(baselineId) },
   });
-  const preview = usePreviewBaselinePublication(baselineId, versionId, {
+  const drafts = versions.data?.filter(version => version.status === "DRAFT") ?? [];
+  const selectedDraft = drafts.find(version => version.id === versionId);
+  const actionableVersionId = selectedDraft?.id ?? "";
+  const preview = usePreviewBaselinePublication(baselineId, actionableVersionId, {
     query: {
-      enabled: Boolean(baselineId && versionId),
-      queryKey: getPreviewBaselinePublicationQueryKey(baselineId, versionId),
+      enabled: Boolean(baselineId && actionableVersionId),
+      queryKey: getPreviewBaselinePublicationQueryKey(baselineId, actionableVersionId),
     },
   });
   const publish = usePublishBaselineVersion();
   const cancel = useCancelBaselineDraft();
-  const drafts = versions.data?.filter(version => version.status === "DRAFT") ?? [];
   const selectedBaseline = baselines.data?.find(baseline => baseline.baselineId === baselineId);
 
   const invalidatePublicationQueries = (queryKey: readonly unknown[]) => queryClient.invalidateQueries(
@@ -263,10 +265,10 @@ export function BaselinePublicationGate() {
 
   const cancelSelectedDraft = () => {
     const reason = cancellationReason.trim();
-    if (!versionId || !reason) return;
-    const flow = baselineCancellationFlow(baselineId, versionId);
-    const data = baselineCancellationRequest(window.localStorage, baselineId, versionId, reason);
-    cancel.mutate({ baselineId, versionId, data }, {
+    if (!actionableVersionId || !reason) return;
+    const flow = baselineCancellationFlow(baselineId, actionableVersionId);
+    const data = baselineCancellationRequest(window.localStorage, baselineId, actionableVersionId, reason);
+    cancel.mutate({ baselineId, versionId: actionableVersionId, data }, {
       onSuccess: async result => {
         clearDraftIdempotencyKey(window.localStorage, flow);
         setConfirmedFingerprint(null);
@@ -291,10 +293,10 @@ export function BaselinePublicationGate() {
   };
 
   const publishReviewedDraft = () => {
-    if (!preview.data || !isBaselinePreviewConfirmed(confirmedFingerprint, preview.data.previewFingerprint)) return;
+    if (!actionableVersionId || !preview.data || !isBaselinePreviewConfirmed(confirmedFingerprint, preview.data.previewFingerprint)) return;
     publish.mutate({
       baselineId,
-      versionId,
+      versionId: actionableVersionId,
       data: { previewFingerprint: preview.data.previewFingerprint },
     }, {
       onSuccess: async result => {
@@ -360,13 +362,13 @@ export function BaselinePublicationGate() {
       </section>}
       {baselineId && !versions.isLoading && !versions.error && <label className="grid gap-2 text-sm">
         <span className="font-medium">Draft yang akan ditinjau</span>
-        <select className="h-10 rounded-md border border-input bg-background px-3" value={versionId} onChange={event => { setVersionId(event.target.value); setCancellationReason(""); setConfirmedFingerprint(null); }}>
+        <select className="h-10 rounded-md border border-input bg-background px-3" value={actionableVersionId} onChange={event => { setVersionId(event.target.value); setCancellationReason(""); setConfirmedFingerprint(null); }}>
           <option value="">Pilih draft</option>
           {drafts.map(version => <option key={version.id} value={version.id}>Versi {version.version}</option>)}
         </select>
         {!drafts.length && <span className="text-muted-foreground">Tidak ada draft yang dapat dipublikasikan.</span>}
       </label>}
-      {versionId && <section className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+      {actionableVersionId && <section className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
         <div>
           <strong className="text-sm">Tutup draft ini</strong>
           <p className="mt-1 text-xs text-muted-foreground">Tindakan ini permanen untuk draft terpilih. Snapshot dan audit dipertahankan; versi published dan pin learner tidak berubah.</p>
@@ -385,9 +387,9 @@ export function BaselinePublicationGate() {
           </Button>
         </div>
       </section>}
-      {preview.isLoading && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Menghitung dampak dari snapshot immutable…</p>}
-      {preview.error && <p className="text-sm text-destructive" role="alert">Pratinjau tidak dapat dibuat. Draft mungkin telah berubah atau tidak lagi tersedia.</p>}
-      {preview.data && <div className="space-y-4" data-testid="baseline-publication-preview">
+      {actionableVersionId && preview.isLoading && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Menghitung dampak dari snapshot immutable…</p>}
+      {actionableVersionId && preview.error && <p className="text-sm text-destructive" role="alert">Pratinjau tidak dapat dibuat. Draft mungkin telah berubah atau tidak lagi tersedia.</p>}
+      {actionableVersionId && preview.data && <div className="space-y-4" data-testid="baseline-publication-preview">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">Aktif v{preview.data.activeVersion.version}</Badge>
           <span aria-hidden="true">→</span>

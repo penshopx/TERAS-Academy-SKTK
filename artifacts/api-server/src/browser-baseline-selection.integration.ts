@@ -121,8 +121,8 @@ async function main() {
             baselineId,
             code: "ASSIGNED",
             name: "Baseline Penugasan Aktif",
-            activeVersion: 7,
-            draftCount: 2,
+            activeVersion: versions[4].status === "PUBLISHED" ? 9 : 7,
+            draftCount: versions.filter(version => version.status === "DRAFT").length,
           }]),
         });
         return;
@@ -141,6 +141,10 @@ async function main() {
         return;
       }
       if (previewMatch?.[1] === baselineId && previewMatch[2] === selectedDraftId) {
+        if (versions[4].status !== "DRAFT") {
+          await route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "Draft is no longer actionable" }) });
+          return;
+        }
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -237,6 +241,41 @@ async function main() {
     }
     if (requestedPaths.some(requestPath => requestPath.includes(outOfScopeBaselineId))) {
       throw new Error("The browser requested data for a baseline outside the trainer's assignment.");
+    }
+
+    for (const terminalStatus of ["CANCELLED", "PUBLISHED"] as const) {
+      if (terminalStatus === "PUBLISHED") {
+        versions[4].status = "DRAFT";
+        await page.reload();
+        await page.getByRole("tab", { name: "Course Authoring" }).click();
+        await page.getByLabel("Pilih baseline").selectOption(baselineId);
+        await page.getByLabel("Draft yang akan ditinjau").selectOption(selectedDraftId);
+        await preview.getByText("Draft v9", { exact: true }).waitFor();
+      }
+
+      // Keep the selected draft and its cached preview visible before another session changes it.
+      await page.getByLabel("Alasan penutupan draft").fill("Review dibatalkan");
+      await page.getByRole("button", { name: "Tutup draft" }).waitFor();
+      await page.getByRole("button", { name: "Publikasikan baseline setelah review" }).waitFor();
+      versions[4].status = terminalStatus;
+      const versionsPath = `/api/trainer/authoring/baselines/${baselineId}/versions`;
+      await Promise.all([
+        page.waitForResponse(response => new URL(response.url()).pathname === versionsPath && response.status() === 200),
+        page.evaluate("window.dispatchEvent(new Event('visibilitychange'))"),
+      ]);
+      await page.getByTestId(`baseline-version-${terminalStatus.toLowerCase()}`)
+        .filter({ hasText: "Versi 9" }).waitFor();
+      await preview.waitFor({ state: "detached" });
+      const currentDrafts = page.getByLabel("Draft yang akan ditinjau");
+      if (await currentDrafts.inputValue() !== "" || await currentDrafts.locator(`option[value="${selectedDraftId}"]`).count() !== 0) {
+        throw new Error(`A ${terminalStatus} version remained selected as an actionable draft.`);
+      }
+      if (await page.getByLabel("Alasan penutupan draft").count() !== 0 ||
+          await page.getByRole("button", { name: "Tutup draft" }).count() !== 0 ||
+          await page.getByRole("button", { name: "Publikasikan baseline setelah review" }).count() !== 0 ||
+          await page.getByLabel("Konfirmasi pratinjau publikasi").count() !== 0) {
+        throw new Error(`A ${terminalStatus} version retained draft mutation controls after refetch.`);
+      }
     }
 
     process.stdout.write("browser baseline selection integration passed\n");
