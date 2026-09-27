@@ -6,6 +6,7 @@ import {
   ReadinessSummaryStatus,
   type AdminReadinessExport,
 } from "@workspace/api-client-react";
+import { ReadinessCleanupStatus } from "./admin/ReadinessCleanupStatus";
 import { customFetch } from "../../../../lib/api-client-react/src/custom-fetch";
 import {
   cancelReadinessExportOnUnmount,
@@ -197,6 +198,43 @@ test("server-owned export warning remains visible across an invalid and correcte
   } finally {
     globalThis.Date = RealDate;
   }
+});
+
+test("cleanup alarm shows the server threshold and timestamps, then clears on recovery", () => {
+  const status = {
+    alertActive: true,
+    consecutiveFailures: 3,
+    failureThreshold: 3,
+    lastFailureAt: "2026-09-27T10:00:00.000Z",
+    lastSuccessAt: "2026-09-23T08:00:00.000Z",
+  };
+  const active = renderToStaticMarkup(<ReadinessCleanupStatus status={status} />);
+  assert.match(active, /role="alert"/);
+  assert.match(active, /Alarm aktif/);
+  assert.match(active, /3 kegagalan beruntun · Ambang alarm: 3 kegagalan beruntun/);
+  assert.match(active, /Keberhasilan terakhir/);
+  assert.match(active, /Kegagalan terakhir/);
+  assert.match(active, /27 Sep 2026/);
+  assert.doesNotMatch(active, /learner|email|personId/);
+
+  const recovered = renderToStaticMarkup(<ReadinessCleanupStatus status={{
+    ...status,
+    alertActive: false,
+    consecutiveFailures: 0,
+    lastSuccessAt: "2026-09-28T10:00:00.000Z",
+  }} />);
+  assert.match(recovered, /role="status"/);
+  assert.match(recovered, /Cleanup tren ekspor: Normal/);
+  assert.match(recovered, /0 kegagalan beruntun/);
+  assert.doesNotMatch(recovered, /Alarm aktif|role="alert"/);
+
+  const neverRun = renderToStaticMarkup(<ReadinessCleanupStatus status={{
+    alertActive: false, consecutiveFailures: 0, failureThreshold: 3,
+    lastFailureAt: null, lastSuccessAt: null,
+  }} />);
+  assert.match(neverRun, /Belum tercatat/);
+  assert.match(neverRun, /Belum ada hasil/);
+  assert.doesNotMatch(neverRun, /Cleanup tren ekspor: Normal/);
 });
 
 test("export trend mutation cannot send device time to the server", () => {

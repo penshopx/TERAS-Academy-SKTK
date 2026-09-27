@@ -22,6 +22,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { trackReadinessAuditExport } from "@/lib/analytics";
 import { getReadinessPresentation } from "@/lib/readiness-presentation";
+import { ReadinessCleanupStatus } from "./ReadinessCleanupStatus";
 
 type Props = {
   enabled: boolean;
@@ -332,7 +333,7 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
     query: { enabled, staleTime: 30_000, refetchOnMount: "always", queryKey: getListAdminReadinessHistoryQueryKey(params) },
   });
   const exportTrends = useGetAdminReadinessExportTrends({
-    query: { enabled, staleTime: 30_000, refetchOnMount: "always", queryKey: getGetAdminReadinessExportTrendsQueryKey() },
+    query: { enabled, staleTime: 30_000, refetchOnMount: "always", refetchInterval: 60_000, queryKey: getGetAdminReadinessExportTrendsQueryKey() },
   });
   recordExportTrendRef.current = recordExportTrend;
   const learners = users.filter(user => user.roles.includes("learner"));
@@ -444,11 +445,14 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
       <CardContent className="space-y-4">
         {exportTrends.isLoading && <p className="text-sm text-muted-foreground" role="status">Memuat tren ekspor anonim…</p>}
         {exportTrends.error && <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive" role="alert">Tren ekspor anonim tidak tersedia saat ini.</p>}
-        <ReadinessExportAlerts
-          alerts={exportAlerts}
-          periodDays={exportTrends.data?.thresholds.periodDays ?? 7}
-          minimumSampleSize={exportTrends.data?.thresholds.minimumSampleSize ?? 5}
-        />
+        {!exportTrends.error && exportTrends.data && <>
+          <ReadinessCleanupStatus status={exportTrends.data.retentionCleanup} />
+          <ReadinessExportAlerts
+            alerts={exportAlerts}
+            periodDays={exportTrends.data.thresholds.periodDays}
+            minimumSampleSize={exportTrends.data.thresholds.minimumSampleSize}
+          />
+        </>}
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5" aria-label="Filter riwayat readiness">
           <label className="grid gap-1 text-sm">Learner
             <select value={learnerId} onChange={event => { setLearnerId(event.target.value); setPage(1); }} className="h-10 rounded-md border bg-background px-3" data-testid="filter-readiness-learner">
