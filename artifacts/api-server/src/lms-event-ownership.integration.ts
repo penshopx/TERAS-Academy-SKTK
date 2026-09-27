@@ -145,6 +145,37 @@ try {
   await client.query(ownershipMigration);
   await client.query(ownershipMigration);
 
+  // Migration 0033 recovers selection history only for this exact legacy demo fixture.
+  // Keep its source events valid so the separate context mismatch below causes the failure.
+  await client.query(`
+    INSERT INTO teras_enrollments
+      (id, learner_id, program_id, pathway_id, status)
+    VALUES ('enrol-demo', 'learner-demo', 'ownership-program-a', 'ownership-pathway-a', 'active')
+  `);
+  await client.query(`
+    INSERT INTO teras_activity_completion_events
+      (id, activity_id, learner_id, enrollment_id, pathway_id, status, actor_id, created_at)
+    VALUES
+      ('context-demo-original', 'ownership-activity-a', 'learner-demo',
+       'enrol-demo', 'ownership-pathway-a', 'completed', 'ownership-actor',
+       '2020-01-01T00:00:00Z'),
+      ('context-demo-switch', 'ownership-activity-a-switch', 'learner-demo',
+       'enrol-demo', 'ownership-pathway-a-switch', 'completed', 'ownership-actor',
+       '2020-01-02T00:00:00Z')
+  `);
+  const demoSelections = async () => (await client.query<{
+    pathway_id: string;
+    program_id: string;
+    sequence: number;
+    created_by: string;
+  }>(`
+    SELECT pathway_id, program_id, sequence, created_by
+    FROM teras_enrollment_pathway_events
+    WHERE enrollment_id = 'enrol-demo'
+    ORDER BY sequence
+  `)).rows;
+  assert.deepEqual(await demoSelections(), [], "the demo fixture starts without selection history");
+
   const contextPreflightCases = [
     {
       table: "teras_activity_completion_events",
@@ -212,12 +243,33 @@ try {
       ),
     );
     await client.query("ROLLBACK");
+    assert.deepEqual(
+      await demoSelections(),
+      [],
+      `failed ${preflightCase.table} preflight must roll back demo pathway recovery`,
+    );
     await client.query(
       `DELETE FROM ${preflightCase.table} WHERE id = 'context-legacy-mismatch'`,
     );
   }
   await client.query(contextMigration);
+  const recoveredDemoSelections = [{
+    pathway_id: "ownership-pathway-a-switch",
+    program_id: "ownership-program-a",
+    sequence: 1,
+    created_by: "migration-0033-context-recovery",
+  }];
+  assert.deepEqual(
+    await demoSelections(),
+    recoveredDemoSelections,
+    "corrected context allows exactly one recovered demo pathway selection",
+  );
   await client.query(contextMigration);
+  assert.deepEqual(
+    await demoSelections(),
+    recoveredDemoSelections,
+    "reapplying migration 0033 does not duplicate recovered selection history",
+  );
 
   await client.query(`
     INSERT INTO teras_activity_completion_events
