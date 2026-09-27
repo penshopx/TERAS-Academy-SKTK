@@ -319,6 +319,8 @@ export * from './readinessEvidenceSnapshot';
 export * from './readinessEvidenceSnapshotAssessmentsItem';
 export * from './readinessEvidenceSnapshotEvidenceItem';
 export * from './readinessEvidenceSnapshotGatesItem';
+export * from './readinessExportAttemptInput';
+export * from './readinessExportPeriodProof';
 export * from './readinessExportTrendInput';
 export * from './readinessExportTrendInputOutcome';
 export * from './readinessGateSummary';

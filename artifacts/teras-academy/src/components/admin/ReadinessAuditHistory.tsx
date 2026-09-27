@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   exportAdminReadinessHistory,
+  issueAdminReadinessExportPeriodProof,
   getListAdminReadinessHistoryQueryKey,
   ReadinessSummaryStatus,
   type AdminReadinessEvaluation,
@@ -212,21 +213,24 @@ type PendingExportOutcome = {
   attemptKey: string;
   outcome: ExportTrendOutcome;
   recordCount: number;
+  periodProof: string;
 };
 type OutcomeStorage = Pick<Storage, "getItem" | "setItem">;
 
-export const READINESS_EXPORT_OUTCOME_QUEUE_KEY = "teras:readiness-export-outcomes:v1";
+export const READINESS_EXPORT_OUTCOME_QUEUE_KEY = "teras:readiness-export-outcomes:v2";
 
 function isPendingExportOutcome(value: unknown): value is PendingExportOutcome {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const item = value as Record<string, unknown>;
-  return Object.keys(item).length === 3
+  return Object.keys(item).length === 4
     && typeof item.attemptKey === "string"
     && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.attemptKey)
     && (item.outcome === "succeeded" || item.outcome === "cancelled" || item.outcome === "failed")
     && typeof item.recordCount === "number"
     && Number.isInteger(item.recordCount)
-    && item.recordCount >= 0;
+    && item.recordCount >= 0
+    && typeof item.periodProof === "string"
+    && /^v1\.\d{4}-\d{2}-\d{2}\.[a-f0-9]{64}$/.test(item.periodProof);
 }
 
 export function readPendingReadinessExportOutcomes(storage: OutcomeStorage): PendingExportOutcome[] {
@@ -261,8 +265,40 @@ export async function flushPendingReadinessExportOutcomes(
   }
 }
 
-export function readinessExportTrendInput(attemptKey: string, outcome: ExportTrendOutcome, recordCount: number) {
-  return { data: { attemptKey, outcome, recordCount } };
+export function readinessExportTrendInput(attemptKey: string, outcome: ExportTrendOutcome, recordCount: number, periodProof: string) {
+  return { data: { attemptKey, outcome, recordCount, periodProof } };
+}
+
+export async function acquireReadinessExportPeriodProof(
+  attemptKey: string,
+  signal: AbortSignal,
+  request: (attemptKey: string, signal: AbortSignal) => Promise<{ periodProof: string }> =
+    (key, requestSignal) => issueAdminReadinessExportPeriodProof({ attemptKey: key }, { signal: requestSignal }),
+  timeoutMs = 1_500,
+): Promise<string | null> {
+  if (signal.aborted) return null;
+  const proofController = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  const stopped = new Promise<null>(resolve => {
+    const stop = () => {
+      proofController.abort();
+      resolve(null);
+    };
+    onAbort = stop;
+    signal.addEventListener("abort", stop, { once: true });
+    timer = setTimeout(stop, timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      request(attemptKey, proofController.signal).then(result => result.periodProof).catch(() => null),
+      stopped,
+    ]);
+  } finally {
+    clearTimeout(timer);
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+    proofController.abort();
+  }
 }
 
 export function ReadinessExportAlerts({
@@ -356,7 +392,7 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
       void flushPendingReadinessExportOutcomes(
         window.localStorage,
         outcome => recordExportTrendRef.current.mutateAsync(
-          readinessExportTrendInput(outcome.attemptKey, outcome.outcome, outcome.recordCount),
+          readinessExportTrendInput(outcome.attemptKey, outcome.outcome, outcome.recordCount, outcome.periodProof),
         ),
         () => {
           if (mounted.current) void exportTrends.refetch();
@@ -369,22 +405,22 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
   }, [enabled, exportTrends.refetch]);
 
   const exportAlerts = exportTrends.data?.alerts ?? [];
-  const recordFinalExportOutcome = (attemptKey: string, outcome: ExportTrendOutcome, recordCount: number) => {
-    if (!enabled) return;
-    const pending = { attemptKey, outcome, recordCount };
+  const recordFinalExportOutcome = (attemptKey: string, outcome: ExportTrendOutcome, recordCount: number, periodProof: string | null) => {
+    if (!enabled || !periodProof) return;
+    const pending = { attemptKey, outcome, recordCount, periodProof };
     try {
       enqueueReadinessExportOutcome(window.localStorage, pending);
       void flushPendingReadinessExportOutcomes(
         window.localStorage,
         item => recordExportTrendRef.current.mutateAsync(
-          readinessExportTrendInput(item.attemptKey, item.outcome, item.recordCount),
+          readinessExportTrendInput(item.attemptKey, item.outcome, item.recordCount, item.periodProof),
         ),
         () => {
           if (mounted.current) void exportTrends.refetch();
         },
       );
     } catch {
-      void recordExportTrendRef.current.mutateAsync(readinessExportTrendInput(attemptKey, outcome, recordCount))
+      void recordExportTrendRef.current.mutateAsync(readinessExportTrendInput(attemptKey, outcome, recordCount, periodProof))
         .then(() => exportTrends.refetch())
         .catch(() => undefined);
     }
@@ -399,6 +435,18 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
     setExportLoadedBytes(0);
     setExportError(null);
     trackReadinessAuditExport("started", Math.max(0, history.data?.total ?? 0));
+    // Telemetry must never block the export itself. Without a server proof, omit
+    // the outcome rather than assigning an offline attempt to the retry day.
+    const periodProof = await acquireReadinessExportPeriodProof(attemptKey, controller.signal);
+    if (controller.signal.aborted) {
+      if (mounted.current) {
+        trackReadinessAuditExport("cancelled", 0);
+        recordFinalExportOutcome(attemptKey, "cancelled", 0, periodProof);
+        setExportStatus("cancelled");
+      }
+      if (exportAbortController.current === controller) exportAbortController.current = null;
+      return;
+    }
     const result = await runReadinessAuditExport({
       controller,
       request: (signal, callbacks) => exportAdminReadinessHistory(exportParams, { signal, ...callbacks }),
@@ -415,17 +463,17 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
       if (!mounted.current) return;
       if (result.status === "success") {
         trackReadinessAuditExport("succeeded", result.recordCount);
-        recordFinalExportOutcome(attemptKey, "succeeded", result.recordCount);
+        recordFinalExportOutcome(attemptKey, "succeeded", result.recordCount, periodProof);
         setLastChecksum(result.checksum);
         setExportRecordCount(result.recordCount);
         setExportStatus("success");
       } else if (result.status === "cancelled") {
         trackReadinessAuditExport("cancelled", result.recordCount);
-        recordFinalExportOutcome(attemptKey, "cancelled", result.recordCount);
+        recordFinalExportOutcome(attemptKey, "cancelled", result.recordCount, periodProof);
         setExportStatus("cancelled");
       } else {
         trackReadinessAuditExport("failed", result.recordCount);
-        recordFinalExportOutcome(attemptKey, "failed", result.recordCount);
+        recordFinalExportOutcome(attemptKey, "failed", result.recordCount, periodProof);
         setExportError(result.error);
         setExportStatus("failed");
       }

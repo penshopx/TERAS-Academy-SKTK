@@ -24,7 +24,7 @@ import {
   ListAdminReadinessRulesResponse,
   ListAdminReminderEscalationsQueryParams, ListAdminReminderEscalationsResponse,
   ResolveAdminReminderEscalationBody, ResolveAdminReminderEscalationParams, ResolveAdminReminderEscalationResponse,
-  GetAdminReadinessExportTrendsResponse, RecordAdminReadinessExportTrendBody, GetAdminAgentObservabilityResponse,
+  GetAdminReadinessExportTrendsResponse, RecordAdminReadinessExportTrendBody, IssueAdminReadinessExportPeriodProofBody, IssueAdminReadinessExportPeriodProofResponse, GetAdminAgentObservabilityResponse,
   ListAdminRegulatoryReferencesResponse,
 } from "@workspace/api-zod";
 import {
@@ -47,7 +47,8 @@ import { supabaseEmailIsVerified, supabaseIdentity } from "../lib/supabase-auth"
 import { allowsSuperAdminMfa } from "@workspace/db/super-admin-mfa-policy";
 import { readinessAuditSigner } from "../lib/readiness-audit-signing";
 import { safeReminderFailureReason } from "../lib/trainer-follow-up-notifications";
-import { getReadinessExportTrendRetentionStatus } from "../lib/readiness-export-trend-retention";
+import { getReadinessExportTrendRetentionStatus, readinessExportTrendRetentionCutoff } from "../lib/readiness-export-trend-retention";
+import { issueReadinessExportPeriodProof, verifyReadinessExportPeriodProof } from "../lib/readiness-export-period";
 import {
   claimExistingSuperAdminIdentity,
   createManagedUser,
@@ -636,20 +637,44 @@ function readinessExportRecordGroup(recordCount: number) {
   return "1.000–4.999 record";
 }
 
+router.post("/admin/readiness-history/export-trends/period-proof", async (req, res): Promise<void> => {
+  if (!await authorizeAdmin(req, res)) return;
+  if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)
+    || Object.keys(req.body).some(key => key !== "attemptKey")) {
+    res.status(400).json({ error: "Only attemptKey is accepted" });
+    return;
+  }
+  const input = parsed(IssueAdminReadinessExportPeriodProofBody, req.body, res);
+  if (!input) return;
+  res.json(IssueAdminReadinessExportPeriodProofResponse.parse({
+    periodProof: issueReadinessExportPeriodProof(input.attemptKey),
+  }));
+});
+
 router.post("/admin/readiness-history/export-trends", async (req, res): Promise<void> => {
   if (!await authorizeAdmin(req, res)) return;
-  if (!req.body || typeof req.body !== "object"
-    || Object.keys(req.body).some(key => key !== "attemptKey" && key !== "outcome" && key !== "recordCount")) {
-    res.status(400).json({ error: "Only attemptKey, outcome, and recordCount are accepted" });
+  if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)
+    || Object.keys(req.body).some(key => !["attemptKey", "outcome", "recordCount", "periodProof"].includes(key))) {
+    res.status(400).json({ error: "Only attemptKey, outcome, recordCount, and periodProof are accepted" });
     return;
   }
   const input = parsed(RecordAdminReadinessExportTrendBody, req.body, res);
   if (!input) return;
+  const day = verifyReadinessExportPeriodProof(input.attemptKey, input.periodProof);
+  if (!day) {
+    res.status(400).json({ error: "Invalid export period proof" });
+    return;
+  }
+  // Expired authentic attempts are acknowledged but must not recreate pruned
+  // history or be reassigned to the day on which the browser came online.
+  if (day < readinessExportTrendRetentionCutoff()) {
+    res.sendStatus(204);
+    return;
+  }
   if (input.outcome === "started" || input.recordCount < READINESS_EXPORT_TREND_THRESHOLDS.minimumRecordCount) {
     res.sendStatus(204);
     return;
   }
-  const day = new Date().toISOString().slice(0, 10);
   const recordGroup = readinessExportRecordGroup(input.recordCount);
   await db.transaction(async tx => {
     const inserted = await tx.insert(readinessAuditExportAttemptsTable)

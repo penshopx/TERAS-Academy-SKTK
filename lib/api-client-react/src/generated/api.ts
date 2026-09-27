@@ -134,6 +134,8 @@ import type {
   ProgramDetail,
   ProgramSummary,
   ReadinessAuditPublicKeySet,
+  ReadinessExportAttemptInput,
+  ReadinessExportPeriodProof,
   ReadinessExportTrendInput,
   ReadinessMap,
   ReadinessRuleInput,
@@ -5581,7 +5583,7 @@ export const getRecordAdminReadinessExportTrendUrl = () => {
 }
 
 /**
- * Safe to retry after reconnecting with the same attemptKey; accepted retries are idempotent.
+ * Retry with the same attemptKey and server-issued periodProof. The proof fixes the UTC export day without trusting device time. Authentic retries older than the 90-day retention window are acknowledged without changing aggregates; invalid proofs are rejected.
  * @summary Record one anonymous readiness export outcome
  */
 export const recordAdminReadinessExportTrend = async (readinessExportTrendInput: ReadinessExportTrendInput, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
@@ -5642,6 +5644,78 @@ export const useRecordAdminReadinessExportTrend = <TError = ErrorType<BadRequest
         TContext
       > => {
       return useMutation(getRecordAdminReadinessExportTrendMutationOptions(options));
+    }
+
+export const getIssueAdminReadinessExportPeriodProofUrl = () => {
+
+
+
+
+  return `/api/admin/readiness-history/export-trends/period-proof`
+}
+
+/**
+ * Call before starting the export and keep this proof with the anonymous pending outcome for offline retry. No audit filters, identity, or export content are accepted.
+ * @summary Issue an anonymous server-day proof for an export attempt
+ */
+export const issueAdminReadinessExportPeriodProof = async (readinessExportAttemptInput: ReadinessExportAttemptInput, options?: Parameters<typeof customFetch>[1]): Promise<ReadinessExportPeriodProof> => {
+
+  return customFetch<ReadinessExportPeriodProof>(getIssueAdminReadinessExportPeriodProofUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(readinessExportAttemptInput)
+  }
+);}
+
+
+
+
+
+export const getIssueAdminReadinessExportPeriodProofMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof issueAdminReadinessExportPeriodProof>>, TError,{data: BodyType<ReadinessExportAttemptInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof issueAdminReadinessExportPeriodProof>>, TError,{data: BodyType<ReadinessExportAttemptInput>}, TContext> => {
+
+const mutationKey = ['issueAdminReadinessExportPeriodProof'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof issueAdminReadinessExportPeriodProof>>, {data: BodyType<ReadinessExportAttemptInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  issueAdminReadinessExportPeriodProof(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type IssueAdminReadinessExportPeriodProofMutationResult = NonNullable<Awaited<ReturnType<typeof issueAdminReadinessExportPeriodProof>>>
+    export type IssueAdminReadinessExportPeriodProofMutationBody = BodyType<ReadinessExportAttemptInput>
+    export type IssueAdminReadinessExportPeriodProofMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>
+
+    /**
+ * @summary Issue an anonymous server-day proof for an export attempt
+ */
+export const useIssueAdminReadinessExportPeriodProof = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof issueAdminReadinessExportPeriodProof>>, TError,{data: BodyType<ReadinessExportAttemptInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof issueAdminReadinessExportPeriodProof>>,
+        TError,
+        {data: BodyType<ReadinessExportAttemptInput>},
+        TContext
+      > => {
+      return useMutation(getIssueAdminReadinessExportPeriodProofMutationOptions(options));
     }
 
 export const getListReadinessAuditPublicKeysUrl = () => {

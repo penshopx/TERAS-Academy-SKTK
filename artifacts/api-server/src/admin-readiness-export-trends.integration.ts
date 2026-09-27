@@ -8,6 +8,7 @@ import {
   readinessAuditExportRetentionHealthTable,
 } from "@workspace/db";
 import { createIntegrationTestApp } from "./integration-test-app";
+import { issueReadinessExportPeriodProof } from "./lib/readiness-export-period";
 import {
   pruneReadinessExportTrendAggregates,
   getReadinessExportTrendRetentionStatus,
@@ -45,6 +46,9 @@ const retainedAfterCutoffDay = newerThanRetention.toISOString().slice(0, 10);
 const activePeriodDay = new Date(`${today}T00:00:00.000Z`);
 activePeriodDay.setUTCDate(activePeriodDay.getUTCDate() - 6);
 const activeFixtureDay = activePeriodDay.toISOString().slice(0, 10);
+const delayedPeriodDay = new Date(`${today}T12:00:00.000Z`);
+delayedPeriodDay.setUTCDate(delayedPeriodDay.getUTCDate() - 8);
+const delayedDay = delayedPeriodDay.toISOString().slice(0, 10);
 const expiredAttemptKey = `retention-rollback-${suffix}`;
 const reusableExpiredAttemptKey = crypto.randomUUID();
 const boundaryAttemptKey = crypto.randomUUID();
@@ -68,6 +72,7 @@ async function run() {
     retentionCutoffDay,
     retainedAfterCutoffDay,
     activeFixtureDay,
+    delayedDay,
   ];
   const baselineRows = await db.select()
     .from(readinessAuditExportAggregatesTable)
@@ -93,12 +98,28 @@ async function run() {
       ...init.headers,
     },
   });
-  const post = (role: "admin" | "learner" | null, body: unknown) => request(role, {
-    method: "POST",
-    body: JSON.stringify(body && typeof body === "object" && !("attemptKey" in body)
+  const post = async (role: "admin" | "learner" | null, body: unknown) => {
+    const data = body && typeof body === "object" && !("attemptKey" in body)
       ? { attemptKey: crypto.randomUUID(), ...body }
-      : body),
-  });
+      : body;
+    let proof: string | undefined;
+    if (role === "admin" && data && typeof data === "object"
+      && "attemptKey" in data && typeof data.attemptKey === "string"
+      && /^[0-9a-f-]{36}$/i.test(data.attemptKey)) {
+      const response = await fetch(`${endpoint}/period-proof`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-test-role": "admin" },
+        body: JSON.stringify({ attemptKey: data.attemptKey }),
+      });
+      assert.equal(response.status, 200, "Server must issue a proof before export");
+      proof = (await response.json() as { periodProof: string }).periodProof;
+    }
+    return request(role, {
+      method: "POST",
+      body: JSON.stringify(data && typeof data === "object"
+        ? { periodProof: proof, ...data } : data),
+    });
+  };
 
   try {
     // Isolate this test's current UTC day, then restore it in finally.
@@ -242,6 +263,10 @@ async function run() {
     assert((await post(null, { outcome: "failed", recordCount: 1_000 })).status === 401, "Unauthenticated POST must be rejected");
     assert((await request("learner")).status === 403, "Non-admin GET must be rejected");
     assert((await post("learner", { outcome: "failed", recordCount: 1_000 })).status === 403, "Non-admin POST must be rejected");
+    assert((await fetch(`${endpoint}/period-proof`, {
+      method: "POST", headers: { "content-type": "application/json", "x-test-role": "learner" },
+      body: JSON.stringify({ attemptKey: crypto.randomUUID() }),
+    })).status === 403, "Non-admins cannot issue proofs");
     assert((await request("admin", {
       method: "POST",
       body: JSON.stringify({ outcome: "failed", recordCount: 1_000 }),
@@ -256,6 +281,15 @@ async function run() {
       recordCount: 1_000,
       actorId: "must-not-be-accepted",
     })).status === 400, "Identifying POST fields must be rejected");
+    const proofKey = crypto.randomUUID();
+    assert.equal((await post("admin", {
+      attemptKey: proofKey, outcome: "failed", recordCount: 1_000,
+      periodProof: issueReadinessExportPeriodProof(crypto.randomUUID()),
+    })).status, 400, "A proof for another attempt must be rejected");
+    assert.equal((await request("admin", {
+      method: "POST",
+      body: JSON.stringify({ attemptKey: proofKey, outcome: "failed", recordCount: 1_000 }),
+    })).status, 400, "An outcome without a server-issued proof must not be assigned to the retry day");
 
     assert((await post("admin", { outcome: "failed", recordCount: 999 })).status === 204, "Small samples must be accepted and ignored");
     assert((await post("admin", { outcome: "started", recordCount: 1_000 })).status === 204, "Started outcomes must be accepted and ignored");
@@ -285,6 +319,26 @@ async function run() {
     assert.equal(await reusedAggregateCount(), 1, "A new outcome with the expired UUID must count once");
     assert.equal((await post("admin", reusedOutcome)).status, 204, "A retry with the reused UUID must succeed");
     assert.equal(await reusedAggregateCount(), 1, "The retry must not recount the new outcome");
+
+    const delayedKey = crypto.randomUUID();
+    const delayedOutcome = {
+      attemptKey: delayedKey, outcome: "failed", recordCount: 5_000,
+      periodProof: issueReadinessExportPeriodProof(delayedKey, delayedPeriodDay),
+    };
+    assert.equal((await post("admin", delayedOutcome)).status, 204, "Delayed authenticated retry must be accepted");
+    assert.equal((await post("admin", delayedOutcome)).status, 204, "Repeated delayed retry must remain idempotent");
+    const delayedRows = await db.select().from(readinessAuditExportAggregatesTable)
+      .where(eq(readinessAuditExportAggregatesTable.day, delayedDay));
+    assert.equal(delayedRows.find(row => row.recordGroup === "5.000–9.999 record" && row.outcome === "failed")?.count, 1,
+      "Retry after the seven-day period rolls over must count once on its original server day");
+    assert.equal(await reusedAggregateCount(), 1, "Delayed outcome must not inflate today's aggregate");
+    const expiredKey = crypto.randomUUID();
+    assert.equal((await post("admin", {
+      attemptKey: expiredKey, outcome: "failed", recordCount: 5_000,
+      periodProof: issueReadinessExportPeriodProof(expiredKey, new Date(`${expiredRetentionDay}T12:00:00.000Z`)),
+    })).status, 204, "Authentic outcomes beyond retention are acknowledged without reassigning their day");
+    assert.deepEqual(await db.select().from(readinessAuditExportAttemptsTable)
+      .where(eq(readinessAuditExportAttemptsTable.attemptKey, expiredKey)), []);
 
     const boundaryWrites = [
       { outcome: "succeeded", recordCount: 1_000 },

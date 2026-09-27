@@ -1179,10 +1179,22 @@ paths:
       operationId: recordAdminReadinessExportTrend
       tags: [admin]
       summary: Record one anonymous readiness export outcome
-      description: Safe to retry after reconnecting with the same attemptKey; accepted retries are idempotent.
+      description: Retry with the same attemptKey and server-issued periodProof. The proof fixes the UTC export day without trusting device time. Authentic retries older than the 90-day retention window are acknowledged without changing aggregates; invalid proofs are rejected.
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ReadinessExportTrendInput" } } } }
       responses:
         "204": { description: "Outcome recorded, including outcomes for samples below the server minimum" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/readiness-history/export-trends/period-proof:
+    post:
+      operationId: issueAdminReadinessExportPeriodProof
+      tags: [admin]
+      summary: Issue an anonymous server-day proof for an export attempt
+      description: Call before starting the export and keep this proof with the anonymous pending outcome for offline retry. No audit filters, identity, or export content are accepted.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ReadinessExportAttemptInput" } } } }
+      responses:
+        "200": { description: Attempt-bound server period proof, content: { application/json: { schema: { $ref: "#/components/schemas/ReadinessExportPeriodProof" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -4860,11 +4872,24 @@ components:
     ReadinessExportTrendInput:
       type: object
       additionalProperties: false
-      required: [attemptKey, outcome, recordCount]
+      required: [attemptKey, outcome, recordCount, periodProof]
       properties:
         attemptKey: { type: string, format: uuid }
         outcome: { type: string, enum: [started, succeeded, cancelled, failed] }
         recordCount: { type: integer, minimum: 0 }
+        periodProof: { type: string, pattern: "^v1\\.[0-9]{4}-[0-9]{2}-[0-9]{2}\\.[a-f0-9]{64}$" }
+    ReadinessExportAttemptInput:
+      type: object
+      additionalProperties: false
+      required: [attemptKey]
+      properties:
+        attemptKey: { type: string, format: uuid }
+    ReadinessExportPeriodProof:
+      type: object
+      additionalProperties: false
+      required: [periodProof]
+      properties:
+        periodProof: { type: string }
     AdminReadinessExportTrendAggregate:
       type: object
       required: [periodStart, periodEnd, recordGroup, outcome, count]

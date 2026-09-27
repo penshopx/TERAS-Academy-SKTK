@@ -12,4 +12,6 @@ export interface ReadinessExportTrendInput {
   outcome: ReadinessExportTrendInputOutcome;
   /** @minimum 0 */
   recordCount: number;
+  /** @pattern ^v1\.[0-9]{4}-[0-9]{2}-[0-9]{2}\.[a-f0-9]{64}$ */
+  periodProof: string;
 }

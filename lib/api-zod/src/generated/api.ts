@@ -3939,20 +3939,35 @@ export const GetAdminReadinessExportTrendsResponse = zod.object({
 
 
 /**
- * Safe to retry after reconnecting with the same attemptKey; accepted retries are idempotent.
+ * Retry with the same attemptKey and server-issued periodProof. The proof fixes the UTC export day without trusting device time. Authentic retries older than the 90-day retention window are acknowledged without changing aggregates; invalid proofs are rejected.
  * @summary Record one anonymous readiness export outcome
  */
 export const recordAdminReadinessExportTrendBodyRecordCountMin = 0;
 
+export const recordAdminReadinessExportTrendBodyPeriodProofRegExp = new RegExp('^v1\\.[0-9]{4}-[0-9]{2}-[0-9]{2}\\.[a-f0-9]{64}$');
 
 
 export const RecordAdminReadinessExportTrendBody = zod.object({
   "attemptKey": zod.uuid(),
   "outcome": zod.enum(['started', 'succeeded', 'cancelled', 'failed']),
-  "recordCount": zod.int().min(recordAdminReadinessExportTrendBodyRecordCountMin)
+  "recordCount": zod.int().min(recordAdminReadinessExportTrendBodyRecordCountMin),
+  "periodProof": zod.string().regex(recordAdminReadinessExportTrendBodyPeriodProofRegExp)
 })
 
 export const RecordAdminReadinessExportTrendResponse = zod.void()
+
+
+/**
+ * Call before starting the export and keep this proof with the anonymous pending outcome for offline retry. No audit filters, identity, or export content are accepted.
+ * @summary Issue an anonymous server-day proof for an export attempt
+ */
+export const IssueAdminReadinessExportPeriodProofBody = zod.object({
+  "attemptKey": zod.uuid()
+})
+
+export const IssueAdminReadinessExportPeriodProofResponse = zod.object({
+  "periodProof": zod.string()
+})
 
 
 /**

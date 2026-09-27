@@ -239,8 +239,9 @@ test("cleanup alarm shows the server threshold and timestamps, then clears on re
 
 test("export trend mutation cannot send device time to the server", () => {
   const attemptKey = "8581da20-938a-4f90-96f6-5cc20456134b";
-  assert.deepEqual(readinessExportTrendInput(attemptKey, "failed", 5_000), {
-    data: { attemptKey, outcome: "failed", recordCount: 5_000 },
+  const periodProof = `v1.2026-01-01.${"a".repeat(64)}`;
+  assert.deepEqual(readinessExportTrendInput(attemptKey, "failed", 5_000, periodProof), {
+    data: { attemptKey, outcome: "failed", recordCount: 5_000, periodProof },
   });
 });
 
@@ -253,10 +254,12 @@ test("failed export outcomes survive offline reload and clear after connection r
     },
   };
   const attemptKey = "8581da20-938a-4f90-96f6-5cc20456134b";
+  const periodProof = `v1.2026-01-01.${"a".repeat(64)}`;
   enqueueReadinessExportOutcome(storage, {
     attemptKey,
     outcome: "failed",
     recordCount: 5_000,
+    periodProof,
   });
 
   const offlineAttempts: string[] = [];
@@ -270,10 +273,12 @@ test("failed export outcomes survive offline reload and clear after connection r
     attemptKey,
     outcome: "failed",
     recordCount: 5_000,
+    periodProof,
   }]);
   const persisted = values.get(READINESS_EXPORT_OUTCOME_QUEUE_KEY) ?? "";
-  assert.deepEqual(Object.keys(JSON.parse(persisted)[0]).sort(), ["attemptKey", "outcome", "recordCount"]);
+  assert.deepEqual(Object.keys(JSON.parse(persisted)[0]).sort(), ["attemptKey", "outcome", "periodProof", "recordCount"]);
   assert.doesNotMatch(persisted, /learner|pathway|filter|records|exportedAt/i);
+  assert.equal(storage.getItem("teras:readiness-export-outcomes:v1"), null, "Legacy outcomes without a trusted period must not be replayed into today");
 
   const recoveredAttempts: string[] = [];
   let accepted = 0;
