@@ -1,0 +1,397 @@
+Saya akan membuat Runbook monitoring operasional sesuai spesifikasi Task #225.
+
+<function_calls>
+<invoke name="create_file">
+<parameter name="file_path">.agents/memory/runbook-agent-quality.md</parameter>
+<parameter name="content"># Runbook: Agent Quality Observability & Operational Response
+
+> **Status**: Active
+> **Scope**: Path A — Trainer Intelligence Agent
+> **Last updated**: 2026-09-28
+> **Related files**:
+> - `scripts/src/agent-quality-gate.ts`
+> - `artifacts/api-server/src/routes/admin.ts`
+> - `artifacts/api-server/src/lib/trainer-intelligence.ts`
+> - `.agents/memory/agentic-provider-boundaries.md`
+
+---
+
+## 0. Prinsip Utama: Zero Data Exposure
+
+### Data yang DILARANG disalin, disimpan, atau dikirim ke channel manapun
+
+| Kategori | Contoh |
+|---|---|
+| Identitas learner | actor ID, learner ID, nama, email |
+| Konten prompt | prompt text, system prompt, user message |
+| Evidence | evidence content, evidence references, tool references |
+| Hasil individual | result hash, raw result summary, catatan per-run |
+| Konteks pathway | pathway ID, objective, assignment ID |
+| Run individual | run ID, record per-run |
+
+### Data yang AMAN digunakan
+
+| Kategori | Sumber |
+|---|---|
+| Metrik agregat | Dashboard admin observability (`GET /admin/agent-observability`) |
+| Status gate | `pnpm --filter @workspace/scripts run gate:agent-quality` |
+| Distribusi versi | Agent version, provider, model (agregat) |
+| Rasio dan rate | Completion rate, failure rate, fallback rate |
+| Latency statistik | Average latency, P95 latency |
+| Count | Jumlah run per status, claim count, recommended action count |
+
+### Aturan komunikasi
+
+- **Jangan pernah** menyalin data terlarang ke Slack, email, issue tracker, atau log eksternal.
+- **Gunakan hanya** angka agregat dan persentase saat melaporkan anomali.
+- **Jika investigasi memerlukan** data individual, lakukan di dalam environment terisolasi dengan akses terbatas dan **jangan** mengekstrak ke luar sistem.
+- **Dokumentasikan** temuan dengan format: `[METRIC] [VALUE] [THRESHOLD] [STATUS]`, bukan dengan data mentah.
+
+---
+
+## 1. Checklist Pemeriksaan Harian (5–10 menit)
+
+**Waktu**: Setiap pagi kerja, sebelum aktivitas operasional dimulai.
+**Sumber**: Dashboard admin observability (`GET /admin/agent-observability`).
+
+### 1.1 Gate P0 — Governance dan Keselamatan
+
+| # | Pemeriksaan | Cara | Threshold | Tindakan jika gagal |
+|---|---|---|---|---|
+| P0-1 | Privacy leakage | Cek log audit observability: apakah ada respons yang memuat forbidden keys? | **0 kejadian** | **STOP ROLLOUT**. Eskalasi ke governance lead. Lihat §4.1. |
+| P0-2 | Unauthorized access | Cek log akses endpoint `/admin/agent-observability`: apakah ada request tanpa authorization yang berhasil? | **0 kejadian** | **STOP ROLLOUT**. Investigasi authorization bypass. Lihat §4.2. |
+| P0-3 | Domain mutation | Cek apakah agent menghasilkan perubahan pada domain state (readiness, competency, review status) | **0 kejadian** | **STOP ROLLOUT**. Investigasi agent output. Lihat §4.4. |
+| P0-4 | Ledger integrity | Cek apakah Agent Run Ledger masih append-only (tidak ada UPDATE/DELETE pada record existing) | **0 kejadian** | **STOP ROLLOUT**. Investigasi database protection. Lihat §4.3. |
+
+### 1.2 Gate P1 — Kebenaran dan Reliabilitas
+
+| # | Pemeriksaan | Cara | Threshold | Tindakan jika gagal |
+|---|---|---|---|---|
+| P1-1 | Failed runs | Dashboard observability: rasio `FAILED / total terminal runs` | **≤1%** | Investigasi penyebab. Lihat §3.2. |
+| P1-2 | Completed runs | Dashboard observability: rasio `COMPLETED / total terminal runs` | **≥95%** | Investigasi penyebab. Lihat §3.1. |
+| P1-3 | Fallback rate | Dashboard observability: `fallback count / total runs` | **≤5%** | Investigasi provider. Lihat §3.3. |
+| P1-4 | Ledger parity | Bandingkan metrik dashboard dengan query langsung ke ledger | **0 selisih** | Investigasi query observability. Lihat §3.4. |
+| P1-5 | Invalid provider selection | Dashboard: provider yang tidak ada di konfigurasi aktif | **≤5%**, semua masuk fallback | Cek konfigurasi provider. Lihat `.agents/memory/agentic-provider-boundaries.md`. |
+
+### 1.3 Gate P2 — Pengalaman Operasional
+
+| # | Pemeriksaan | Cara | Threshold | Tindakan jika gagal |
+|---|---|---|---|---|
+| P2-1 | P95 terminal latency | Dashboard observability: `p95 latency` | **≤15 detik** | Investigasi latency. Lihat §3.5. |
+| P2-2 | Error state admin | Dashboard observability: apakah panel menampilkan error state? | **Tidak ada error** | Investigasi API observability. |
+| P2-3 | Dashboard staleness | Bandingkan timestamp data terbaru dengan waktu saat ini | **≤1 jam** | Cek pipeline observability. |
+
+---
+
+## 2. Pemeriksaan Mingguan (30–60 menit)
+
+**Waktu**: Setiap Senin pagi.
+**Sumber**: Quality Gate script + Dashboard.
+
+### 2.1 Jalankan Quality Gate Validator
+
+```bash
+# Human-readable output
+pnpm --filter @workspace/scripts run gate:agent-quality
+
+# JSON output untuk arsip
+cd scripts
+pnpm exec tsx ./src/agent-quality-gate.ts --format=json > ../artifacts/gate-report-$(date +%Y-%m-%d).json
+```
+
+**Evaluasi hasil:**
+
+| Status | Arti | Tindakan |
+|---|---|---|
+| `PASS` | Semua gate terpenuhi | Lanjutkan operasional normal. Arsipkan report. |
+| `NOT_READY` | Sampel belum cukup (<100 runs atau <14 hari) | Lanjutkan observasi. Jangan turunkan threshold. |
+| `FAIL` | Satu atau lebih gate gagal | Investigasi gate yang gagal. Lihat §3. |
+
+> **Catatan**: `PASS` dari script hanya membuktikan metrik agregat. Privacy, authorization, append-only, dan domain non-mutation tetap memerlukan verifikasi structural terpisah. Lihat §4.
+
+### 2.2 Tinjau Tren Distribusi
+
+| Pemeriksaan | Cara | Yang dicari |
+|---|---|---|
+| Versi agent | Dashboard: distribusi `agent version` | Apakah ada versi baru yang muncul tanpa rilis resmi? |
+| Provider | Dashboard: distribusi `provider` | Apakah ada provider yang tidak dikenali? |
+| Model | Dashboard: distribusi `model` | Apakah model berubah tanpa konfigurasi baru? |
+| Tren latency | Bandingkan P95 minggu ini vs minggu lalu | Apakah ada degradasi >20%? |
+| Tren fallback | Bandingkan fallback rate minggu ini vs minggu lalu | Apakah ada kenaikan >2 poin persentase? |
+
+### 2.3 Verifikasi Sampel
+
+| Pemeriksaan | Threshold |
+|---|---|
+| Total real runs (kumulatif) | ≥100 (untuk baseline awal) |
+| Hari observasi | ≥14 hari kalender |
+| Distribusi trainer | Tidak dari 1 trainer saja |
+| Distribusi hari | Tidak dari 1 hari saja |
+
+---
+
+## 3. Prosedur Investigasi Anomali
+
+### 3.1 Completed Rate < 95%
+
+**Gejala**: Dashboard menunjukkan rasio COMPLETED di bawah 95%.
+
+**Langkah investigasi (AMAN — tanpa data learner):**
+
+1. Cek dashboard observability: berapa rasio `PARTIAL` vs `FAILED`?
+2. Cek distribusi provider: apakah failure terkonsentrasi di satu provider?
+3. Cek distribusi model: apakah failure terkonsentrasi di satu model?
+4. Cek tren waktu: apakah failure muncul setelah perubahan versi agent?
+5. Jalankan gate validator untuk konfirmasi angka:
+   ```bash
+   pnpm --filter @workspace/scripts run gate:agent-quality
+   ```
+
+**Tindakan:**
+- Jika terkonsentrasi di satu provider: cek status provider, pertimbangkan fallback ke provider lain.
+- Jika muncul setelah versi baru: pertimbangkan rollback versi agent.
+- Jika tersebar acak: eskalasi ke tim engineering untuk investigasi lebih dalam.
+
+### 3.2 Failed Rate > 1%
+
+**Gejala**: Dashboard menunjukkan rasio FAILED di atas 1%.
+
+**Langkah investigasi (AMAN):**
+
+1. Cek dashboard: apakah failure terjadi pada jam tertentu?
+2. Cek distribusi provider dan model saat failure.
+3. Cek apakah ada korelasi dengan perubahan infrastruktur (deployment, scaling).
+4. Cek log error agregat (tanpa membuka prompt atau evidence):
+   - Error type distribution
+   - Error code distribution
+   - Time pattern
+
+**Tindakan:**
+- Jika error terpusat pada satu error code: investigasi root cause spesifik.
+- Jika error tersebar: cek kesehatan infrastruktur secara umum.
+- Jika failure >5%: **STOP ROLLOUT** dan eskalasi.
+
+### 3.3 Fallback Rate > 5%
+
+**Gejala**: Dashboard menunjukkan fallback rate di atas 5%.
+
+**Langkah investigasi (AMAN):**
+
+1. Cek dashboard: provider mana yang memicu fallback?
+2. Cek `.agents/memory/agentic-provider-boundaries.md`: apakah provider tersebut masih valid?
+3. Cek apakah fallback menghasilkan `PARTIAL` atau tetap `COMPLETED`.
+4. Cek latency provider yang di-fallback: apakah timeout?
+
+**Tindakan:**
+- Jika provider utama timeout: cek koneksi dan quota provider.
+- Jika provider tidak valid: perbarui konfigurasi provider.
+- Jika fallback menghasilkan `PARTIAL`: investigasi kualitas fallback response.
+
+### 3.4 Ledger Mismatch
+
+**Gejala**: Metrik dashboard tidak cocok dengan query langsung ke ledger.
+
+**Langkah investigasi (AMAN):**
+
+1. Jalankan gate validator untuk mendapatkan angka dari ledger langsung:
+   ```bash
+   pnpm --filter @workspace/scripts run gate:agent-quality
+   ```
+2. Bandingkan angka validator dengan dashboard observability.
+3. Cek apakah ada migration database yang baru dijalankan.
+4. Cek apakah indeks observability masih valid.
+
+**Tindakan:**
+- Jika selisih kecil (<1%): kemungkinan timing window berbeda. Dokumentasikan dan monitor.
+- Jika selisih besar (>1%): investigasi query observability dan indeks database.
+- Jika ledger menunjukkan run yang hilang: **STOP ROLLOUT**. Ini adalah anomali P0.
+
+### 3.5 P95 Latency > 15 detik
+
+**Gejala**: Dashboard menunjukkan P95 terminal latency di atas 15 detik.
+
+**Langkah investigasi (AMAN):**
+
+1. Cek dashboard: apakah latency naik di semua provider atau satu provider saja?
+2. Cek apakah ada korelasi dengan volume run (peak hours).
+3. Cek apakah ada perubahan model yang lebih besar/lambat.
+4. Cek average latency: apakah hanya tail yang lambat atau keseluruhan naik?
+
+**Tindakan:**
+- Jika satu provider lambat: pertimbangkan fallback atau timeout adjustment.
+- Jika semua provider lambat: cek infrastruktur (database, network).
+- Jika hanya tail: cek apakah ada outlier run yang sangat besar.
+
+---
+
+## 4. Verifikasi Structural Gates
+
+Gate ini **tidak dapat dibuktikan** hanya dari metrik agregat. Memerlukan verifikasi terpisah.
+
+### 4.1 Privacy Leakage Verification
+
+**Frekuensi**: Setiap rilis baru atau perubahan endpoint observability.
+
+**Prosedur:**
+1. Jalankan integration test observability yang memeriksa forbidden keys:
+   - run ID, actor ID, learner ID, pathway ID
+   - objective, prompt, evidence/tool references
+   - result hash, raw result summary, catatan per-run
+2. Verifikasi bahwa `GET /admin/agent-observability` hanya mengembalikan scalar agregat.
+3. Verifikasi bahwa query database hanya mengambil kolom yang diizinkan (bukan `result_summary` utuh, hanya `fallbackUsed` boolean).
+
+**Kriteria lulus**: 0 forbidden keys dalam respons API.
+
+### 4.2 Authorization Verification
+
+**Frekuensi**: Setiap rilis baru atau perubahan middleware auth.
+
+**Prosedur:**
+1. Jalankan integration test authorization untuk endpoint observability.
+2. Verifikasi bahwa request tanpa token admin ditolak.
+3. Verifikasi bahwa request dengan token non-admin ditolak.
+4. Verifikasi bahwa rate limiting aktif.
+
+**Kriteria lulus**: 0 unauthorized access yang berhasil.
+
+### 4.3 Append-Only Protection Verification
+
+**Frekuensi**: Setiap rilis baru atau perubahan database schema.
+
+**Prosedur:**
+1. Jalankan database-protection contract tests:
+   ```bash
+   # Pastikan 3/3 contract tests lulus
+   pnpm --filter @workspace/api-server test -- --grep "database protection"
+   ```
+2. Verifikasi bahwa Agent Run Ledger tidak menerima UPDATE atau DELETE.
+3. Verifikasi bahwa migration tidak mengubah record existing.
+
+**Kriteria lulus**: 3/3 contract tests lulus. 0 mutation pada ledger.
+
+### 4.4 Domain Non-Mutation Verification
+
+**Frekuensi**: Setiap rilis baru agent atau perubahan prompt.
+
+**Prosedur:**
+1. Jalankan domain non-mutation regression tests.
+2. Verifikasi bahwa agent output tidak mengubah:
+   - Readiness status
+   - Competency decisions
+   - Review status
+   - Passport state
+   - Domain state lainnya
+3. Verifikasi bahwa agent hanya menghasilkan advisory output (claim + recommended action).
+
+**Kriteria lulus**: 0 domain mutation oleh agent.
+
+---
+
+## 5. Kriteria Stop Rollout dan Eskalasi
+
+### 5.1 Kriteria STOP ROLLOUT (Segera)
+
+Hentikan rollout versi agent baru **segera** jika salah satu terjadi:
+
+| Kondisi | Severity |
+|---|---|
+| Privacy leakage terdeteksi (forbidden keys dalam respons) | **CRITICAL** |
+| Authorization bypass pada endpoint observability | **CRITICAL** |
+| Domain mutation oleh agent (mengubah readiness/competency/review) | **CRITICAL** |
+| Ledger integrity breach (record hilang atau berubah) | **CRITICAL** |
+| Failed rate > 5% dalam 1 jam | **HIGH** |
+| Fallback rate > 20% dalam 1 jam | **HIGH** |
+| P95 latency > 60 detik dalam 1 jam | **HIGH** |
+
+### 5.2 Kriteria ESKALASI GOVERNANCE
+
+Eskalasi ke governance lead jika:
+
+| Kondisi | Severity |
+|---|---|
+| Privacy leakage berulang setelah fix | **CRITICAL** |
+| Domain mutation berulang setelah fix | **CRITICAL** |
+| Failed rate > 1% selama 3 hari berturut-turut | **MEDIUM** |
+| Fallback rate > 5% selama 3 hari berturut-turut | **MEDIUM** |
+| Quality Gate `FAIL` selama 3 hari berturut-turut | **MEDIUM** |
+| Perubahan versi agent/provider/model tanpa rilis resmi | **MEDIUM** |
+
+### 5.3 Prosedur Stop Rollout
+
+1. **Hentikan** deployment versi agent baru.
+2. **Rollback** ke versi agent terakhir yang stabil.
+3. **Dokumentasikan** anomali menggunakan format agregat:
+   ```
+   [ANOMALY] [METRIC] [VALUE] [THRESHOLD] [TIMESTAMP]
+   Contoh: [ANOMALY] failed_rate 6.2% 1% 2026-09-28T10:30:00Z
+   ```
+4. **Jangan** menyertakan data learner dalam dokumentasi.
+5. **Eskalasi** ke governance lead dengan laporan agregat.
+6. **Investigasi** root cause di environment terisolasi.
+7. **Perbaiki** dan **verifikasi** sebelum rollout ulang.
+
+---
+
+## 6. Format Pelaporan Anomali
+
+### Template laporan (AMAN)
+
+```
+## Anomali Agent Quality — [TANGGAL]
+
+**Severity**: [P0/P1/P2]
+**Status**: [Investigating/Resolved/Escalated]
+
+### Metrik Terpengaruh
+- [METRIC]: [VALUE] (threshold: [THRESHOLD])
+- Contoh: failed_rate: 2.3% (threshold: ≤1%)
+
+### Distribusi
+- Provider: [DISTRIBUTION]
+- Model: [DISTRIBUTION]
+- Agent version: [VERSION]
+
+### Waktu
+- Mulai: [TIMESTAMP]
+- Durasi: [DURATION]
+
+### Tindakan
+- [ACTION TAKEN]
+
+### Data yang TIDAK disertakan
+- Tidak ada actor/learner ID
+- Tidak ada prompt atau evidence content
+- Tidak ada record individual
+```
+
+---
+
+## 7. Referensi Perintah
+
+| Tujuan | Perintah |
+|---|---|
+| Gate validator (human-readable) | `pnpm --filter @workspace/scripts run gate:agent-quality` |
+| Gate validator (JSON) | `cd scripts && pnpm exec tsx ./src/agent-quality-gate.ts --format=json` |
+| Dashboard observability | `GET /admin/agent-observability` (via browser admin panel) |
+| Database protection tests | `pnpm --filter @workspace/api-server test -- --grep "database protection"` |
+| Typecheck API | `pnpm --filter @workspace/api-server typecheck` |
+| Typecheck scripts | `pnpm --filter @workspace/scripts typecheck` |
+
+---
+
+## 8. Catatan Penting
+
+1. **Quality Gate `PASS` ≠ Verified Operational Baseline**. Gate hanya membuktikan metrik agregat. Structural gates (privacy, auth, append-only, domain non-mutation) memerlukan evidence regresi terpisah.
+
+2. **Jangan menurunkan threshold** jika volume penggunaan rendah. Perpanjang periode observasi sampai sampel minimum tercapai.
+
+3. **Data test/integration tidak dihitung** sebagai real runs. Hanya run dari trainer nyata yang dihitung.
+
+4. **Perubahan versi agent/model/provider** memerlukan minimal 30 run baru sebelum dibandingkan dengan versi sebelumnya.
+
+5. **Runbook ini tidak menggantikan** investigasi mendalam. Jika anomali tidak dapat dijelaskan dengan metrik agregat, eskalasi ke tim engineering untuk investigasi di environment terisolasi.
+
+6. **Path B (SKTTK) tidak terpengaruh** oleh runbook ini. Path B tetap terkunci sampai Verified Operational Baseline Path A tercapai.
+</parameter>
+</invoke>
+</function_calls>
