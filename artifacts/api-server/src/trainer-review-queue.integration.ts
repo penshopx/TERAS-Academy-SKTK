@@ -46,7 +46,7 @@ async function assertLatestReviewLookupIsBounded() {
     FROM pg_indexes
     WHERE schemaname = current_schema()
       AND tablename = 'teras_practice_reviews'
-      AND indexdef LIKE '%(attempt_id, created_at DESC, id DESC)%'
+      AND indexdef ~ '\\(attempt_id, created_at DESC( NULLS (FIRST|LAST))?, id DESC( NULLS (FIRST|LAST))?\\)'
   `);
   const latestReviewIndex = indexResult.rows[0]?.indexname;
   assert(latestReviewIndex, "Expected an attempt_id, created_at DESC, id DESC review index");
@@ -74,15 +74,22 @@ async function requestPracticeReview(
   baseUrl: string,
   body: { idempotencyKey: string; status: "Needs revision" | "Reviewed"; feedback: string },
 ) {
-  const response = await fetch(`${baseUrl}/trainer/practice/${attemptId}/review`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const response = await postPracticeReview(baseUrl, body);
   if (response.status !== 200) {
     throw new Error(`POST /trainer/practice/${attemptId}/review: expected 200, got ${response.status}: ${await response.text()}`);
   }
   return response.json() as Promise<{ id: string; status: string; feedback: string }>;
+}
+
+function postPracticeReview(
+  baseUrl: string,
+  body: { idempotencyKey: string; status: "Needs revision" | "Reviewed"; feedback: string },
+) {
+  return fetch(`${baseUrl}/trainer/practice/${attemptId}/review`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 function practiceItem(queue: QueueItem[]) {
@@ -233,6 +240,37 @@ async function run() {
       false,
       "Dashboard history excludes reviews outside the trainer assignment",
     );
+
+    const queueBeforeConflict = await requestQueue(baseUrl);
+    const dashboardBeforeConflict = await requestDashboard(baseUrl);
+    const reviewsBeforeConflict = await db.select().from(practiceReviewsTable)
+      .where(eq(practiceReviewsTable.attemptId, attemptId));
+    assert.equal(reviewsBeforeConflict.length, 1);
+    assert(dashboardBeforeConflict.reviewHistory.some((review) => review.id === createdReview.id));
+
+    for (const [change, conflictingBody] of [
+      ["status", { ...needsRevisionBody, status: "Reviewed" as const }],
+      ["feedback", { ...needsRevisionBody, feedback: "Different feedback for the same key" }],
+    ] as const) {
+      const response = await postPracticeReview(baseUrl, conflictingBody);
+      assert.equal(response.status, 409, `${change} conflict must be rejected: ${await response.text()}`);
+
+      const queueAfterConflict = await requestQueue(baseUrl);
+      const itemAfterConflict = practiceItem(queueAfterConflict);
+      assert(itemAfterConflict, "Conflicted review must leave the attempt in the queue");
+      assert.equal(itemAfterConflict.status, "Needs revision", `${change} conflict must preserve queue status`);
+      assert.equal(itemAfterConflict.updatedAt, createdReview.createdAt.toISOString(), `${change} conflict must preserve queue updatedAt`);
+      assert.deepEqual(queueAfterConflict, queueBeforeConflict, `${change} conflict must not change the trainer queue`);
+
+      const dashboardAfterConflict = await requestDashboard(baseUrl);
+      assert.deepEqual(dashboardAfterConflict.recentActivity, dashboardBeforeConflict.recentActivity, `${change} conflict must not change dashboard queue`);
+      assert.deepEqual(dashboardAfterConflict.reviewHistory, dashboardBeforeConflict.reviewHistory, `${change} conflict must not change visible review history`);
+      assert.equal(
+        (await db.select().from(practiceReviewsTable).where(eq(practiceReviewsTable.attemptId, attemptId))).length,
+        reviewsBeforeConflict.length,
+        `${change} conflict must not append a review`,
+      );
+    }
 
     await requestPracticeReview(baseUrl, {
       idempotencyKey: `trainer-queue-reviewed-${suffix}`,

@@ -7,4 +7,4 @@ Align descending index NULL ordering explicitly in both Drizzle declarations and
 
 **Why:** Drizzle can emit descending indexes with `NULLS LAST`, while PostgreSQL SQL using bare `DESC` defaults to `NULLS FIRST`. An idempotent migration keeps a mismatched pushed index by name, and query-plan regression tests can scan thousands of rows despite appearing to use the expected index.
 
-**How to apply:** When a nullable descending index is defined in both sources, specify the same NULL ordering in each, including tie-breaker columns for exact definition parity. Verify the query plan on a clean disposable schema without dropping the pushed index.
+**How to apply:** When a nullable descending index is defined in both sources, specify the same NULL ordering in each, including tie-breaker columns for exact definition parity. Verify the query plan on a clean disposable schema without dropping the pushed index. Tests that discover the index through PostgreSQL's formatted definition must account for explicit `NULLS FIRST` or `NULLS LAST`; otherwise a valid index can be reported missing before the plan is checked.
