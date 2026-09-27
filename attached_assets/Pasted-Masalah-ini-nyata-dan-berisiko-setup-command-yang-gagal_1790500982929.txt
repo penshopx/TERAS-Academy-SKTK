@@ -1,0 +1,124 @@
+Masalah ini nyata dan berisiko: **setup command yang gagal dengan role utama dapat meninggalkan schema orphan** yang tidak bisa dibersihkan oleh role CI terbatas karena perbedaan izin.
+
+## Analisis Risiko
+
+```
+Setup (role utama/superuser):
+  CREATE SCHEMA ci_run_abc123;
+  CREATE TABLE ci_run_abc123.migrations (...);
+  -- ❌ GAGAL di tengah jalan
+  -- Schema ci_run_abc123 TERTINGGAL
+
+Cleanup (role CI terbatas):
+  DROP SCHEMA ci_run_abc123 CASCADE;
+  -- ❌ ERROR: permission denied (role CI bukan owner)
+  -- Schema ORPHAN permanen
+```
+
+## Solusi yang Direkomendasikan
+
+### 1. Setup command harus memakai role CI terbatas yang sama
+
+```sql
+-- Role CI terbatas (sudah ada untuk child test)
+CREATE ROLE ci_limited WITH
+  LOGIN
+  NOSUPERUSER
+  NOCREATEDB
+  NOCREATEROLE;
+
+-- Berikan izin schema-scoped, bukan database-scoped
+GRANT CREATE ON DATABASE test_db TO ci_limited;
+-- ↑ Ini memungkinkan CREATE SCHEMA tapi bukan CREATE DATABASE
+```
+
+### 2. Wrap setup dalam transaction + cleanup trap
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCHEMA_NAME="ci_run_${CI_RUN_ID:-$(date +%s)}"
+DB_URL="${TEST_DATABASE_URL}"
+
+cleanup() {
+  echo "Cleaning up schema ${SCHEMA_NAME}..."
+  psql "${DB_URL}" -c "DROP SCHEMA IF EXISTS ${SCHEMA_NAME} CASCADE;" 2>/dev/null || true
+}
+
+# Trap memastikan cleanup berjalan BAHKAN saat setup gagal
+trap cleanup EXIT ERR INT TERM
+
+# Setup dengan role CI terbatas (bukan role utama)
+psql "${DB_URL}" -U ci_limited -c "CREATE SCHEMA ${SCHEMA_NAME};"
+psql "${DB_URL}" -U ci_limited -c "SET search_path TO ${SCHEMA_NAME};"
+
+# Jalankan migration dalam transaction
+psql "${DB_URL}" -U ci_limited -v ON_ERROR_STOP=1 <<SQL
+  BEGIN;
+    -- migration 0016
+    -- migration 0054
+  COMMIT;
+SQL
+
+# Jika sampai sini, setup berhasil
+# Cleanup trap tetap aktif untuk teardown normal
+```
+
+### 3. Validasi role sebelum setup
+
+```bash
+# Pastikan role CI terbatas tidak punya CREATEDB
+HAS_CREATEDB=$(psql "${DB_URL}" -tAc "
+  SELECT rolcreatedb FROM pg_roles WHERE rolname = 'ci_limited';
+")
+
+if [ "$HAS_CREATEDB" = "t" ]; then
+  echo "ERROR: ci_limited role has CREATEDB privilege"
+  exit 1
+fi
+
+# Pastikan role CI terbatas bukan superuser
+IS_SUPER=$(psql "${DB_URL}" -tAc "
+  SELECT rolsuper FROM pg_roles WHERE rolname = 'ci_limited';
+")
+
+if [ "$IS_SUPER" = "t" ]; then
+  echo "ERROR: ci_limited role is superuser"
+  exit 1
+fi
+```
+
+### 4. Post-failure verification
+
+```bash
+# Setelah cleanup, verifikasi tidak ada schema orphan
+ORPHAN_SCHEMAS=$(psql "${DB_URL}" -tAc "
+  SELECT schema_name FROM information_schema.schemata
+  WHERE schema_name LIKE 'ci_run_%'
+    AND schema_name NOT IN ('ci_run_active');
+")
+
+if [ -n "$ORPHAN_SCHEMAS" ]; then
+  echo "WARNING: Orphan schemas detected: ${ORPHAN_SCHEMAS}"
+  exit 1
+fi
+```
+
+## Perubahan yang Diperlukan
+
+| Komponen | Sebelum | Sesudah |
+|---|---|---|
+| Setup role | Role utama (superuser) | `ci_limited` (NO CREATEDB) |
+| Schema creation | Tanpa trap | `trap cleanup EXIT ERR` |
+| Migration | Tanpa transaction | `BEGIN/COMMIT` wrapper |
+| Cleanup | Role CI terbatas | Role CI terbatas (owner = CI) |
+| Post-cleanup | Tidak ada | Orphan schema verification |
+
+## Prinsip Kunci
+
+> **Owner consistency**: Schema yang dibuat oleh role X hanya bisa di-drop oleh role X (atau superuser). Jika setup pakai role utama dan cleanup pakai role CI, cleanup akan gagal.
+
+> **Fail-safe cleanup**: `trap cleanup EXIT` memastikan cleanup berjalan dalam semua skenario kegagalan — error, interrupt, timeout.
+
+Apakah Anda ingin saya langsung menginvestigasi file setup script yang ada di workspace untuk menerapkan perubahan ini?

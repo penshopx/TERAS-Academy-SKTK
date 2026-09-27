@@ -1,0 +1,43 @@
+Saya memahami masalah ini: **setup phase masih berjalan dengan role PostgreSQL utama (privileged)**, sehingga jika gagal, bisa meninggalkan schema artifacts yang tidak terdeteksi karena tidak ada proteksi role CI terbatas di fase tersebut.
+
+## Analisis Risiko
+
+```
+Saat ini:
+  Child tests → limited CI role (no CREATEDB) → ✅ proven safe
+  Setup phase → main privileged role          → ⚠️ failure bisa leave schema
+
+Risiko:
+  1. Setup gagal setengah jalan → tabel/index tertinggal
+  2. Permission regression di migration lolos karena setup pakai role superuser
+  3. CI hijau padahal schema bocor, baru ketahuan di production
+```
+
+## Pendekatan Solusi
+
+Ada tiga lapisan yang perlu diperkuat:
+
+### 1. Setup harus pakai role CI terbatas untuk operasi schema
+Migration dan DDL seharusnya dijalankan dengan role yang sama seperti yang akan dipakai di production CI, bukan superuser. Jika migration membutuhkan privilege tertentu (misal `CREATE SCHEMA`), privilege itu harus di-grant secara eksplisit ke role CI, bukan bypass dengan superuser.
+
+### 2. Transactional setup dengan guaranteed rollback
+Setiap langkah setup harus dibungkus dalam transaksi. Jika gagal di tengah, rollback otomatis memastikan tidak ada schema parsial yang tertinggal.
+
+### 3. Regression test: setup-fail-with-limited-role
+Test baru yang secara eksplisit:
+```
+1. Buat role CI terbatas (no CREATEDB, no superuser)
+2. Jalankan setup command dengan role tersebut
+3. Setup gagal (expected)
+4. Verifikasi: TIDAK ada schema/tabel/index baru yang tertinggal
+5. Verifikasi: role CI tidak mendapat privilege tambahan
+```
+
+## Pertanyaan Sebelum Implementasi
+
+1. **Apakah ini task yang sudah dialokasikan secara resmi?** (mengingat Task #225 masih PENDING karena batas konkurensi)
+2. **File mana** yang menangani setup command dan role PostgreSQL?
+3. **Apakah ada script `post-merge.sh`** atau setup script yang sudah ada yang bisa saya periksa?
+4. **Bagaimana role CI saat ini dibuat?** (apakah ada fixture/provisioning script untuk role terbatas?)
+
+Saya tidak akan memulai perubahan file tanpa assignment eksplisit. Silakan konfirmasi apakah ini task baru yang dialokasikan untuk saya, atau apakah Anda ingin saya investigasi terlebih dahulu.
