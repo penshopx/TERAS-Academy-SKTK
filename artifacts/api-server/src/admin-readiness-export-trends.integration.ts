@@ -46,6 +46,7 @@ const activePeriodDay = new Date(`${today}T00:00:00.000Z`);
 activePeriodDay.setUTCDate(activePeriodDay.getUTCDate() - 6);
 const activeFixtureDay = activePeriodDay.toISOString().slice(0, 10);
 const expiredAttemptKey = `retention-rollback-${suffix}`;
+const reusableExpiredAttemptKey = crypto.randomUUID();
 const boundaryAttemptKey = crypto.randomUUID();
 const afterBoundaryAttemptKey = crypto.randomUUID();
 const activeRetryAttemptKey = crypto.randomUUID();
@@ -117,6 +118,7 @@ async function run() {
     ]);
     await db.insert(readinessAuditExportAttemptsTable).values([
       { attemptKey: expiredAttemptKey, day: expiredRetentionDay },
+      { attemptKey: reusableExpiredAttemptKey, day: expiredRetentionDay },
       { attemptKey: boundaryAttemptKey, day: retentionCutoffDay },
       { attemptKey: afterBoundaryAttemptKey, day: retainedAfterCutoffDay },
       { attemptKey: activeRetryAttemptKey, day: activeFixtureDay },
@@ -128,7 +130,7 @@ async function run() {
       .orderBy(asc(readinessAuditExportAggregatesTable.day), asc(readinessAuditExportAggregatesTable.recordGroup), asc(readinessAuditExportAggregatesTable.outcome));
     const fixtureAttemptsBeforeFailure = await db.select().from(readinessAuditExportAttemptsTable)
       .where(inArray(readinessAuditExportAttemptsTable.attemptKey, [
-        expiredAttemptKey, boundaryAttemptKey, afterBoundaryAttemptKey, activeRetryAttemptKey,
+        expiredAttemptKey, reusableExpiredAttemptKey, boundaryAttemptKey, afterBoundaryAttemptKey, activeRetryAttemptKey,
       ])).orderBy(asc(readinessAuditExportAttemptsTable.attemptKey));
     const healthBeforeFailure = await getReadinessExportTrendRetentionStatus();
     try {
@@ -171,7 +173,7 @@ async function run() {
     assert.deepEqual(
       await db.select().from(readinessAuditExportAttemptsTable)
         .where(inArray(readinessAuditExportAttemptsTable.attemptKey, [
-          expiredAttemptKey, boundaryAttemptKey, afterBoundaryAttemptKey, activeRetryAttemptKey,
+          expiredAttemptKey, reusableExpiredAttemptKey, boundaryAttemptKey, afterBoundaryAttemptKey, activeRetryAttemptKey,
         ])).orderBy(asc(readinessAuditExportAttemptsTable.attemptKey)),
       fixtureAttemptsBeforeFailure,
       "A failed deletion must leave retry keys unchanged",
@@ -202,12 +204,15 @@ async function run() {
     const retainedAttemptKeys = await db.select().from(readinessAuditExportAttemptsTable)
       .where(inArray(readinessAuditExportAttemptsTable.attemptKey, [
         expiredAttemptKey,
+        reusableExpiredAttemptKey,
         boundaryAttemptKey,
         afterBoundaryAttemptKey,
         activeRetryAttemptKey,
       ]));
     assert(!retainedAttemptKeys.some(row => row.attemptKey === expiredAttemptKey),
       "Retry keys before the retention boundary must be deleted");
+    assert(!retainedAttemptKeys.some(row => row.attemptKey === reusableExpiredAttemptKey),
+      "The expired UUID must be deleted before it can be reused");
     assert(retainedAttemptKeys.some(row => row.attemptKey === boundaryAttemptKey),
       "A retry key exactly on the retention boundary must remain");
     assert(retainedAttemptKeys.some(row => row.attemptKey === afterBoundaryAttemptKey),
@@ -260,6 +265,26 @@ async function run() {
       recordCount: 10_000,
     })).status === 204, "A retry protected by an active key must succeed without recounting");
     assert((await db.select().from(readinessAuditExportAggregatesTable).where(eq(readinessAuditExportAggregatesTable.day, today))).length === 0, "Ignored inputs must not create aggregate rows");
+
+    const reusedOutcome = {
+      attemptKey: reusableExpiredAttemptKey,
+      outcome: "failed",
+      recordCount: 1_000,
+    };
+    assert.equal((await post("admin", reusedOutcome)).status, 204,
+      "A new outcome may use a UUID after its expired retry key is cleaned up");
+    const reusedAttempt = await db.select().from(readinessAuditExportAttemptsTable)
+      .where(eq(readinessAuditExportAttemptsTable.attemptKey, reusableExpiredAttemptKey));
+    assert.equal(reusedAttempt.length, 1, "Reuse must create a new retry key");
+    assert.equal(reusedAttempt[0]!.day, today, "The reused key must protect the new UTC day");
+    const reusedAggregateCount = async () => {
+      const rows = await db.select().from(readinessAuditExportAggregatesTable)
+        .where(eq(readinessAuditExportAggregatesTable.day, today));
+      return rows.find(row => row.recordGroup === "1.000–4.999 record" && row.outcome === "failed")?.count;
+    };
+    assert.equal(await reusedAggregateCount(), 1, "A new outcome with the expired UUID must count once");
+    assert.equal((await post("admin", reusedOutcome)).status, 204, "A retry with the reused UUID must succeed");
+    assert.equal(await reusedAggregateCount(), 1, "The retry must not recount the new outcome");
 
     const boundaryWrites = [
       { outcome: "succeeded", recordCount: 1_000 },
@@ -334,6 +359,8 @@ async function run() {
       item.recordGroup === recordGroup && item.outcome === outcome && item.periodStart === expectedEnd);
     assert(aggregate("1.000–4.999 record", "succeeded")?.count === 12,
       "Unique writes must increment atomically while lost-response and concurrent retries count once each");
+    assert(aggregate("1.000–4.999 record", "failed")?.count === 1,
+      "The reused expired UUID must contribute exactly one outcome to the active trend");
     assert(aggregate("5.000–9.999 record", "succeeded")?.count === 2, "5.000–9.999 boundaries must map to one group");
     assert(aggregate("10.000+ record", "succeeded")?.count === 1, "10.000+ boundary must map to one group");
     assert(aggregate("5.000–9.999 record", "failed")?.count === 1, "Failed outcomes must be grouped");
