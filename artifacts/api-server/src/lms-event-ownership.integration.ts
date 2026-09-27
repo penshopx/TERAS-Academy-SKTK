@@ -30,17 +30,24 @@ const eventClient = new Client({
 async function waitForEnrollmentLockWait(
   applicationName: string,
   failureMessage: string,
+  blockingApplicationName?: string,
 ) {
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
     const waiting = await client.query<{ waiting: boolean }>(`
       SELECT EXISTS (
         SELECT 1
-        FROM pg_stat_activity
-        WHERE application_name = $1
-          AND wait_event_type = 'Lock'
+        FROM pg_stat_activity waiting_session
+        WHERE waiting_session.application_name = $1
+          AND waiting_session.wait_event_type = 'Lock'
+          AND ($2::text IS NULL OR EXISTS (
+            SELECT 1
+            FROM pg_stat_activity blocker
+            WHERE blocker.pid = ANY(pg_blocking_pids(waiting_session.pid))
+              AND blocker.application_name = $2
+          ))
       ) AS waiting
-    `, [applicationName]);
+    `, [applicationName, blockingApplicationName ?? null]);
     if (waiting.rows[0]?.waiting) return;
     await new Promise(resolve => setTimeout(resolve, 25));
   }
@@ -950,6 +957,153 @@ try {
         `the rejected ${eventCase.name} ${updateKind} update must not change the committed event or pathway history`,
       );
     }
+  }
+
+  // Each old event starts on a different enrollment with the same initial
+  // program/pathway as its destination. Only the destination's concurrent
+  // selection can make the otherwise valid ownership transfer fail.
+  await client.query(`
+    INSERT INTO teras_enrollments (id, learner_id, program_id, pathway_id, status)
+    SELECT
+      'ownership-race-enrollment-' || race_id,
+      'ownership-race-learner-' || race_id,
+      'ownership-race-program-' || CASE WHEN race_id > 25 THEN race_id - 5 ELSE race_id END,
+      'ownership-race-pathway-base-' || CASE WHEN race_id > 25 THEN race_id - 5 ELSE race_id END,
+      'active'
+    FROM generate_series(21, 30) AS race_id
+  `);
+  await client.query(`
+    INSERT INTO teras_learning_activities
+      (id, lesson_id, program_id, pathway_id, type, title, description, sequence)
+    SELECT
+      'ownership-race-base-activity-' || race_id,
+      'ownership-race-base-lesson-' || race_id,
+      'ownership-race-program-' || race_id,
+      'ownership-race-pathway-base-' || race_id,
+      'lesson', 'Race transfer activity ' || race_id, 'Original pathway context', 1
+    FROM generate_series(21, 25) AS race_id
+  `);
+  await client.query(`
+    INSERT INTO teras_learning_outcomes
+      (id, activity_id, description, verification_method, sequence)
+    SELECT
+      'ownership-race-base-outcome-' || race_id,
+      'ownership-race-base-activity-' || race_id,
+      'Race transfer outcome ' || race_id, 'review', 1
+    FROM generate_series(21, 25) AS race_id
+  `);
+  await client.query(`
+    INSERT INTO teras_readiness_gates
+      (id, program_id, pathway_id, sequence, code, name, requirement)
+    SELECT
+      'ownership-race-base-gate-' || race_id,
+      'ownership-race-program-' || race_id,
+      'ownership-race-pathway-base-' || race_id,
+      1, 'RACE-TRANSFER-' || race_id, 'Race transfer gate ' || race_id, 'Original pathway'
+    FROM generate_series(21, 25) AS race_id
+  `);
+
+  for (const [index, eventCase] of concurrentEventCases.entries()) {
+    const sourceNumber = index + 21;
+    const targetNumber = sourceNumber + 5;
+    const eventId = `context-transfer-race-${eventCase.table}`;
+    const sourceEnrollmentId = `ownership-race-enrollment-${sourceNumber}`;
+    const targetEnrollmentId = `ownership-race-enrollment-${targetNumber}`;
+    const sourceLearnerId = `ownership-race-learner-${sourceNumber}`;
+    const targetLearnerId = `ownership-race-learner-${targetNumber}`;
+    const programId = `ownership-race-program-${sourceNumber}`;
+    const originalPathwayId = `ownership-race-pathway-base-${sourceNumber}`;
+    const selectionId = `ownership-transfer-selection-${targetNumber}`;
+
+    await pathwayClient.query("BEGIN");
+    await pathwayClient.query(
+      `INSERT INTO teras_enrollment_pathway_events
+         (id, enrollment_id, pathway_id, program_id, sequence)
+       VALUES ($1, $2, $3, $4, 1)`,
+      [selectionId, targetEnrollmentId, `ownership-race-pathway-latest-${sourceNumber}`, programId],
+    );
+    const pendingSelection = (await pathwayClient.query<{ selection: Record<string, unknown> }>(
+      `SELECT to_jsonb(selection) AS selection
+       FROM teras_enrollment_pathway_events selection WHERE id = $1`,
+      [selectionId],
+    )).rows;
+
+    // Insert after the pending selection so the old event's unchanged timestamp
+    // falls within that selection once it commits.
+    await client.query(
+      `INSERT INTO ${eventCase.table} (${eventCase.columns})
+       VALUES (${eventCase.values})`,
+      eventCase.argumentIndexes.map(argumentIndex =>
+        [
+          eventId,
+          `ownership-race-base-activity-${sourceNumber}`,
+          sourceLearnerId,
+          sourceEnrollmentId,
+          originalPathwayId,
+          `ownership-race-base-outcome-${sourceNumber}`,
+          programId,
+          `ownership-race-base-gate-${sourceNumber}`,
+        ][argumentIndex]
+      ),
+    );
+    const beforeTransfer = (await client.query<{ event: Record<string, unknown> }>(
+      `SELECT to_jsonb(event) AS event FROM ${eventCase.table} event WHERE id = $1`,
+      [eventId],
+    )).rows;
+    const originalHistory = (await client.query<{ selection: Record<string, unknown> }>(
+      `SELECT to_jsonb(selection) AS selection
+       FROM teras_enrollment_pathway_events selection WHERE enrollment_id = $1`,
+      [sourceEnrollmentId],
+    )).rows;
+    assert.deepEqual(originalHistory, []);
+
+    await eventClient.query("BEGIN");
+    const assignments = eventCase.table === "teras_readiness_events"
+      ? "enrollment_id = $2"
+      : "enrollment_id = $2, learner_id = $3";
+    const concurrentTransfer = assert.rejects(
+      eventClient.query(
+        `UPDATE ${eventCase.table} SET ${assignments} WHERE id = $1`,
+        eventCase.table === "teras_readiness_events"
+          ? [eventId, targetEnrollmentId]
+          : [eventId, targetEnrollmentId, targetLearnerId],
+      ),
+      (error: unknown) => {
+        if (!(error instanceof Error)) return false;
+        const databaseError = error as Error & { code?: string; constraint?: string };
+        const constraint = eventCase.table === "teras_readiness_events"
+          ? "teras_readiness_events_enrollment_context_guard"
+          : `${eventCase.table.replace(/_events$/, "")}_enrollment_context_guard`;
+        return databaseError.code === "23503" && databaseError.constraint === constraint;
+      },
+      `${eventCase.name} transfer must reject the committed destination pathway`,
+    );
+    await waitForEnrollmentLockWait(
+      "lms-event-ownership-event-race",
+      `${eventCase.name} transfer did not wait for the destination enrollment lock`,
+      "lms-event-ownership-pathway-race",
+    );
+    await pathwayClient.query("COMMIT");
+    await concurrentTransfer;
+    await eventClient.query("ROLLBACK");
+
+    const afterTransfer = (await client.query<{ event: Record<string, unknown> }>(
+      `SELECT to_jsonb(event) AS event FROM ${eventCase.table} event WHERE id = $1`,
+      [eventId],
+    )).rows;
+    const sourceHistory = (await client.query<{ selection: Record<string, unknown> }>(
+      `SELECT to_jsonb(selection) AS selection
+       FROM teras_enrollment_pathway_events selection WHERE enrollment_id = $1`,
+      [sourceEnrollmentId],
+    )).rows;
+    const targetHistory = (await client.query<{ selection: Record<string, unknown> }>(
+      `SELECT to_jsonb(selection) AS selection
+       FROM teras_enrollment_pathway_events selection WHERE enrollment_id = $1`,
+      [targetEnrollmentId],
+    )).rows;
+    assert.deepEqual(afterTransfer, beforeTransfer, `${eventCase.name} must stay on its source enrollment`);
+    assert.deepEqual(sourceHistory, originalHistory, `${eventCase.name} must not alter source history`);
+    assert.deepEqual(targetHistory, pendingSelection, `${eventCase.name} must not alter target history`);
   }
 
   await client.query(contextMigration);
