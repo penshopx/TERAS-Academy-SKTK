@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
   readinessAuditExportAggregatesTable,
@@ -45,10 +45,11 @@ const retainedAfterCutoffDay = newerThanRetention.toISOString().slice(0, 10);
 const activePeriodDay = new Date(`${today}T00:00:00.000Z`);
 activePeriodDay.setUTCDate(activePeriodDay.getUTCDate() - 6);
 const activeFixtureDay = activePeriodDay.toISOString().slice(0, 10);
-const expiredAttemptKey = crypto.randomUUID();
+const expiredAttemptKey = `retention-rollback-${suffix}`;
 const boundaryAttemptKey = crypto.randomUUID();
 const afterBoundaryAttemptKey = crypto.randomUUID();
 const activeRetryAttemptKey = crypto.randomUUID();
+const rejectExpiredAttemptDelete = sql.identifier(`reject_retention_attempt_${suffix.replaceAll("-", "")}`);
 
 const app = createIntegrationTestApp(request => {
   const role = request.get("x-test-role");
@@ -122,20 +123,76 @@ async function run() {
     ]);
 
     assert(READINESS_EXPORT_TREND_RETENTION_DAYS > 7, "Retention must exceed the active reporting period");
+    const fixtureAggregatesBeforeFailure = await db.select().from(readinessAuditExportAggregatesTable)
+      .where(inArray(readinessAuditExportAggregatesTable.day, fixtureDays))
+      .orderBy(asc(readinessAuditExportAggregatesTable.day), asc(readinessAuditExportAggregatesTable.recordGroup), asc(readinessAuditExportAggregatesTable.outcome));
+    const fixtureAttemptsBeforeFailure = await db.select().from(readinessAuditExportAttemptsTable)
+      .where(inArray(readinessAuditExportAttemptsTable.attemptKey, [
+        expiredAttemptKey, boundaryAttemptKey, afterBoundaryAttemptKey, activeRetryAttemptKey,
+      ])).orderBy(asc(readinessAuditExportAttemptsTable.attemptKey));
+    const healthBeforeFailure = await getReadinessExportTrendRetentionStatus();
+    try {
+      await db.execute(sql`
+        CREATE FUNCTION ${rejectExpiredAttemptDelete}() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          RAISE EXCEPTION 'forced retention attempt deletion failure';
+        END
+        $$
+      `);
+      await db.execute(sql`
+        CREATE TRIGGER ${rejectExpiredAttemptDelete}
+        BEFORE DELETE ON teras_readiness_audit_export_attempts
+        FOR EACH ROW WHEN (OLD.attempt_key LIKE 'retention-rollback-%')
+        EXECUTE FUNCTION ${rejectExpiredAttemptDelete}()
+      `);
+      await assert.rejects(
+        pruneReadinessExportTrendAggregates(retentionNow),
+        (error: unknown) => error instanceof Error
+          && (error as Error & { cause?: Error }).cause?.message === "forced retention attempt deletion failure",
+        "Attempt deletion must fail after the cycle claim and aggregate deletion",
+      );
+    } finally {
+      await db.execute(sql`DROP TRIGGER IF EXISTS ${rejectExpiredAttemptDelete} ON teras_readiness_audit_export_attempts`);
+      await db.execute(sql`DROP FUNCTION IF EXISTS ${rejectExpiredAttemptDelete}()`);
+    }
+    assert.deepEqual(
+      await db.select().from(readinessAuditExportRetentionCyclesTable)
+        .where(eq(readinessAuditExportRetentionCyclesTable.day, today)),
+      [],
+      "A failed deletion must roll back the UTC cycle claim",
+    );
+    assert.deepEqual(
+      await db.select().from(readinessAuditExportAggregatesTable)
+        .where(inArray(readinessAuditExportAggregatesTable.day, fixtureDays))
+        .orderBy(asc(readinessAuditExportAggregatesTable.day), asc(readinessAuditExportAggregatesTable.recordGroup), asc(readinessAuditExportAggregatesTable.outcome)),
+      fixtureAggregatesBeforeFailure,
+      "A failed deletion must restore all aggregate rows, including ones deleted earlier in the transaction",
+    );
+    assert.deepEqual(
+      await db.select().from(readinessAuditExportAttemptsTable)
+        .where(inArray(readinessAuditExportAttemptsTable.attemptKey, [
+          expiredAttemptKey, boundaryAttemptKey, afterBoundaryAttemptKey, activeRetryAttemptKey,
+        ])).orderBy(asc(readinessAuditExportAttemptsTable.attemptKey)),
+      fixtureAttemptsBeforeFailure,
+      "A failed deletion must leave retry keys unchanged",
+    );
+    assert.deepEqual(await getReadinessExportTrendRetentionStatus(), healthBeforeFailure,
+      "A failed cleanup must not record a partial success");
+
     const concurrentCleanup = await Promise.all([
       pruneReadinessExportTrendAggregates(retentionNow),
       pruneReadinessExportTrendAggregates(retentionNow),
     ]);
     const executedCleanups = concurrentCleanup.filter(result => result.executed);
     const skippedCleanups = concurrentCleanup.filter(result => !result.executed);
-    assert.equal(executedCleanups.length, 1, "Only one concurrent retention cleanup may execute");
-    assert.equal(skippedCleanups.length, 1, "The other concurrent retention cleanup must skip without error");
-    const cleanup = executedCleanups[0]!;
+    assert.equal(executedCleanups.length, 1, "A same-day retry must execute exactly one concurrent cleanup");
+    assert.equal(skippedCleanups.length, 1, "The other concurrent cleanup must skip without error");
+    const retriedCleanup = executedCleanups[0]!;
     const afterCommitCleanup = await pruneReadinessExportTrendAggregates(retentionNow);
     assert.equal(afterCommitCleanup.executed, false, "A later invocation in the claimed UTC cycle must skip");
-    assert(cleanup.cutoffDay === retentionCutoffDay && cleanup.deletedRows >= 2,
+    assert(retriedCleanup.cutoffDay === retentionCutoffDay && retriedCleanup.deletedRows >= 2,
       "Cleanup must report at least the fixture rows strictly older than the retention cutoff");
-    assert(cleanup.deletedAttemptKeys >= 1,
+    assert(retriedCleanup.deletedAttemptKeys >= 1,
       "Cleanup must report deletion of retry keys strictly older than the retention cutoff");
     const retainedFixtures = await db.select().from(readinessAuditExportAggregatesTable)
       .where(inArray(readinessAuditExportAggregatesTable.day, [expiredRetentionDay, retentionCutoffDay, activeFixtureDay]));
