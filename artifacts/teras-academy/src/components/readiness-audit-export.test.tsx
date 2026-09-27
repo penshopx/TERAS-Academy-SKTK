@@ -14,6 +14,7 @@ import {
   ReadinessExportProgress,
   ReadinessExportFeedback,
   ReadinessExportAlerts,
+  ReadinessOutcomeSyncStatus,
   ReadinessAuditStatusBadge,
   ReadinessStatusDiagnostic,
   enqueueReadinessExportOutcome,
@@ -291,6 +292,17 @@ test("failed export outcomes survive offline reload and clear after connection r
   assert.deepEqual(recoveredAttempts, [attemptKey]);
   assert.equal(accepted, 1);
   assert.deepEqual(readPendingReadinessExportOutcomes(storage), []);
+});
+
+test("outcome sync indicator contains only the anonymous pending count and retry action", () => {
+  const pending = renderToStaticMarkup(<ReadinessOutcomeSyncStatus count={2} syncing={false} onRetry={() => undefined} />);
+  assert.match(pending, /2 outcome ekspor anonim menunggu sinkronisasi/);
+  assert.match(pending, /Coba sinkronkan lagi/);
+  assert.doesNotMatch(pending, /learner|pathway|filter|recordCount|attemptKey|periodProof/i);
+
+  const cleared = renderToStaticMarkup(<ReadinessOutcomeSyncStatus count={0} syncing={false} onRetry={() => undefined} />);
+  assert.match(cleared, /Outcome ekspor anonim tersinkron/);
+  assert.doesNotMatch(cleared, /Coba sinkronkan lagi/);
 });
 
 test("readiness export shows the filtered record count and advancing streamed bytes", async () => {

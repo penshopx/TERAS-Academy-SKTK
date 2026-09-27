@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   exportAdminReadinessHistory,
   issueAdminReadinessExportPeriodProof,
@@ -265,6 +265,26 @@ export async function flushPendingReadinessExportOutcomes(
   }
 }
 
+export function ReadinessOutcomeSyncStatus({
+  count,
+  syncing,
+  onRetry,
+}: {
+  count: number | null;
+  syncing: boolean;
+  onRetry: () => void;
+}) {
+  if (count === null) return <p className="text-xs text-muted-foreground" role="status">Status sinkronisasi outcome anonim tidak tersedia di browser ini.</p>;
+  return <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="readiness-outcome-sync">
+    <p role="status" aria-live="polite" data-testid="readiness-outcome-pending">
+      {count === 0 ? "Outcome ekspor anonim tersinkron." : `${count} outcome ekspor anonim menunggu sinkronisasi.`}
+    </p>
+    {count > 0 && <Button type="button" size="sm" variant="outline" onClick={onRetry} disabled={syncing} data-testid="button-retry-readiness-outcomes">
+      {syncing ? "Mencoba lagi…" : "Coba sinkronkan lagi"}
+    </Button>}
+  </div>;
+}
+
 export function readinessExportTrendInput(attemptKey: string, outcome: ExportTrendOutcome, recordCount: number, periodProof: string) {
   return { data: { attemptKey, outcome, recordCount, periodProof } };
 }
@@ -352,8 +372,12 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
   const [exportLoadedBytes, setExportLoadedBytes] = useState(0);
   const [exportError, setExportError] = useState<unknown>(null);
   const [lastChecksum, setLastChecksum] = useState("");
+  const [pendingOutcomeCount, setPendingOutcomeCount] = useState<number | null>(null);
+  const [syncingOutcomes, setSyncingOutcomes] = useState(false);
   const exportAbortController = useRef<AbortController | null>(null);
   const mounted = useRef(false);
+  const outcomeFlushRef = useRef<Promise<void> | null>(null);
+  const flushAgainRef = useRef(false);
   const recordExportTrend = useRecordAdminReadinessExportTrend();
   const recordExportTrendRef = useRef(recordExportTrend);
   const exporting = exportStatus === "preparing";
@@ -372,6 +396,8 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
     query: { enabled, staleTime: 30_000, refetchOnMount: "always", refetchInterval: 60_000, queryKey: getGetAdminReadinessExportTrendsQueryKey() },
   });
   recordExportTrendRef.current = recordExportTrend;
+  const refetchTrendsRef = useRef(exportTrends.refetch);
+  refetchTrendsRef.current = exportTrends.refetch;
   const learners = users.filter(user => user.roles.includes("learner"));
   const totalPages = Math.max(1, Math.ceil((history.data?.total ?? 0) / 25));
   const exportParams = useMemo(() => ({
@@ -386,23 +412,70 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
     return () => cancelReadinessExportOnUnmount(mounted, exportAbortController);
   }, []);
 
+  const refreshPendingCount = useCallback(() => {
+    try {
+      const count = readPendingReadinessExportOutcomes(window.localStorage).length;
+      if (mounted.current) setPendingOutcomeCount(count);
+    } catch {
+      if (mounted.current) setPendingOutcomeCount(null);
+    }
+  }, []);
+
+  const syncOutcomes = useCallback(() => {
+    if (!enabled) return;
+    if (outcomeFlushRef.current) {
+      flushAgainRef.current = true;
+      return;
+    }
+    const run = async () => {
+      if (mounted.current) setSyncingOutcomes(true);
+      try {
+        do {
+          flushAgainRef.current = false;
+          try {
+            await flushPendingReadinessExportOutcomes(
+              window.localStorage,
+              outcome => recordExportTrendRef.current.mutateAsync(
+                readinessExportTrendInput(outcome.attemptKey, outcome.outcome, outcome.recordCount, outcome.periodProof),
+              ),
+              () => {
+                refreshPendingCount();
+                if (mounted.current) void refetchTrendsRef.current();
+              },
+            );
+          } catch {
+            // Storage can be unavailable; do not interrupt the export.
+          }
+          refreshPendingCount();
+        } while (flushAgainRef.current);
+      } finally {
+        if (mounted.current) setSyncingOutcomes(false);
+      }
+    };
+    outcomeFlushRef.current = run().finally(() => {
+      outcomeFlushRef.current = null;
+      // An enqueue may arrive after the loop's last check but before this cleanup.
+      if (flushAgainRef.current && mounted.current) syncOutcomes();
+    });
+  }, [enabled, refreshPendingCount]);
+
   useEffect(() => {
     if (!enabled) return;
-    const flush = () => {
-      void flushPendingReadinessExportOutcomes(
-        window.localStorage,
-        outcome => recordExportTrendRef.current.mutateAsync(
-          readinessExportTrendInput(outcome.attemptKey, outcome.outcome, outcome.recordCount, outcome.periodProof),
-        ),
-        () => {
-          if (mounted.current) void exportTrends.refetch();
-        },
-      );
+    refreshPendingCount();
+    syncOutcomes();
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === READINESS_EXPORT_OUTCOME_QUEUE_KEY || event.key === null) {
+        refreshPendingCount();
+        syncOutcomes();
+      }
     };
-    flush();
-    window.addEventListener("online", flush);
-    return () => window.removeEventListener("online", flush);
-  }, [enabled, exportTrends.refetch]);
+    window.addEventListener("online", syncOutcomes);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("online", syncOutcomes);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [enabled, refreshPendingCount, syncOutcomes]);
 
   const exportAlerts = exportTrends.data?.alerts ?? [];
   const recordFinalExportOutcome = (attemptKey: string, outcome: ExportTrendOutcome, recordCount: number, periodProof: string | null) => {
@@ -410,18 +483,11 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
     const pending = { attemptKey, outcome, recordCount, periodProof };
     try {
       enqueueReadinessExportOutcome(window.localStorage, pending);
-      void flushPendingReadinessExportOutcomes(
-        window.localStorage,
-        item => recordExportTrendRef.current.mutateAsync(
-          readinessExportTrendInput(item.attemptKey, item.outcome, item.recordCount, item.periodProof),
-        ),
-        () => {
-          if (mounted.current) void exportTrends.refetch();
-        },
-      );
+      refreshPendingCount();
+      syncOutcomes();
     } catch {
       void recordExportTrendRef.current.mutateAsync(readinessExportTrendInput(attemptKey, outcome, recordCount, periodProof))
-        .then(() => exportTrends.refetch())
+        .then(() => refetchTrendsRef.current())
         .catch(() => undefined);
     }
   };
@@ -532,6 +598,7 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
         </div>
         {exporting && <ReadinessExportProgress recordCount={exportRecordCount} loadedBytes={exportLoadedBytes} />}
         <ReadinessExportFeedback status={exportStatus} recordCount={exportRecordCount} error={exportError} errorMessage={errorMessage} checksum={lastChecksum} />
+        {enabled && <ReadinessOutcomeSyncStatus count={pendingOutcomeCount} syncing={syncingOutcomes} onRetry={syncOutcomes} />}
         {history.isLoading && <div className="flex min-h-24 items-center gap-2 text-sm text-muted-foreground" role="status"><Loader2 className="h-4 w-4 animate-spin" />Memuat riwayat…</div>}
         {history.error && <p className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive" role="alert">{errorMessage(history.error)}</p>}
         {!history.isLoading && !history.error && !history.data?.items.length && <p className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">Tidak ada evaluasi yang cocok dengan filter.</p>}
