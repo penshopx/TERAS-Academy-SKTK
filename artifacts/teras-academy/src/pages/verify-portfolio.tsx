@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Link } from "wouter";
 import { AlertTriangle, CheckCircle2, FileJson, ShieldCheck, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,21 +13,36 @@ export default function VerifyPortfolio() {
   const [result, setResult] = useState<PortfolioVerificationResult | null>(null);
   const [fileName, setFileName] = useState("");
   const [isChecking, setIsChecking] = useState(false);
+  const activeCheck = useRef<AbortController | null>(null);
+
+  useEffect(() => () => {
+    activeCheck.current?.abort();
+    activeCheck.current = null;
+  }, []);
 
   const checkFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    activeCheck.current?.abort();
+    const controller = new AbortController();
+    activeCheck.current = controller;
+    event.target.value = "";
     setFileName(file.name);
     setResult(null);
 
     setIsChecking(true);
     try {
-      setResult(await verifyPortfolioFile(file));
+      const verification = await verifyPortfolioFile(file, { signal: controller.signal });
+      if (!controller.signal.aborted) setResult(verification);
     } catch {
-      setResult({ status: "rejected", message: "Browser tidak dapat menghitung checksum file ini." });
+      if (!controller.signal.aborted) {
+        setResult({ status: "rejected", message: "Browser tidak dapat menghitung checksum file ini." });
+      }
     } finally {
-      setIsChecking(false);
-      event.target.value = "";
+      if (!controller.signal.aborted) {
+        activeCheck.current = null;
+        setIsChecking(false);
+      }
     }
   };
 

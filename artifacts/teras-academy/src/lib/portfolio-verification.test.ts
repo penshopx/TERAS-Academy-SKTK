@@ -129,6 +129,61 @@ test("terminates stalled verification work and reports a clear rejection", async
   });
 });
 
+test("abort terminates an active worker immediately without reporting a result or late error", async () => {
+  const controller = new AbortController();
+  let terminated = 0;
+  let posted = false;
+  const listeners = new Map<string, (event?: MessageEvent) => void>();
+  const verification = verifyPortfolioFile(
+    { size: 2, text: async () => "{}" },
+    {
+      signal: controller.signal,
+      timeoutMs: 5,
+      createWorker: () => ({
+        addEventListener(type: string, listener: (event?: MessageEvent) => void) {
+          listeners.set(type, listener);
+        },
+        postMessage() {
+          posted = true;
+        },
+        terminate() {
+          terminated += 1;
+        },
+      }),
+    },
+  );
+  await Promise.resolve();
+  assert.equal(posted, true);
+  controller.abort();
+  assert.equal(terminated, 1);
+  await assert.rejects(verification, { name: "AbortError" });
+  listeners.get("message")?.({ data: { status: "match" } } as MessageEvent);
+  listeners.get("error")?.();
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(terminated, 1);
+});
+
+test("abort before or during file reading prevents worker creation", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  let reads = 0;
+  await assert.rejects(
+    verifyPortfolioFile({ size: 2, text: async () => { reads++; return "{}"; } }, { signal: controller.signal }),
+    { name: "AbortError" },
+  );
+  assert.equal(reads, 0);
+
+  const reading = new AbortController();
+  let finishRead!: (text: string) => void;
+  const verification = verifyPortfolioFile(
+    { size: 2, text: () => new Promise(resolve => { finishRead = resolve; }) },
+    { signal: reading.signal, createWorker: () => { throw new Error("Worker must not start"); } },
+  );
+  reading.abort();
+  finishRead("{}");
+  await assert.rejects(verification, { name: "AbortError" });
+});
+
 test("rejects a portfolio file above the local size limit before reading it", async () => {
   let textCalls = 0;
   const result = await verifyPortfolioFile({

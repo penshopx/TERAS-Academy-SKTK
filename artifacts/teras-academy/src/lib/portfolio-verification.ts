@@ -40,7 +40,12 @@ type VerificationWorker = {
 type VerifyPortfolioFileOptions = {
   createWorker?: () => VerificationWorker;
   timeoutMs?: number;
+  signal?: AbortSignal;
 };
+
+function portfolioVerificationAbortError(): DOMException {
+  return new DOMException("Pemeriksaan file dibatalkan.", "AbortError");
+}
 
 export function rejectOversizedPortfolioFile(fileSize: number): PortfolioVerificationResult | null {
   if (fileSize <= MAX_PORTFOLIO_FILE_SIZE_BYTES) return null;
@@ -55,10 +60,13 @@ export async function verifyPortfolioFile(
   file: Pick<File, "size" | "text">,
   options: VerifyPortfolioFileOptions = {},
 ): Promise<PortfolioVerificationResult> {
+  const { signal } = options;
+  if (signal?.aborted) throw portfolioVerificationAbortError();
   const sizeRejection = rejectOversizedPortfolioFile(file.size);
   if (sizeRejection) return sizeRejection;
 
   const text = await file.text();
+  if (signal?.aborted) throw portfolioVerificationAbortError();
   const createWorker = options.createWorker ?? (() => new Worker(
     new URL("./portfolio-verification.worker.ts", import.meta.url),
     { type: "module" },
@@ -68,31 +76,52 @@ export async function verifyPortfolioFile(
   try {
     worker = createWorker();
   } catch {
+    if (signal?.aborted) throw portfolioVerificationAbortError();
     return {
       status: "rejected",
       message: "Browser tidak mendukung pemeriksaan file lokal yang aman.",
     };
   }
 
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     let settled = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = () => {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+      worker.terminate();
+    };
+    const abort = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(portfolioVerificationAbortError());
+    };
     const finish = (result: PortfolioVerificationResult) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
-      worker.terminate();
+      cleanup();
       resolve(result);
     };
     const fail = () => finish({
       status: "rejected",
       message: PORTFOLIO_COMPLEXITY_REJECTION_MESSAGE,
     });
-    const timeout = setTimeout(fail, options.timeoutMs ?? PORTFOLIO_VERIFICATION_TIMEOUT_MS);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    timeout = setTimeout(fail, options.timeoutMs ?? PORTFOLIO_VERIFICATION_TIMEOUT_MS);
 
     worker.addEventListener("message", event => finish(event.data));
     worker.addEventListener("error", fail);
     worker.addEventListener("messageerror", fail);
-    worker.postMessage(text);
+    try {
+      worker.postMessage(text);
+    } catch {
+      fail();
+    }
   });
 }
 
