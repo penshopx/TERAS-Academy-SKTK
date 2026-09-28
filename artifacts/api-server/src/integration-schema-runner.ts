@@ -28,6 +28,7 @@ const DEFAULT_TEST_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_CONNECTION_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_CLEANUP_TIMEOUT_MS = 30 * 1000;
 const DEFAULT_STALE_SCHEMA_OPERATION_TIMEOUT_MS = 5 * 1000;
+const DISCOVERY_CANCELLATION_GRACE_MS = 1_000;
 const SCHEMA_METADATA_KIND = "teras-integration-test";
 const SCHEMA_METADATA_VERSION = 1;
 const ADVISORY_LOCK_SEED = 847_201;
@@ -127,6 +128,12 @@ class SchemaNameCollisionError extends Error {
   }
 }
 
+class StaleSchemaDiscoveryError extends Error {
+  constructor(schemaPrefix: string, cause: unknown, readonly connectionTerminated: boolean) {
+    super(`Failed to discover stale integration schemas for prefix ${schemaPrefix}`, { cause });
+  }
+}
+
 export function isStaleOwnedIntegrationSchema({
   schemaName,
   schemaPrefix,
@@ -178,14 +185,36 @@ export async function cleanupStaleIntegrationSchemas(
     "Stale integration schema operation timeout",
     operationTimeoutMs,
   );
-  const schemas = await admin.query<{ schema_name: string; comment: string | null }>(
-    `
-      SELECT n.nspname AS schema_name, obj_description(n.oid, 'pg_namespace') AS comment
-      FROM pg_namespace n
-      WHERE n.nspname LIKE $1 ESCAPE '\\'
-    `,
-    [`${schemaPrefix.replaceAll("_", "\\_")}_%`],
-  );
+  let discoveryConnectionTerminated = false;
+  let schemas: { rows: Array<{ schema_name: string; comment: string | null }> };
+  const clientTimeoutMs = operationTimeoutMs + DISCOVERY_CANCELLATION_GRACE_MS;
+  try {
+    await admin.query(`SET statement_timeout = ${Math.ceil(operationTimeoutMs)}`);
+    try {
+      schemas = await withTimeout(
+        admin.query<{ schema_name: string; comment: string | null }>(
+          `
+            SELECT n.nspname AS schema_name, obj_description(n.oid, 'pg_namespace') AS comment
+            FROM pg_namespace n
+            WHERE n.nspname LIKE $1 ESCAPE '\\'
+          `,
+          [`${schemaPrefix.replaceAll("_", "\\_")}_%`],
+        ),
+        clientTimeoutMs,
+        `Stale integration schema discovery timed out after ${clientTimeoutMs}ms for prefix ${schemaPrefix}`,
+        () => {
+          discoveryConnectionTerminated = true;
+          terminateAdminConnection(admin);
+        },
+      );
+    } finally {
+      if (!discoveryConnectionTerminated) {
+        await admin.query("SET statement_timeout = 0");
+      }
+    }
+  } catch (error) {
+    throw new StaleSchemaDiscoveryError(schemaPrefix, error, discoveryConnectionTerminated);
+  }
   const now = new Date();
   const cleanupErrors: Error[] = [];
   for (const { schema_name: schemaName, comment } of schemas.rows) {
@@ -503,7 +532,7 @@ export async function runIsolatedIntegrationTest({
   assertPositiveTimeout("Integration database cleanup timeout", cleanupTimeoutMs);
   let schemaName = createSchemaName(schemaPrefix);
   const prefix = schemaPrefix;
-  const admin = createAdminClient(process.env.DATABASE_URL!, connectionTimeoutMs);
+  let admin = createAdminClient(process.env.DATABASE_URL!, connectionTimeoutMs);
   let connected = false;
   let schemaCreated = false;
   let runError: unknown;
@@ -534,6 +563,22 @@ export async function runIsolatedIntegrationTest({
         `Stale integration schema cleanup failed for prefix ${prefix}; continuing with the current integration test`,
         error,
       );
+      if (error instanceof StaleSchemaDiscoveryError && error.connectionTerminated) {
+        // The discovery query can still be pending in pg's queue; never reuse that client.
+        const abandonedAdmin = admin;
+        void abandonedAdmin.end().catch(() => {
+          // The socket was destroyed above; the old session cannot hold locks.
+        });
+        connected = false;
+        admin = createAdminClient(process.env.DATABASE_URL!, connectionTimeoutMs);
+        await withTimeout(
+          admin.connect(),
+          connectionTimeoutMs,
+          `Integration database connection timed out after ${connectionTimeoutMs}ms`,
+          () => terminateAdminConnection(admin),
+        );
+        connected = true;
+      }
     }
     for (let attempt = 1; attempt <= MAX_SCHEMA_CREATION_ATTEMPTS; attempt++) {
       try {

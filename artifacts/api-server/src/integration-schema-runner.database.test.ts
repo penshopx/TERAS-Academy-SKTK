@@ -593,6 +593,107 @@ test("cleanup times out one stale schema, releases its lock, and continues with 
   }
 });
 
+test("discovery timeout reports its prefix, resets the session, and can be retried", {
+  skip: !databaseUrl,
+}, async () => {
+  const cleaner = new Client({ connectionString: databaseUrl });
+  const prefix = `discovery_${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`;
+  await cleaner.connect();
+  const originalQuery = cleaner.query.bind(cleaner);
+  let delayDiscovery = true;
+  const slowCleaner = Object.create(cleaner) as InstanceType<typeof Client>;
+  slowCleaner.query = ((query: unknown, values?: unknown[]) => {
+    if (delayDiscovery && typeof query === "string" && query.includes("FROM pg_namespace n")) {
+      delayDiscovery = false;
+      return originalQuery("SELECT pg_sleep(1)") as never;
+    }
+    return originalQuery(query as never, values as never);
+  }) as InstanceType<typeof Client>["query"];
+  try {
+    await assert.rejects(
+      cleanupStaleIntegrationSchemas(slowCleaner, prefix, staleSchemaAgeMs, 200),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, new RegExp(prefix));
+        assert.match(String(error.cause), /statement timeout|timed out/i);
+        return true;
+      },
+    );
+    const timeout = await originalQuery<{ statement_timeout: string }>("SHOW statement_timeout");
+    assert.equal(timeout.rows[0]?.statement_timeout, "0");
+    await cleanupStaleIntegrationSchemas(cleaner, prefix, staleSchemaAgeMs, 200);
+  } finally {
+    await cleaner.end();
+  }
+});
+
+test("a stuck discovery query closes its connection while the runner continues on a new one", {
+  skip: !databaseUrl,
+}, async () => {
+  const prefix = `discovery_hang_${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`;
+  const inspector = new Client({ connectionString: databaseUrl });
+  let createdClients = 0;
+  let abandonedConnectionClosed = false;
+  let reportedError: unknown;
+  const originalConsoleError = console.error;
+  await inspector.connect();
+  try {
+    await withMarkerFile(async (markerFile) => {
+      console.error = (message: unknown, error: unknown) => {
+        assert.match(String(message), new RegExp(prefix));
+        reportedError = error;
+      };
+      try {
+        await runIsolatedIntegrationTest({
+          schemaPrefix: prefix,
+          testFile: successFixture,
+          createAdminClient: (connectionString, connectionTimeoutMs) => {
+            const client = new Client({
+              connectionString,
+              connectionTimeoutMillis: connectionTimeoutMs,
+            });
+            createdClients++;
+            if (createdClients === 1) {
+              const originalEnd = client.end.bind(client);
+              client.end = (async () => {
+                abandonedConnectionClosed = true;
+                return originalEnd();
+              }) as InstanceType<typeof Client>["end"];
+              const originalQuery = client.query.bind(client);
+              client.query = (async (query: unknown, values?: unknown[]) => {
+                if (typeof query === "string" && query.includes("FROM pg_namespace n")) {
+                  await originalQuery("SET statement_timeout = 0");
+                  return originalQuery("SELECT pg_sleep(30)") as never;
+                }
+                return originalQuery(query as never, values as never);
+              }) as InstanceType<typeof Client>["query"];
+            }
+            return client;
+          },
+          cleanupStaleSchemas: (client, schemaPrefix, ageMs) =>
+            cleanupStaleIntegrationSchemas(client, schemaPrefix, ageMs, 100),
+        });
+      } finally {
+        console.error = originalConsoleError;
+      }
+      assert.equal(await readFile(markerFile, "utf8"), "test\n");
+    });
+    assert.equal(createdClients, 2);
+    assert.ok(reportedError instanceof Error);
+    assert.match(reportedError.message, new RegExp(prefix));
+    assert.match(String(reportedError.cause), /timed out after 1100ms/);
+    assert.equal(abandonedConnectionClosed, true);
+    const remaining = await inspector.query<{ nspname: string }>(
+      "SELECT nspname FROM pg_namespace WHERE nspname LIKE $1 ESCAPE '\\'",
+      [`${prefix.replaceAll("_", "\\_")}_%`],
+    );
+    assert.deepEqual(remaining.rows, []);
+  } finally {
+    console.error = originalConsoleError;
+    await inspector.end();
+  }
+});
+
 test("the next harness run reaps a schema orphaned by forced termination without touching active or unknown schemas", {
   skip: !databaseUrl,
 }, async () => {
