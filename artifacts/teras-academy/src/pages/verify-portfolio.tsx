@@ -98,35 +98,41 @@ export default function VerifyPortfolio() {
           </CardContent>
         </Card>
 
-        {result && (
-          <Card
-            className={matched ? "border-emerald-500/50" : mismatched ? "border-destructive/60" : "border-amber-500/50"}
-            data-testid="status-portfolio-verification"
-          >
-            <CardContent className="space-y-5 pt-6">
-              <div className="flex items-start gap-3">
-                {matched ? <CheckCircle2 className="mt-0.5 h-7 w-7 shrink-0 text-emerald-500" /> : mismatched ? <XCircle className="mt-0.5 h-7 w-7 shrink-0 text-destructive" /> : <AlertTriangle className="mt-0.5 h-7 w-7 shrink-0 text-amber-500" />}
-                <div>
-                  <h2 className="text-xl font-bold">
-                    {matched ? "Checksum cocok" : mismatched ? "Checksum tidak cocok" : "File ditolak"}
-                  </h2>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                    {resultDescription}
-                  </p>
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          aria-labelledby={result ? "portfolio-verification-heading" : undefined}
+          aria-describedby={result ? "portfolio-verification-description" : undefined}
+          data-testid="status-portfolio-verification"
+        >
+          {result && (
+            <Card className={matched ? "border-emerald-500/50" : mismatched ? "border-destructive/60" : "border-amber-500/50"}>
+              <CardContent className="space-y-5 pt-6">
+                <div className="flex items-start gap-3">
+                  {matched ? <CheckCircle2 className="mt-0.5 h-7 w-7 shrink-0 text-emerald-500" /> : mismatched ? <XCircle className="mt-0.5 h-7 w-7 shrink-0 text-destructive" /> : <AlertTriangle className="mt-0.5 h-7 w-7 shrink-0 text-amber-500" />}
+                  <div>
+                    <h2 id="portfolio-verification-heading" className="text-xl font-bold">
+                      {matched ? "Checksum cocok" : mismatched ? "Checksum tidak cocok" : "File ditolak"}
+                    </h2>
+                    <p id="portfolio-verification-description" className="mt-1 text-sm leading-6 text-muted-foreground">
+                      {resultDescription}
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              {result.status !== "rejected" && (
-                <dl className="grid gap-4 rounded-lg border border-border/60 bg-muted/20 p-4 text-sm sm:grid-cols-2">
-                  <div><dt className="text-muted-foreground">ID dokumen</dt><dd className="mt-1 break-all font-mono font-semibold" data-testid="text-document-id">{result.documentId}</dd></div>
-                  <div><dt className="text-muted-foreground">Diekspor pada</dt><dd className="mt-1 font-mono font-semibold" data-testid="text-exported-at">{result.exportedAt}</dd></div>
-                  <div className="sm:col-span-2"><dt className="text-muted-foreground">Checksum tercantum</dt><dd className="mt-1 break-all font-mono text-xs" data-testid="text-expected-checksum">{result.expectedChecksum}</dd></div>
-                  <div className="sm:col-span-2"><dt className="text-muted-foreground">Checksum hasil hitung</dt><dd className="mt-1 break-all font-mono text-xs" data-testid="text-calculated-checksum">{result.calculatedChecksum}</dd></div>
-                </dl>
-              )}
-            </CardContent>
-          </Card>
-        )}
+                {result.status !== "rejected" && (
+                  <dl className="grid gap-4 rounded-lg border border-border/60 bg-muted/20 p-4 text-sm sm:grid-cols-2">
+                    <div><dt className="text-muted-foreground">ID dokumen</dt><dd className="mt-1 break-all font-mono font-semibold" data-testid="text-document-id">{result.documentId}</dd></div>
+                    <div><dt className="text-muted-foreground">Diekspor pada</dt><dd className="mt-1 font-mono font-semibold" data-testid="text-exported-at">{result.exportedAt}</dd></div>
+                    <div className="sm:col-span-2"><dt className="text-muted-foreground">Checksum tercantum</dt><dd className="mt-1 break-all font-mono text-xs" data-testid="text-expected-checksum">{result.expectedChecksum}</dd></div>
+                    <div className="sm:col-span-2"><dt className="text-muted-foreground">Checksum hasil hitung</dt><dd className="mt-1 break-all font-mono text-xs" data-testid="text-calculated-checksum">{result.calculatedChecksum}</dd></div>
+                  </dl>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
 
         <aside className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm leading-6" role="note" data-testid="note-verifier-disclaimer">
           Pemeriksaan ini hanya memvalidasi integritas file portfolio internal TERAS. Hasilnya bukan sertifikat, bukan keputusan kompetensi resmi, dan bukan bukti sertifikasi.

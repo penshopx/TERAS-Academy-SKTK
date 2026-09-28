@@ -59,6 +59,12 @@ async function main() {
     await page.getByRole("heading", { name: "Verifikasi file portfolio" }).waitFor();
 
     const fileInput = page.getByTestId("input-portfolio-file");
+    const status = page.getByRole("status");
+    if (await status.getAttribute("aria-live") !== "polite" || await status.getAttribute("aria-atomic") !== "true") {
+      throw new Error("Portfolio verification status must be a polite, atomic live region before file selection.");
+    }
+    const homeLink = page.getByTestId("link-verifier-home");
+    await homeLink.focus();
     const oversizedFile = Buffer.alloc(maximumPortfolioFileSize + 1, 0x20);
     await fileInput.setInputFiles({
       name: "portfolio-too-large.json",
@@ -66,9 +72,19 @@ async function main() {
       buffer: oversizedFile,
     });
 
-    const status = page.getByTestId("status-portfolio-verification");
-    await status.getByRole("heading", { name: "File ditolak" }).waitFor();
-    await status.getByText("Ukuran file melebihi batas 5 MiB.", { exact: false }).waitFor();
+    const rejectedStatus = page.getByRole("status", { name: "File ditolak" });
+    await rejectedStatus.waitFor();
+    await rejectedStatus.getByRole("heading", { name: "File ditolak" }).waitFor();
+    const rejectionMessage = "Ukuran file melebihi batas 5 MiB.";
+    await rejectedStatus.getByText(rejectionMessage, { exact: false }).waitFor();
+    if (await rejectedStatus.getAttribute("aria-labelledby") !== "portfolio-verification-heading"
+      || await rejectedStatus.getAttribute("aria-describedby") !== "portfolio-verification-description"
+      || !(await page.locator("#portfolio-verification-description").textContent())?.includes(rejectionMessage)) {
+      throw new Error("Rejected status is missing its accessible heading or rejection message.");
+    }
+    if (!(await homeLink.evaluate(element => element === document.activeElement))) {
+      throw new Error("Portfolio verification moved focus after rejecting a file.");
+    }
     if (await fileInput.isDisabled()) throw new Error("The portfolio file picker stayed disabled after rejecting an oversized file.");
     if (await fileInput.inputValue() !== "") throw new Error("The portfolio file picker did not reset after rejecting an oversized file.");
 
@@ -78,8 +94,8 @@ async function main() {
       buffer: oversizedFile,
     });
     await page.getByTestId("text-selected-file").getByText("portfolio-too-large-again.json", { exact: false }).waitFor();
-    await status.getByRole("heading", { name: "File ditolak" }).waitFor();
-    await status.getByText("Ukuran file melebihi batas 5 MiB.", { exact: false }).waitFor();
+    await rejectedStatus.getByRole("heading", { name: "File ditolak" }).waitFor();
+    await rejectedStatus.getByText(rejectionMessage, { exact: false }).waitFor();
 
     process.stdout.write("browser portfolio file limit integration passed\n");
   } finally {
