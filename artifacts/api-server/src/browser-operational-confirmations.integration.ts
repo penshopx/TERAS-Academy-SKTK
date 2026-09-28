@@ -128,6 +128,7 @@ async function main() {
   }));
   app.get("/api/admin/agent-observability", (_request, response) => response.json({
     totals: { runCount: 0, completedCount: 0, partialCount: 0, failedCount: 0, fallbackRate: 0, p95TerminalLatencyMs: null },
+    trends: [], dimensions: [], policyCounts: {}, nextCursor: null,
   }));
   app.get("/api/admin/module-catalogue", (_request, response) => response.json({ canonicalModules: [], legacyModules: [] }));
   app.get("/api/admin/programs", (_request, response) => response.json([{
@@ -150,25 +151,35 @@ async function main() {
     const baseUrl = `http://127.0.0.1:${address.port}`;
     await page.goto(`${baseUrl}/trainer`);
     await page.waitForLoadState("networkidle");
-    assert(await page.getByRole("tab", { name: "Course Authoring" }).count(), `Trainer workspace unavailable: ${(await page.locator("body").innerText()).slice(0, 800)}`);
-    await page.getByRole("tab", { name: "Course Authoring" }).click();
+    const authoringTab = page.getByRole("tab", { name: "Course Authoring" });
+    await authoringTab.waitFor({ state: "visible" });
+    await authoringTab.click();
     await page.getByTestId("select-course").click();
     await page.getByTestId(`item-course-${courseId}`).click();
-    await page.getByTestId("button-course-actions").focus();
-    await page.keyboard.press("Enter");
-    await page.getByTestId("button-archive-course").focus();
-    await page.keyboard.press("Enter");
-    // Dropdown items open the confirmation directly; use its original action as trigger on reopen.
+    const courseActions = page.getByTestId("button-course-actions");
     const archiveCourse = page.getByRole("alertdialog", { name: "Are you absolutely sure?" });
+    const openCourseArchive = async () => {
+      await courseActions.focus();
+      await page.keyboard.press("Enter");
+      await page.getByTestId("button-archive-course").focus();
+      await page.keyboard.press("Enter");
+      await archiveCourse.waitFor({ state: "visible" });
+    };
+    const assertArchiveCancelFocus = async (label: string, before: number) => {
+      await archiveCourse.waitFor({ state: "hidden" });
+      await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "button-course-actions");
+      assert(await courseActions.isVisible(), `${label}: course actions trigger unavailable after cancel`);
+      assert(mutationCount() === before, `${label}: cancellation sent a mutation`);
+    };
+    await openCourseArchive();
+    const beforeArchiveCancel = mutationCount();
     await archiveCourse.waitFor();
     await page.keyboard.press("Escape");
-    await archiveCourse.waitFor({ state: "hidden" });
-    assert(mutationCount() === 0, "Course archive Escape sent a mutation");
-    await page.getByTestId("button-course-actions").focus();
-    await page.keyboard.press("Enter");
-    await page.getByTestId("button-archive-course").focus();
-    await page.keyboard.press("Enter");
-    await archiveCourse.waitFor();
+    await assertArchiveCancelFocus("Course archive Escape", beforeArchiveCancel);
+    await openCourseArchive();
+    await archiveCourse.getByRole("button", { name: "Cancel" }).click();
+    await assertArchiveCancelFocus("Course archive Cancel", beforeArchiveCancel);
+    await openCourseArchive();
     assert(await archiveCourse.evaluate(node => node.contains(node.ownerDocument.activeElement)), "Course archive initial focus escaped");
     await archiveCourse.getByRole("button", { name: "Cancel" }).focus();
     await page.keyboard.press("Shift+Tab");

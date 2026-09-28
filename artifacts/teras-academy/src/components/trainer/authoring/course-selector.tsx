@@ -2,7 +2,7 @@ import { useListAuthoredCourses, getListAuthoredCoursesQueryKey, useApplyCourseA
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Activity, Plus, Settings, Copy, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -46,6 +46,7 @@ export function CourseSelector({ selectedId, onSelect }: { selectedId?: string; 
   const [newSequence, setNewSequence] = useState("");
   const [apiError, setApiError] = useState("");
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const courseActionsRef = useRef<HTMLButtonElement>(null);
 
   const handleCreate = async () => {
     setApiError("");
@@ -144,7 +145,7 @@ export function CourseSelector({ selectedId, onSelect }: { selectedId?: string; 
       {selectedId && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon" variant="outline" className="border-primary/30 bg-black/40 text-primary hover:bg-primary/20 hover:text-primary" data-testid="button-course-actions">
+            <Button ref={courseActionsRef} size="icon" variant="outline" aria-label="Course actions" className="border-primary/30 bg-black/40 text-primary hover:bg-primary/20 hover:text-primary" data-testid="button-course-actions">
               <Settings className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -202,7 +203,13 @@ export function CourseSelector({ selectedId, onSelect }: { selectedId?: string; 
       </Dialog>
 
       <AlertDialog open={archiveOpen} onOpenChange={setArchiveOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent onCloseAutoFocus={event => {
+          const trigger = courseActionsRef.current;
+          if (trigger?.isConnected) {
+            event.preventDefault();
+            trigger.focus();
+          }
+        }}>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
