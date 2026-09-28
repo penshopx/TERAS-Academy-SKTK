@@ -177,6 +177,20 @@ grep -Fq 'PostgreSQL 17 provider=libc locale=C winners=winner-current' "$collati
   rm -rf "$collation_fixture_dir"
   fail "collation comparison failure must identify both PostgreSQL versions, providers, locales, and winners"
 }
+printf '18\tlibc\tC\twinner-current\n' >"$collation_fixture_dir/migration-collation-results/18-libc-C.tsv"
+collation_success_output="$collation_fixture_dir/comparison-success.log"
+if ! (
+  cd "$collation_fixture_dir"
+  POSTGRES_CURRENT_MAJOR=17 POSTGRES_TARGET_MAJOR=18 bash -c "$collation_comparison_script"
+) >"$collation_success_output" 2>&1; then
+  rm -rf "$collation_fixture_dir"
+  fail "collation comparison must accept identical winners for every provider and locale"
+fi
+grep -Fxq 'Migration winners match: PostgreSQL 17 and 18, provider=libc/libc, locale=C/C, winners=winner-current' "$collation_success_output" &&
+  grep -Fxq 'Migration winners match: PostgreSQL 17 and 18, provider=icu/icu, locale=en-US/en-US, winners=winner-shared' "$collation_success_output" || {
+  rm -rf "$collation_fixture_dir"
+  fail "collation comparison success must identify both PostgreSQL versions, providers, locales, and agreed winners"
+}
 rm -rf "$collation_fixture_dir"
 
 grep -Fq "needs: resolve-release-candidate" <<<"$api_contract_block" &&
