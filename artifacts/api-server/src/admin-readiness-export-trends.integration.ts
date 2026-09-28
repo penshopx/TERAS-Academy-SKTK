@@ -14,6 +14,7 @@ import {
   getReadinessExportTrendRetentionStatus,
   recordReadinessExportTrendRetentionFailure,
   recordReadinessExportTrendRetentionSuccess,
+  runReadinessExportTrendRetentionCleanup,
   READINESS_EXPORT_TREND_RETENTION_DAYS,
   readinessExportTrendRetentionCutoff,
 } from "./lib/readiness-export-trend-retention";
@@ -153,6 +154,12 @@ async function run() {
       .where(inArray(readinessAuditExportAttemptsTable.attemptKey, [
         expiredAttemptKey, reusableExpiredAttemptKey, boundaryAttemptKey, afterBoundaryAttemptKey, activeRetryAttemptKey,
       ])).orderBy(asc(readinessAuditExportAttemptsTable.attemptKey));
+    // Two prior UTC cycles put the next real scheduler failure at the alarm threshold.
+    for (const daysAgo of [2, 1]) {
+      const priorCycle = new Date(retentionNow);
+      priorCycle.setUTCDate(priorCycle.getUTCDate() - daysAgo);
+      await recordReadinessExportTrendRetentionFailure(priorCycle);
+    }
     const healthBeforeFailure = await getReadinessExportTrendRetentionStatus();
     try {
       await db.execute(sql`
@@ -174,6 +181,19 @@ async function run() {
           && (error as Error & { cause?: Error }).cause?.message === "forced retention attempt deletion failure",
         "Attempt deletion must fail after the cycle claim and aggregate deletion",
       );
+      assert.deepEqual(await getReadinessExportTrendRetentionStatus(), healthBeforeFailure,
+        "A failed transaction must not record a partial success");
+      assert.equal(await runReadinessExportTrendRetentionCleanup(retentionNow), null,
+        "The scheduler must catch the database deletion failure");
+      const firstFailure = await getReadinessExportTrendRetentionStatus();
+      assert.equal(firstFailure.consecutiveFailures, 3,
+        "The first scheduler failure must count this UTC cycle once");
+      assert.equal(firstFailure.alertActive, true, "The shared alarm must activate");
+      assert.equal(firstFailure.lastFailureAt, retentionNow.toISOString());
+      assert.equal(await runReadinessExportTrendRetentionCleanup(retentionNow), null,
+        "A second same-day scheduler failure must still be caught");
+      assert.deepEqual(await getReadinessExportTrendRetentionStatus(), firstFailure,
+        "Repeated failures in the same UTC cycle must not increment or clear the shared alarm");
     } finally {
       await db.execute(sql`DROP TRIGGER IF EXISTS ${rejectExpiredAttemptDelete} ON teras_readiness_audit_export_attempts`);
       await db.execute(sql`DROP FUNCTION IF EXISTS ${rejectExpiredAttemptDelete}()`);
@@ -199,18 +219,19 @@ async function run() {
       fixtureAttemptsBeforeFailure,
       "A failed deletion must leave retry keys unchanged",
     );
-    assert.deepEqual(await getReadinessExportTrendRetentionStatus(), healthBeforeFailure,
-      "A failed cleanup must not record a partial success");
-
-    const concurrentCleanup = await Promise.all([
-      pruneReadinessExportTrendAggregates(retentionNow),
-      pruneReadinessExportTrendAggregates(retentionNow),
-    ]);
-    const executedCleanups = concurrentCleanup.filter(result => result.executed);
-    const skippedCleanups = concurrentCleanup.filter(result => !result.executed);
-    assert.equal(executedCleanups.length, 1, "A same-day retry must execute exactly one concurrent cleanup");
-    assert.equal(skippedCleanups.length, 1, "The other concurrent cleanup must skip without error");
-    const retriedCleanup = executedCleanups[0]!;
+    const retriedCleanup = await runReadinessExportTrendRetentionCleanup(retentionNow);
+    assert(retriedCleanup?.executed, "The same-day scheduler retry must run the real cleanup");
+    assert.equal(retriedCleanup.recovered, true, "The successful cleanup must report alarm recovery");
+    const sharedRecoveryAfterRetry = await getReadinessExportTrendRetentionStatus();
+    assert.equal(sharedRecoveryAfterRetry.consecutiveFailures, 0, "Successful cleanup must reset the shared failure count");
+    assert.equal(sharedRecoveryAfterRetry.alertActive, false, "Successful cleanup must clear the shared alarm");
+    assert.equal(sharedRecoveryAfterRetry.lastSuccessAt, retentionNow.toISOString());
+    assert.equal(sharedRecoveryAfterRetry.lastFailureAt, retentionNow.toISOString(),
+      "Recovery must retain the last failure timestamp");
+    const adminRecovery = await request("admin");
+    assert.equal(adminRecovery.status, 200);
+    assert.deepEqual((await adminRecovery.json() as { retentionCleanup: typeof sharedRecoveryAfterRetry }).retentionCleanup,
+      sharedRecoveryAfterRetry, "Another reader must see the cleared shared alarm");
     const afterCommitCleanup = await pruneReadinessExportTrendAggregates(retentionNow);
     assert.equal(afterCommitCleanup.executed, false, "A later invocation in the claimed UTC cycle must skip");
     assert(retriedCleanup.cutoffDay === retentionCutoffDay && retriedCleanup.deletedRows >= 2,
@@ -240,8 +261,16 @@ async function run() {
       "A retry key after the retention boundary must remain");
     assert(retainedAttemptKeys.some(row => row.attemptKey === activeRetryAttemptKey),
       "Retry protection for the active reporting period must remain");
-    const nextCycleCleanup = await pruneReadinessExportTrendAggregates(nextRetentionCycle);
-    assert.equal(nextCycleCleanup.executed, true, "A new UTC cycle must be eligible to execute");
+    const concurrentCleanup = await Promise.all([
+      pruneReadinessExportTrendAggregates(nextRetentionCycle),
+      pruneReadinessExportTrendAggregates(nextRetentionCycle),
+    ]);
+    assert.equal(concurrentCleanup.filter(result => result.executed).length, 1,
+      "A new UTC cycle must execute exactly one concurrent cleanup");
+    assert.equal(concurrentCleanup.filter(result => !result.executed).length, 1,
+      "The other concurrent cleanup must skip without error");
+    assert.equal((await pruneReadinessExportTrendAggregates(nextRetentionCycle)).executed, false,
+      "A later invocation in the claimed next UTC cycle must skip");
 
     const failureDays = ["2097-01-01", "2097-01-02", "2097-01-03"];
     for (const day of failureDays) {
@@ -428,6 +457,8 @@ async function run() {
     assert(alert && alert.sampleSize === 5 && alert.failedCount === 3 && alert.failureRatio === 0.6, "Failure and cancelled outcomes must create the expected alert");
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    await db.execute(sql`DROP TRIGGER IF EXISTS ${rejectExpiredAttemptDelete} ON teras_readiness_audit_export_attempts`);
+    await db.execute(sql`DROP FUNCTION IF EXISTS ${rejectExpiredAttemptDelete}()`);
     await db.delete(readinessAuditExportAggregatesTable)
       .where(inArray(readinessAuditExportAggregatesTable.day, [today, ...fixtureDays]));
     await db.delete(readinessAuditExportAttemptsTable)
