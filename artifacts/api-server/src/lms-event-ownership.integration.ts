@@ -1185,6 +1185,101 @@ try {
     assert.deepEqual(targetHistory, pendingSelection, `${eventCase.name} must not alter target history`);
   }
 
+  // A rolled-back destination selection must not leave a false context
+  // rejection behind. Use fresh source/target enrollments to keep both
+  // histories empty and make the enrollment move the only committed change.
+  await client.query(`
+    INSERT INTO teras_enrollments (id, learner_id, program_id, pathway_id, status)
+    SELECT
+      'ownership-race-enrollment-' || race_id,
+      'ownership-race-learner-' || race_id,
+      'ownership-race-program-' || (CASE WHEN race_id > 35 THEN race_id - 15 ELSE race_id - 10 END),
+      'ownership-race-pathway-base-' || (CASE WHEN race_id > 35 THEN race_id - 15 ELSE race_id - 10 END),
+      'active'
+    FROM generate_series(31, 40) AS race_id
+  `);
+
+  for (const [index, eventCase] of concurrentEventCases.entries()) {
+    const sourceNumber = index + 31;
+    const targetNumber = sourceNumber + 5;
+    const contextNumber = index + 21;
+    const eventId = `context-transfer-rollback-${eventCase.table}`;
+    const sourceEnrollmentId = `ownership-race-enrollment-${sourceNumber}`;
+    const targetEnrollmentId = `ownership-race-enrollment-${targetNumber}`;
+    const sourceLearnerId = `ownership-race-learner-${sourceNumber}`;
+    const targetLearnerId = `ownership-race-learner-${targetNumber}`;
+    const programId = `ownership-race-program-${contextNumber}`;
+    const pathwayId = `ownership-race-pathway-base-${contextNumber}`;
+    const selectionId = `ownership-transfer-rollback-selection-${targetNumber}`;
+
+    await pathwayClient.query("BEGIN");
+    await pathwayClient.query(
+      `INSERT INTO teras_enrollment_pathway_events
+         (id, enrollment_id, pathway_id, program_id, sequence)
+       VALUES ($1, $2, $3, $4, 1)`,
+      [selectionId, targetEnrollmentId, `ownership-race-pathway-latest-${contextNumber}`, programId],
+    );
+
+    await client.query(
+      `INSERT INTO ${eventCase.table} (${eventCase.columns})
+       VALUES (${eventCase.values})`,
+      eventCase.argumentIndexes.map(argumentIndex =>
+        [
+          eventId,
+          `ownership-race-base-activity-${contextNumber}`,
+          sourceLearnerId,
+          sourceEnrollmentId,
+          pathwayId,
+          `ownership-race-base-outcome-${contextNumber}`,
+          programId,
+          `ownership-race-base-gate-${contextNumber}`,
+        ][argumentIndex]
+      ),
+    );
+    const beforeTransfer = (await client.query<{ event: Record<string, unknown> }>(
+      `SELECT to_jsonb(event) AS event FROM ${eventCase.table} event WHERE id = $1`,
+      [eventId],
+    )).rows[0]!.event;
+
+    await eventClient.query("BEGIN");
+    const assignments = eventCase.table === "teras_readiness_events"
+      ? "enrollment_id = $2"
+      : "enrollment_id = $2, learner_id = $3";
+    const concurrentTransfer = eventClient.query(
+      `UPDATE ${eventCase.table} SET ${assignments} WHERE id = $1`,
+      eventCase.table === "teras_readiness_events"
+        ? [eventId, targetEnrollmentId]
+        : [eventId, targetEnrollmentId, targetLearnerId],
+    );
+    await waitForEnrollmentLockWait(
+      "lms-event-ownership-event-race",
+      `${eventCase.name} rollback transfer did not wait for the destination enrollment lock`,
+      "lms-event-ownership-pathway-race",
+    );
+    await pathwayClient.query("ROLLBACK");
+    const transferResult = await concurrentTransfer;
+    assert.equal(transferResult.rowCount, 1, `${eventCase.name} must move exactly one event`);
+    await eventClient.query("COMMIT");
+
+    const afterTransfer = (await client.query<{ event: Record<string, unknown> }>(
+      `SELECT to_jsonb(event) AS event FROM ${eventCase.table} event WHERE id = $1`,
+      [eventId],
+    )).rows;
+    assert.deepEqual(afterTransfer, [{
+      event: {
+        ...beforeTransfer,
+        enrollment_id: targetEnrollmentId,
+        ...(eventCase.table === "teras_readiness_events" ? {} : { learner_id: targetLearnerId }),
+      },
+    }], `${eventCase.name} must move only to the destination enrollment after rollback`);
+    const histories = (await client.query<{ enrollment_id: string }>(
+      `SELECT enrollment_id FROM teras_enrollment_pathway_events
+       WHERE enrollment_id IN ($1, $2)`,
+      [sourceEnrollmentId, targetEnrollmentId],
+    )).rows;
+    assert.deepEqual(histories, [], `${eventCase.name} rollback must leave both pathway histories empty`);
+  }
+
   await client.query(contextMigration);
 
   console.info("LMS event ownership integration test passed");
