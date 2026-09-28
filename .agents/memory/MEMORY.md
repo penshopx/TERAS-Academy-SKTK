@@ -59,3 +59,4 @@
 - [Operational dialog browser fixtures](operational-dialog-browser-fixtures.md) — mock the surrounding eager screens, not just the targeted confirmation endpoint.
 - [Private ledger cursors](private-ledger-cursors.md) — encrypt keyset cursors when their tie-breaker is a stable private ID; preserve PostgreSQL timestamp precision.
 - [Append-only audit uniqueness upgrades](append-only-audit-uniqueness.md) — reject conflicting historical rows before adding uniqueness rather than deleting immutable audit evidence.
+- [Browser extreme JSON verification](browser-extreme-json-verification.md) — browser recursion behavior can differ from unit-test assumptions; verify fixtures in the target engine.

@@ -61,6 +61,7 @@
     "test:browser-operational-confirmations": "NODE_ENV=test tsx ./src/browser-operational-confirmations.integration.ts",
     "test:browser-baseline-selection": "NODE_ENV=test tsx ./src/browser-baseline-selection.integration.ts",
     "test:browser-portfolio-file-limit": "NODE_ENV=test tsx ./src/browser-portfolio-file-limit.integration.ts",
+    "test:browser-portfolio-worker-responsiveness": "NODE_ENV=test tsx ./src/browser-portfolio-worker-responsiveness.integration.ts",
     "test:agentic-contracts": "NODE_ENV=test tsx --test ./src/lib/agentic.test.ts",
     "test:agentic-integration": "NODE_ENV=test tsx ./src/trainer-intelligence.integration-runner.ts",
     "test:evidence-triage": "NODE_ENV=test tsx ./src/evidence-triage.integration-runner.ts",

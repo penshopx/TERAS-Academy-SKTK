@@ -109,3 +109,6 @@ jobs:
 
       - name: Verify portfolio file size rejection
         run: pnpm --filter @workspace/api-server run test:browser-portfolio-file-limit
+
+      - name: Verify extreme portfolio file keeps the browser responsive
+        run: pnpm --filter @workspace/api-server run test:browser-portfolio-worker-responsiveness
