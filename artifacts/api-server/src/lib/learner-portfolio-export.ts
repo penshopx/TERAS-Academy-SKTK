@@ -1,6 +1,23 @@
 import crypto from "node:crypto";
 
 export const LEARNER_PORTFOLIO_CANONICALIZATION = "teras-learner-portfolio-v1-json-stringify";
+// The raw database rows are checked before loading the full timeline. Keep
+// enough headroom for relation indexes, projection, Zod parsing and JSON output.
+export const MAX_PORTFOLIO_SOURCE_ROWS = 2_000;
+export const MAX_PORTFOLIO_SOURCE_BYTES = 4 * 1024 * 1024;
+export const MAX_PORTFOLIO_JSON_BYTES = 8 * 1024 * 1024;
+
+export class PortfolioExportTooLarge extends Error {
+  constructor() {
+    super("Passport history is too large to download as one file. Use the paginated Passport history instead.");
+  }
+}
+
+export function assertPortfolioExportBudget(rows: number, bytes: number) {
+  if (rows > MAX_PORTFOLIO_SOURCE_ROWS || bytes > MAX_PORTFOLIO_SOURCE_BYTES) {
+    throw new PortfolioExportTooLarge();
+  }
+}
 
 export type LearnerPortfolioPayload = {
   schemaVersion: "1.0";
@@ -48,7 +65,9 @@ export async function collectTimelineSnapshotPages<TSnapshot, T>(
 
 export function createLearnerPortfolioExport(portfolio: unknown, exportedAt = new Date()) {
   const exportedAtIso = exportedAt.toISOString();
-  const portfolioChecksum = crypto.createHash("sha256").update(JSON.stringify(portfolio)).digest("hex");
+  const portfolioJson = JSON.stringify(portfolio);
+  if (Buffer.byteLength(portfolioJson, "utf8") > MAX_PORTFOLIO_JSON_BYTES) throw new PortfolioExportTooLarge();
+  const portfolioChecksum = crypto.createHash("sha256").update(portfolioJson).digest("hex");
   const payload: LearnerPortfolioPayload = {
     schemaVersion: "1.0",
     documentId: `teras-portfolio-${portfolioChecksum.slice(0, 16)}`,

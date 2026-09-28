@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import type { AddressInfo } from "node:net";
 import {
   db,
@@ -37,6 +38,7 @@ const longHistoryReviews = longHistoryEvidence.map((_, index) => `passport-histo
 async function cleanup() {
   await db.delete(readinessEventsTable).where(inArray(readinessEventsTable.enrollmentId, [enrollmentA, enrollmentB]));
   await db.delete(evidenceReviewsTable).where(inArray(evidenceReviewsTable.evidenceId, [evidenceA, evidenceB, ...longHistoryEvidence]));
+  await db.execute(sql`DELETE FROM teras_evidence WHERE learner_id = ${learnerA} AND id LIKE ${`passport-stress-${suffix}-%`}`);
   await db.delete(evidenceTable).where(inArray(evidenceTable.id, [evidenceA, evidenceB, ...longHistoryEvidence]));
   await db.delete(enrollmentsTable).where(inArray(enrollmentsTable.id, [enrollmentA, enrollmentB]));
   await db.delete(peopleTable).where(inArray(peopleTable.id, [learnerA, learnerB]));
@@ -191,6 +193,13 @@ async function run() {
         `${identity} parallel Passport requests with identical inputs must append one readiness event`,
       );
       assert.deepEqual(exported.portfolio, fullPassport, `${identity} exported portfolio must equal the full-history Passport response`);
+      const { integrity, ...signedPayload } = exported as ExportPayload & {
+        documentId: string;
+        integrity: { checksum: string };
+      };
+      const portfolioHash = crypto.createHash("sha256").update(JSON.stringify(exported.portfolio)).digest("hex");
+      assert.equal(signedPayload.documentId, `teras-portfolio-${portfolioHash.slice(0, 16)}`);
+      assert.equal(integrity.checksum, crypto.createHash("sha256").update(JSON.stringify(signedPayload)).digest("hex"));
       for (let index = 1; index < fullPassport.timeline.length; index++) {
         const previous = fullPassport.timeline[index - 1]!;
         const current = fullPassport.timeline[index]!;
@@ -324,6 +333,44 @@ async function run() {
       maliciousExport.portfolio.timeline.every(step => !Object.values(step.causalReferences).flat().includes(evidenceB)),
       "another learner's causal evidence must not leak through export query parameters",
     );
+    // Highly compressible TOAST values occupy little disk space but expand
+    // dramatically on retrieval. The byte preflight must count logical size.
+    await db.execute(sql`
+      INSERT INTO teras_evidence
+        (id, learner_id, pathway_id, module_id, task_id, title, type, description, created_by)
+      SELECT ${`passport-stress-${suffix}-compressed-`} || n::text, ${learnerA},
+        'path-a', 'm03', 'task-m03', 'Compressed history', 'Report',
+        repeat('x', 2 * 1024 * 1024), ${learnerA}
+      FROM generate_series(1, 3) AS n
+    `);
+    const compressedHeapBefore = process.memoryUsage().heapUsed;
+    const compressed = await fetch(`${baseUrl}/passport/export`, { headers: { "x-passport-identity": "path-a" } });
+    assert.equal(compressed.status, 413, "compressed multi-megabyte source rows must be rejected before retrieval");
+    assert(process.memoryUsage().heapUsed - compressedHeapBefore < 32 * 1024 * 1024,
+      "compressed data must not be expanded in Node before rejection");
+    assert.equal((await request<ExportPayload>("/passport/export", "path-b")).portfolio.learner.id, learnerB,
+      "other learner's compressed history must not be read by the small learner's export");
+    await db.execute(sql`DELETE FROM teras_evidence WHERE learner_id = ${learnerA} AND id LIKE ${`passport-stress-${suffix}-%`}`);
+    // Insert a history much larger than the export budget without loading it
+    // into the test process. Rejection must precede timeline construction.
+    await db.execute(sql`
+      INSERT INTO teras_evidence
+        (id, learner_id, pathway_id, module_id, task_id, title, type, description, created_by)
+      SELECT ${`passport-stress-${suffix}-`} || n::text, ${learnerA},
+        'path-a', 'm03', 'task-m03', 'Stress history', 'Report',
+        repeat('x', 2048), ${learnerA}
+      FROM generate_series(1, 10_000) AS n
+    `);
+    const heapBefore = process.memoryUsage().heapUsed;
+    const oversized = await fetch(`${baseUrl}/passport/export`, { headers: { "x-passport-identity": "path-a" } });
+    assert.equal(oversized.status, 413);
+    assert.equal((await oversized.json() as { error: string }).error, "PASSPORT_EXPORT_TOO_LARGE");
+    assert(
+      process.memoryUsage().heapUsed - heapBefore < 32 * 1024 * 1024,
+      "rejected extreme history must not materialize the raw rows or serialized portfolio in Node",
+    );
+    assert.equal((await request<ExportPayload>("/passport/export", "path-b")).portfolio.learner.id, learnerB,
+      "a rejected oversized download must not block other learners");
     process.stdout.write("Passport export parity integration check passed\n");
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));

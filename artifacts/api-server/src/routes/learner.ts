@@ -7,7 +7,7 @@ import { baselineForModule, catalogue, evidenceRecords, gapRecords, learnerConte
 import { authorizeLearner } from "../lib/authorization";
 import { pinPublishedBaseline } from "../lib/baseline-authoring";
 import { learningNextAction, transitionLearningState, type LearningState, type LearningTransitionResult } from "../lib/learning-transition";
-import { collectTimelineSnapshotPages, createLearnerPortfolioExport } from "../lib/learner-portfolio-export";
+import { assertPortfolioExportBudget, collectTimelineSnapshotPages, createLearnerPortfolioExport, PortfolioExportTooLarge } from "../lib/learner-portfolio-export";
 import { groupTimelineRows, indexTimelineLearningLinks, orderedTimelineGroups, timelineRowsById, unionTimelineGroups } from "../lib/timeline-relations";
 const router: IRouter = Router(); const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const TIMELINE_PAGE_SIZE = 50;
@@ -533,6 +533,49 @@ async function fullPathwayTimeline(learnerId: string) {
   };
 }
 
+async function assertPassportDownloadSize(learnerId: string) {
+  // Measure expanded JSON, not the compressed on-disk tuple size (TOAST can
+  // store a multi-megabyte text value in only a few kilobytes). Aggregation
+  // stays in PostgreSQL; no raw history is transferred to Node here.
+  const result = await db.execute<{ rows: string; bytes: string }>(sql`
+    WITH scoped AS (
+      SELECT id FROM teras_enrollments WHERE learner_id = ${learnerId}
+    ), profiles AS (
+      SELECT id FROM teras_diagnostic_profiles WHERE learner_id = ${learnerId}
+    ), evidence AS (
+      SELECT id FROM teras_evidence WHERE learner_id = ${learnerId}
+    ), gaps AS (
+      SELECT id FROM teras_gaps WHERE learner_id = ${learnerId}
+    ), plans AS (
+      SELECT id FROM teras_remediation_plans WHERE gap_id IN (SELECT id FROM gaps)
+    ), activities AS (
+      SELECT id FROM teras_remediation_activities WHERE plan_id IN (SELECT id FROM plans)
+    ), source AS (
+      SELECT octet_length(row_to_json(t)::text) AS bytes FROM teras_enrollment_pathway_events t WHERE enrollment_id IN (SELECT id FROM scoped)
+      UNION ALL SELECT octet_length(row_to_json(t)::text) FROM teras_diagnostic_sessions t WHERE learner_id = ${learnerId}
+      UNION ALL SELECT octet_length(row_to_json(t)::text) FROM teras_diagnostic_profiles t WHERE learner_id = ${learnerId}
+      UNION ALL SELECT octet_length(row_to_json(t)::text) FROM teras_diagnostic_gaps t WHERE profile_id IN (SELECT id FROM profiles)
+      UNION ALL SELECT octet_length(row_to_json(t)::text) FROM teras_diagnostic_recommendations t WHERE profile_id IN (SELECT id FROM profiles)
+      UNION ALL SELECT octet_length(row_to_json(t)::text) FROM teras_learning_transition_events t WHERE learner_id = ${learnerId}
+      UNION ALL SELECT octet_length(row_to_json(t)::text) FROM teras_learning_record_links t WHERE learner_id = ${learnerId}
+      UNION ALL SELECT octet_length(row_to_json(t)::text) FROM teras_practice_attempts t WHERE learner_id = ${learnerId}
+      UNION ALL SELECT octet_length(row_to_json(t)::text) FROM teras_evidence t WHERE learner_id = ${learnerId}
+      UNION ALL SELECT octet_length(row_to_json(t)::text) FROM teras_evidence_reviews t WHERE evidence_id IN (SELECT id FROM evidence)
+      UNION ALL SELECT octet_length(row_to_json(t)::text) FROM teras_assessment_attempts t WHERE learner_id = ${learnerId}
+      UNION ALL SELECT octet_length(row_to_json(t)::text) FROM teras_reassessment_links t WHERE learner_id = ${learnerId}
+      UNION ALL SELECT octet_length(row_to_json(t)::text) FROM teras_gaps t WHERE learner_id = ${learnerId}
+      UNION ALL SELECT octet_length(row_to_json(t)::text) FROM teras_remediation_plans t WHERE id IN (SELECT id FROM plans)
+      UNION ALL SELECT octet_length(row_to_json(t)::text) FROM teras_remediation_activities t WHERE id IN (SELECT id FROM activities)
+      UNION ALL SELECT octet_length(row_to_json(t)::text) FROM teras_remediation_events t WHERE activity_id IN (SELECT id FROM activities)
+      UNION ALL SELECT octet_length(row_to_json(t)::text) FROM teras_readiness_events t WHERE enrollment_id IN (SELECT id FROM scoped)
+    )
+    SELECT COUNT(*)::text AS rows, COALESCE(SUM(bytes), 0)::text AS bytes FROM source
+  `);
+  const estimate = result.rows[0];
+  if (!estimate) throw new Error("Passport download size check returned no result");
+  assertPortfolioExportBudget(Number(estimate.rows), Number(estimate.bytes));
+}
+
 async function capabilityPassport(learnerId: string, timelineMode: "page" | "full") {
   const context = await learnerContext(learnerId);
   // Readiness persists the decision snapshot. Build the timeline afterwards so
@@ -592,10 +635,16 @@ router.get("/passport", async (req, res): Promise<void> => {
 router.get("/passport/export", async (req, res): Promise<void> => {
   const learnerId = await authorizeLearner(req, res);
   if (!learnerId) return;
-  const portfolio = await capabilityPassport(learnerId, "full");
-  const exported = ExportLearnerPortfolioResponse.parse(createLearnerPortfolioExport(portfolio));
-  const slug = portfolio.terminalPortfolio === "Capability Portfolio" ? "capability-portfolio" : "certification-readiness-portfolio";
-  res.setHeader("Content-Disposition", `attachment; filename="${slug}-${new Date(exported.exportedAt).toISOString().slice(0, 10)}.json"`);
-  res.json(exported);
+  try {
+    await assertPassportDownloadSize(learnerId);
+    const portfolio = await capabilityPassport(learnerId, "full");
+    const exported = ExportLearnerPortfolioResponse.parse(createLearnerPortfolioExport(portfolio));
+    const slug = portfolio.terminalPortfolio === "Capability Portfolio" ? "capability-portfolio" : "certification-readiness-portfolio";
+    res.setHeader("Content-Disposition", `attachment; filename="${slug}-${new Date(exported.exportedAt).toISOString().slice(0, 10)}.json"`);
+    res.json(exported);
+  } catch (error) {
+    if (!(error instanceof PortfolioExportTooLarge)) throw error;
+    res.status(413).json({ error: "PASSPORT_EXPORT_TOO_LARGE", message: error.message });
+  }
 });
 export default router;
