@@ -63,4 +63,5 @@
 - [Append-only audit uniqueness upgrades](append-only-audit-uniqueness.md) — reject conflicting historical rows before adding uniqueness rather than deleting immutable audit evidence.
 - [Browser extreme JSON verification](browser-extreme-json-verification.md) — browser recursion behavior can differ from unit-test assumptions; verify fixtures in the target engine.
 - [PostgreSQL timeout cancellation grace](postgres-timeout-cancellation-grace.md) — client-side watchdogs need time for server cancellation to reach the driver before destroying a reusable session.
+- [Post-merge timeout diagnosis](post-merge-timeout-diagnosis.md) — a moving stall across test stages is not evidence that a larger global timeout will fix setup.
 - [Immutable incident recovery](immutable-incident-recovery.md) — resolve blocked trainer configuration incidents with linked recovery events, not edits to audit history.
