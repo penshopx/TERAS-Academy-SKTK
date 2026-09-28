@@ -8,6 +8,7 @@ import { authorizeLearner } from "../lib/authorization";
 import { pinPublishedBaseline } from "../lib/baseline-authoring";
 import { learningNextAction, transitionLearningState, type LearningState, type LearningTransitionResult } from "../lib/learning-transition";
 import { collectTimelineSnapshotPages, createLearnerPortfolioExport } from "../lib/learner-portfolio-export";
+import { groupTimelineRows, indexTimelineLearningLinks, orderedTimelineGroups, timelineRowsById, unionTimelineGroups } from "../lib/timeline-relations";
 const router: IRouter = Router(); const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const TIMELINE_PAGE_SIZE = 50;
 type TimelineCursor = { date: string; id: string };
@@ -110,6 +111,34 @@ async function pathwayTimeline(learnerId: string, options?: { cursor?: TimelineC
   const activityIds = remediationActivities.map(activity => activity.id);
   const remediationEvents = await db.select().from(remediationEventsTable)
     .where(inArray(remediationEventsTable.activityId, activityIds));
+  const profilesBySession = new Map<string, (typeof diagnosticProfiles)[number]>();
+  for (const profile of diagnosticProfiles) {
+    if (!profilesBySession.has(profile.sessionId)) profilesBySession.set(profile.sessionId, profile);
+  }
+  const gapsByProfile = groupTimelineRows(diagnosticGaps, gap => gap.profileId);
+  const recommendationsByProfile = groupTimelineRows(diagnosticRecommendations, recommendation => recommendation.profileId);
+  const {
+    byTransition: linksByTransition,
+    byPractice: linksByPractice,
+    byEvidence: linksByEvidence,
+    byReview: linksByReview,
+    byPlan: linksByPlan,
+  } = indexTimelineLearningLinks(learningLinks);
+  const reviewsByEvidence = groupTimelineRows(reviews, review => review.evidenceId);
+  // Assessment OR references also need the original transition order, not grouped-key order.
+  const orderedReassessments = orderedTimelineGroups(transitions, event => {
+    const refs = event.metadata.references;
+    return refs && typeof refs === "object" && typeof (refs as Record<string, unknown>).reassessmentAttemptId === "string"
+      ? (refs as Record<string, string>).reassessmentAttemptId : null;
+  });
+  const orderedPreviousAssessments = orderedTimelineGroups(transitions, event => {
+    const refs = event.metadata.references;
+    return refs && typeof refs === "object" && typeof (refs as Record<string, unknown>).previousAssessmentAttemptId === "string"
+      ? (refs as Record<string, string>).previousAssessmentAttemptId : null;
+  });
+  const activitiesById = timelineRowsById(remediationActivities, activity => activity.id);
+  const plansById = timelineRowsById(remediationPlans, plan => plan.id);
+  const gapsById = timelineRowsById(gaps, gap => gap.id);
   const map = new Map(pathways.map(pathway => [pathway.id, pathway]));
   const original = map.get(context.enrollment.pathwayId) ?? context.pathway;
   type TimelineRecord = { id: string; pathwayId: string; label: string; description: string; status: string; date: Date; href: string | null; refs?: Record<string, string[]> };
@@ -152,9 +181,9 @@ async function pathwayTimeline(learnerId: string, options?: { cursor?: TimelineC
     };
   };
   for (const session of diagnosticSessions) {
-    const profile = diagnosticProfiles.find(candidate => candidate.sessionId === session.id);
-    const profileGaps = profile ? diagnosticGaps.filter(candidate => candidate.profileId === profile.id) : [];
-    const profileRecommendations = profile ? diagnosticRecommendations.filter(candidate => candidate.profileId === profile.id) : [];
+    const profile = profilesBySession.get(session.id);
+    const profileGaps = profile ? gapsByProfile.get(profile.id) ?? [] : [];
+    const profileRecommendations = profile ? recommendationsByProfile.get(profile.id) ?? [] : [];
     if (session.status === "completed" && session.completedAt) add({
       id: `diagnostic-${session.id}`, pathwayId: session.pathwayId, label: "Diagnostic completed",
       description: "Persisted diagnostic responses established the learner capability baseline and core gaps.",
@@ -168,7 +197,7 @@ async function pathwayTimeline(learnerId: string, options?: { cursor?: TimelineC
     });
   }
   for (const event of transitions) {
-    const links = learningLinks.filter(link => link.metadata.transitionEventId === event.id);
+    const links = linksByTransition.get(event.id) ?? [];
     add({
     id: `learning-${event.id}`, pathwayId: event.pathwayId, label: `Learning: ${event.toState}`,
     description: event.reason, status: event.toState === "READY" ? "Complete" : "Recorded", date: event.createdAt,
@@ -178,19 +207,19 @@ async function pathwayTimeline(learnerId: string, options?: { cursor?: TimelineC
   for (const attempt of practices) add({
     id: `practice-${attempt.id}`, pathwayId: attempt.pathwayId, label: "Practice attempt submitted",
     description: attempt.outputSummary, status: attempt.status, date: attempt.createdAt, href: "/practice",
-      refs: { practiceAttemptIds: [attempt.id], ...diagnosticRefsFor(learningLinks.filter(link => link.practiceAttemptId === attempt.id)) },
+      refs: { practiceAttemptIds: [attempt.id], ...diagnosticRefsFor(linksByPractice.get(attempt.id) ?? []) },
   });
   for (const item of evidence) {
     add({ id: `evidence-${item.id}`, pathwayId: item.pathwayId, label: "Evidence submitted",
       description: item.title, status: "Recorded", date: item.createdAt, href: "/evidence",
-      refs: { evidenceIds: [item.id], ...diagnosticRefsFor(learningLinks.filter(link => link.evidenceId === item.id)) } });
-    for (const review of reviews.filter(candidate => candidate.evidenceId === item.id)) add({
+      refs: { evidenceIds: [item.id], ...diagnosticRefsFor((linksByEvidence.get(item.id) ?? []).map(entry => entry.row)) } });
+    for (const review of reviewsByEvidence.get(item.id) ?? []) add({
       id: `evidence-review-${review.id}`, pathwayId: item.pathwayId, label: "Evidence review",
       description: review.comment ?? `Evidence review recorded as ${review.status}.`, status: review.status,
       date: review.createdAt, href: "/evidence", refs: {
         evidenceIds: [item.id],
         evidenceReviewIds: [review.id],
-        ...diagnosticRefsFor(learningLinks.filter(link => link.evidenceReviewId === review.id || link.evidenceId === item.id)),
+        ...diagnosticRefsFor(unionTimelineGroups(linksByReview.get(review.id) ?? [], linksByEvidence.get(item.id) ?? [])),
       },
     });
   }
@@ -208,32 +237,25 @@ async function pathwayTimeline(learnerId: string, options?: { cursor?: TimelineC
           remediationPlanIds: [reassessment.remediationPlanId],
           practiceAttemptIds: [reassessment.practiceAttemptId],
           evidenceIds: [reassessment.evidenceId],
-          ...diagnosticRefsForTransitions(transitions.filter(event => {
-            const references = event.metadata.references;
-            return references && typeof references === "object" &&
-              (references as Record<string, unknown>).reassessmentAttemptId === attempt.id;
-          })),
+          ...diagnosticRefsForTransitions((orderedReassessments.get(attempt.id) ?? []).map(entry => entry.row)),
         }
       : {
           assessmentAttemptIds: [attempt.id],
-          ...diagnosticRefsForTransitions(transitions.filter(event => {
-            const references = event.metadata.references;
-            return references && typeof references === "object" && (
-              (references as Record<string, unknown>).reassessmentAttemptId === attempt.id ||
-              (references as Record<string, unknown>).previousAssessmentAttemptId === attempt.id
-            );
-          })),
+          ...diagnosticRefsForTransitions(unionTimelineGroups(
+            orderedReassessments.get(attempt.id) ?? [],
+            orderedPreviousAssessments.get(attempt.id) ?? [],
+          )),
         },
   });
   }
   for (const event of remediationEvents) {
-    const activity = remediationActivities.find(candidate => candidate.id === event.activityId);
-    const plan = activity && remediationPlans.find(candidate => candidate.id === activity.planId);
-    const gap = plan && gaps.find(candidate => candidate.id === plan.gapId);
+    const activity = activitiesById.get(event.activityId);
+    const plan = activity && plansById.get(activity.planId);
+    const gap = plan && gapsById.get(plan.gapId);
     if (plan && gap) add({
       id: `remediation-${event.id}`, pathwayId: gap.pathwayId, label: "Remediation",
       description: `${plan.title}: ${activity?.title ?? "activity"} recorded as ${event.status}.`, status: event.status,
-      date: event.createdAt, href: "/remediation", refs: { gapIds: [gap.id], remediationPlanIds: [plan.id], remediationEventIds: [event.id], ...diagnosticRefsFor(learningLinks.filter(link => link.remediationPlanId === plan.id)) },
+      date: event.createdAt, href: "/remediation", refs: { gapIds: [gap.id], remediationPlanIds: [plan.id], remediationEventIds: [event.id], ...diagnosticRefsFor(linksByPlan.get(plan.id) ?? []) },
     });
   }
   for (const event of readinessEvents) {

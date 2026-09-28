@@ -11,6 +11,7 @@ import {
 import { eq, inArray, sql } from "drizzle-orm";
 import { createIntegrationTestApp } from "./integration-test-app";
 import { collectTimelineSnapshotPages } from "./lib/learner-portfolio-export";
+import { groupTimelineRows, indexTimelineLearningLinks, timelineRowsById, unionTimelineGroups } from "./lib/timeline-relations";
 import { decodeTimelineCursor, timelinePage } from "./routes/learner";
 
 type Identity = "path-a" | "path-b";
@@ -19,7 +20,7 @@ type Passport = {
   pathway: unknown;
   readinessDisclaimer: string;
   readiness: unknown;
-  timeline: Array<{ causalReferences: Record<string, string[]> }>;
+  timeline: Array<{ id: string; date: string; causalReferences: Record<string, string[]> }>;
 };
 type ExportPayload = { portfolio: Passport };
 
@@ -90,7 +91,48 @@ function parityProjection(passport: Passport) {
   };
 }
 
+function verifyLinearRelationIndexing() {
+  const build = (size: number) => {
+    let sourceReads = 0;
+    const raw = Array.from({ length: size }, (_, index) => ({
+      id: `link-${index}`,
+      evidenceId: `evidence-${index % 5}`,
+      evidenceReviewId: index % 3 === 0 ? `review-${index % 7}` : null,
+      practiceAttemptId: `practice-${index % 11}`,
+      remediationPlanId: `plan-${index % 13}`,
+      metadata: { transitionEventId: `transition-${index % 17}` },
+    }));
+    const links = new Proxy(raw, {
+      get(target, key, receiver) {
+        if (typeof key === "string" && /^(0|[1-9]\d*)$/.test(key)) sourceReads++;
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    const { byEvidence: evidenceGroups, byReview: reviewGroups, byTransition, byPractice, byPlan } = indexTimelineLearningLinks(links);
+    assert.equal(byTransition.get("transition-0")?.length, Math.ceil(size / 17));
+    assert.equal(byPractice.get("practice-0")?.length, Math.ceil(size / 11));
+    assert.equal(byPlan.get("plan-0")?.length, Math.ceil(size / 13));
+    const byId = timelineRowsById(links, link => link.id);
+    const grouped = groupTimelineRows(links, link => link.evidenceId);
+    assert.equal(byId.get("link-0"), raw[0]);
+    assert.deepEqual(grouped.get("evidence-0")?.map(link => link.id), raw.filter(link => link.evidenceId === "evidence-0").map(link => link.id));
+    for (let index = 0; index < 7; index++) {
+      const reviewId = `review-${index}`;
+      const evidenceId = `evidence-${index % 5}`;
+      const actual = unionTimelineGroups(reviewGroups.get(reviewId) ?? [], evidenceGroups.get(evidenceId) ?? []);
+      const expected = raw.filter(link => link.evidenceReviewId === reviewId || link.evidenceId === evidenceId);
+      assert.deepEqual(actual, expected, "overlapping causal links must occur once, in original query order");
+    }
+    return sourceReads;
+  };
+  const small = build(1_000);
+  const large = build(2_000);
+  assert.equal(large, 2 * small, "doubling timeline history must double source-row indexing work, not square it");
+  assert(large <= 14_000, "each of the seven relation indexes must visit the source at most once");
+}
+
 async function run() {
+  verifyLinearRelationIndexing();
   const syntheticTimeline = Array.from({ length: 205 }, (_, index) => ({
     id: `synthetic-${String(index).padStart(3, "0")}`,
     date: new Date(Date.UTC(2026, 0, 1, 0, Math.floor(index / 4))),
@@ -149,6 +191,22 @@ async function run() {
         `${identity} parallel Passport requests with identical inputs must append one readiness event`,
       );
       assert.deepEqual(exported.portfolio, fullPassport, `${identity} exported portfolio must equal the full-history Passport response`);
+      for (let index = 1; index < fullPassport.timeline.length; index++) {
+        const previous = fullPassport.timeline[index - 1]!;
+        const current = fullPassport.timeline[index]!;
+        assert(
+          previous.date < current.date || (previous.date === current.date && previous.id < current.id),
+          "timeline must remain ordered by date then ID",
+        );
+      }
+      const submittedEvidenceId = identity === "path-a" ? evidenceA : evidenceB;
+      const evidenceStep = fullPassport.timeline.find(step => step.id === `evidence-${submittedEvidenceId}`);
+      assert.deepEqual(evidenceStep?.causalReferences, {
+        evidenceIds: [submittedEvidenceId],
+        diagnosticProfileIds: [],
+        diagnosticGapIds: [],
+        diagnosticRecommendationIds: [],
+      }, "evidence causal reference shape must remain unchanged");
       assert.deepEqual(
         parityProjection(exported.portfolio),
         parityProjection(fullPassport),
