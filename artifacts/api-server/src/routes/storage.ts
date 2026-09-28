@@ -69,7 +69,7 @@ router.get("/storage/objects/*path", async (req, res): Promise<void> => {
     const response = await storage.downloadObject(await storage.getObjectEntityFile(objectPath));
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
-    if (response.body) Readable.fromWeb(response.body as ReadableStream<Uint8Array>).pipe(res);
+    if (response.body) Readable.fromWeb(response.body as unknown as Parameters<typeof Readable.fromWeb>[0]).pipe(res);
     else res.end();
   } catch (error) {
     if (error instanceof ObjectNotFoundError) { res.status(404).json({ error: "Managed resource not found" }); return; }

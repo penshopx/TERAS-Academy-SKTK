@@ -57,7 +57,7 @@ test("saving an invalid reminder time zone returns a clear validation response b
     assert(address && typeof address === "object");
 
     for (const timeZone of ["Invalid/Time_Zone", "+01:00"]) {
-      const response = await fetch(`http://127.0.0.1:${address.port}/api/trainer/reminder-preferences`, {
+      const response: Response = await fetch(`http://127.0.0.1:${address.port}/api/trainer/reminder-preferences`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
