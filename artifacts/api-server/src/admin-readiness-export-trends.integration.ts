@@ -37,6 +37,9 @@ const retentionNow = new Date(`${today}T12:00:00.000Z`);
 const nextRetentionCycle = new Date(retentionNow);
 nextRetentionCycle.setUTCDate(nextRetentionCycle.getUTCDate() + 1);
 const nextRetentionCycleDay = nextRetentionCycle.toISOString().slice(0, 10);
+const laterRetentionCycle = new Date(nextRetentionCycle);
+laterRetentionCycle.setUTCDate(laterRetentionCycle.getUTCDate() + 1);
+const laterRetentionCycleDay = laterRetentionCycle.toISOString().slice(0, 10);
 const retentionCutoffDay = readinessExportTrendRetentionCutoff(retentionNow);
 const olderThanRetention = new Date(`${retentionCutoffDay}T00:00:00.000Z`);
 olderThanRetention.setUTCDate(olderThanRetention.getUTCDate() - 1);
@@ -56,6 +59,11 @@ const boundaryAttemptKey = crypto.randomUUID();
 const afterBoundaryAttemptKey = crypto.randomUUID();
 const activeRetryAttemptKey = crypto.randomUUID();
 const rejectExpiredAttemptDelete = sql.identifier(`reject_retention_attempt_${suffix.replaceAll("-", "")}`);
+const rejectRacingAttemptDelete = sql.identifier(`reject_racing_attempt_${suffix.replaceAll("-", "")}`);
+const racingFailureSequence = sql.identifier(`racing_failure_${suffix.replaceAll("-", "")}`);
+const racingAttemptKey = `retention-race-${suffix}`;
+const racingAggregateGroup = "1.000–4.999 record";
+const racingLockNamespace = 912469;
 
 const app = createIntegrationTestApp(request => {
   const role = request.get("x-test-role");
@@ -83,7 +91,7 @@ async function run() {
     .where(inArray(readinessAuditExportAttemptsTable.day, [today, ...fixtureDays]));
   const baselineRetentionCycles = await db.select()
     .from(readinessAuditExportRetentionCyclesTable)
-    .where(inArray(readinessAuditExportRetentionCyclesTable.day, [today, nextRetentionCycleDay]));
+    .where(inArray(readinessAuditExportRetentionCyclesTable.day, [today, nextRetentionCycleDay, laterRetentionCycleDay]));
   const baselineRetentionHealth = await db.select().from(readinessAuditExportRetentionHealthTable);
   const server = await new Promise<ReturnType<typeof app.listen>>(resolve => {
     const listener = app.listen(0, () => resolve(listener));
@@ -129,7 +137,7 @@ async function run() {
     await db.delete(readinessAuditExportAttemptsTable)
       .where(inArray(readinessAuditExportAttemptsTable.day, [today, ...fixtureDays]));
     await db.delete(readinessAuditExportRetentionCyclesTable)
-      .where(inArray(readinessAuditExportRetentionCyclesTable.day, [today, nextRetentionCycleDay]));
+      .where(inArray(readinessAuditExportRetentionCyclesTable.day, [today, nextRetentionCycleDay, laterRetentionCycleDay]));
     await db.delete(readinessAuditExportRetentionHealthTable);
     await db.insert(readinessAuditExportAggregatesTable).values([
       { day: fixturePastDay, recordGroup: "1.000–4.999 record", outcome: "failed", count: 99 },
@@ -261,15 +269,112 @@ async function run() {
       "A retry key after the retention boundary must remain");
     assert(retainedAttemptKeys.some(row => row.attemptKey === activeRetryAttemptKey),
       "Retry protection for the active reporting period must remain");
+    // Keep the first transaction open after its cycle claim, then prove the second
+    // is waiting for that uncommitted claim rather than starting after rollback.
+    await db.insert(readinessAuditExportAggregatesTable).values({
+      day: expiredRetentionDay, recordGroup: racingAggregateGroup, outcome: "failed", count: 1,
+    });
+    await db.insert(readinessAuditExportAttemptsTable).values({
+      attemptKey: racingAttemptKey, day: expiredRetentionDay,
+    });
+    await db.execute(sql`CREATE SEQUENCE ${racingFailureSequence}`);
+    await db.execute(sql`
+      CREATE FUNCTION ${rejectRacingAttemptDelete}() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF nextval('${sql.raw(`racing_failure_${suffix.replaceAll("-", "")}`)}') = 1 THEN
+          PERFORM pg_advisory_xact_lock(${sql.raw(String(racingLockNamespace))}, ${sql.raw(String(seed))});
+          RAISE EXCEPTION 'forced racing retention deletion failure';
+        END IF;
+        RETURN OLD;
+      END
+      $$
+    `);
+    await db.execute(sql`
+      CREATE TRIGGER ${rejectRacingAttemptDelete}
+      BEFORE DELETE ON teras_readiness_audit_export_attempts
+      FOR EACH ROW WHEN (OLD.attempt_key LIKE 'retention-race-%')
+      EXECUTE FUNCTION ${rejectRacingAttemptDelete}()
+    `);
+    let releaseRacingLock!: () => void;
+    let racingLockHeld!: () => void;
+    const releaseLock = new Promise<void>(resolve => { releaseRacingLock = resolve; });
+    const lockHeld = new Promise<void>(resolve => { racingLockHeld = resolve; });
+    let holderPid: number | undefined;
+    const holder = db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${racingLockNamespace}, ${seed})`);
+      const result = await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid()::int AS pid`);
+      holderPid = result.rows[0]?.pid;
+      racingLockHeld();
+      await releaseLock;
+    });
+    let firstCleanup: Promise<void> | undefined;
+    let secondCleanup: ReturnType<typeof pruneReadinessExportTrendAggregates> | undefined;
+    try {
+      await lockHeld;
+      assert(holderPid, "The held advisory lock must identify its database session");
+      firstCleanup = assert.rejects(
+        pruneReadinessExportTrendAggregates(nextRetentionCycle),
+        (error: unknown) => error instanceof Error
+          && (error as Error & { cause?: Error }).cause?.message === "forced racing retention deletion failure",
+        "The first cleanup must fail after claiming the UTC cycle",
+      );
+      const waitForBlockedQuery = async (stage: string, blockerPid: number) => {
+        const deadline = Date.now() + 5_000;
+        while (Date.now() < deadline) {
+          const result = await db.execute<{ pid: number }>(sql`
+            SELECT pid::int AS pid FROM pg_stat_activity
+            WHERE pid <> pg_backend_pid()
+              AND wait_event_type = 'Lock'
+              AND ${blockerPid} = ANY(pg_blocking_pids(pid))
+            LIMIT 1
+          `);
+          if (result.rows[0]) return result.rows[0].pid;
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        assert.fail(`Cleanup did not wait for the expected ${stage} lock`);
+      };
+      const firstPid = await waitForBlockedQuery("first cleanup after cycle claim", holderPid);
+      secondCleanup = pruneReadinessExportTrendAggregates(nextRetentionCycle);
+      await waitForBlockedQuery("second cleanup on first cycle claim", firstPid);
+      releaseRacingLock();
+      await holder;
+      await firstCleanup;
+      const winner = await secondCleanup;
+      assert.equal(winner.executed, true, "The waiting cleanup must run after the first claim rolls back");
+      assert.equal(winner.deletedRows, 2,
+        "The waiting cleanup must remove the rolled-back aggregate and newly expired boundary row once");
+      assert.equal(winner.deletedAttemptKeys, 2,
+        "The waiting cleanup must remove the rolled-back retry key and newly expired boundary key once");
+      assert.deepEqual(await db.select().from(readinessAuditExportAggregatesTable)
+        .where(inArray(readinessAuditExportAggregatesTable.day, [expiredRetentionDay, retentionCutoffDay])), []);
+      assert.deepEqual(await db.select().from(readinessAuditExportAttemptsTable)
+        .where(inArray(readinessAuditExportAttemptsTable.attemptKey, [racingAttemptKey, boundaryAttemptKey])), []);
+      assert.equal((await db.select().from(readinessAuditExportAttemptsTable)
+        .where(eq(readinessAuditExportAttemptsTable.attemptKey, afterBoundaryAttemptKey))).length, 1,
+      "The retry key on the new retention boundary must remain");
+      assert.equal((await db.select().from(readinessAuditExportRetentionCyclesTable)
+        .where(eq(readinessAuditExportRetentionCyclesTable.day, nextRetentionCycleDay))).length, 1,
+      "Only the successful cleanup must commit the cycle claim");
+      assert.equal((await getReadinessExportTrendRetentionStatus()).lastSuccessAt,
+        nextRetentionCycle.toISOString(), "Only the winning cleanup must record success");
+      assert.equal((await pruneReadinessExportTrendAggregates(nextRetentionCycle)).executed, false,
+        "The successful claim must prevent a second cleanup in the same UTC cycle");
+    } finally {
+      releaseRacingLock();
+      await Promise.allSettled([holder, firstCleanup, secondCleanup].filter(promise => promise !== undefined));
+      await db.execute(sql`DROP TRIGGER IF EXISTS ${rejectRacingAttemptDelete} ON teras_readiness_audit_export_attempts`);
+      await db.execute(sql`DROP FUNCTION IF EXISTS ${rejectRacingAttemptDelete}()`);
+      await db.execute(sql`DROP SEQUENCE IF EXISTS ${racingFailureSequence}`);
+    }
     const concurrentCleanup = await Promise.all([
-      pruneReadinessExportTrendAggregates(nextRetentionCycle),
-      pruneReadinessExportTrendAggregates(nextRetentionCycle),
+      pruneReadinessExportTrendAggregates(laterRetentionCycle),
+      pruneReadinessExportTrendAggregates(laterRetentionCycle),
     ]);
     assert.equal(concurrentCleanup.filter(result => result.executed).length, 1,
       "A new UTC cycle must execute exactly one concurrent cleanup");
     assert.equal(concurrentCleanup.filter(result => !result.executed).length, 1,
       "The other concurrent cleanup must skip without error");
-    assert.equal((await pruneReadinessExportTrendAggregates(nextRetentionCycle)).executed, false,
+    assert.equal((await pruneReadinessExportTrendAggregates(laterRetentionCycle)).executed, false,
       "A later invocation in the claimed next UTC cycle must skip");
 
     const failureDays = ["2097-01-01", "2097-01-02", "2097-01-03"];
@@ -459,12 +564,17 @@ async function run() {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     await db.execute(sql`DROP TRIGGER IF EXISTS ${rejectExpiredAttemptDelete} ON teras_readiness_audit_export_attempts`);
     await db.execute(sql`DROP FUNCTION IF EXISTS ${rejectExpiredAttemptDelete}()`);
+    await db.execute(sql`DROP TRIGGER IF EXISTS ${rejectRacingAttemptDelete} ON teras_readiness_audit_export_attempts`);
+    await db.execute(sql`DROP FUNCTION IF EXISTS ${rejectRacingAttemptDelete}()`);
+    await db.execute(sql`DROP SEQUENCE IF EXISTS ${racingFailureSequence}`);
+    await db.delete(readinessAuditExportAttemptsTable)
+      .where(eq(readinessAuditExportAttemptsTable.attemptKey, racingAttemptKey));
     await db.delete(readinessAuditExportAggregatesTable)
       .where(inArray(readinessAuditExportAggregatesTable.day, [today, ...fixtureDays]));
     await db.delete(readinessAuditExportAttemptsTable)
       .where(inArray(readinessAuditExportAttemptsTable.day, [today, ...fixtureDays]));
     await db.delete(readinessAuditExportRetentionCyclesTable)
-      .where(inArray(readinessAuditExportRetentionCyclesTable.day, [today, nextRetentionCycleDay]));
+      .where(inArray(readinessAuditExportRetentionCyclesTable.day, [today, nextRetentionCycleDay, laterRetentionCycleDay]));
     await db.delete(readinessAuditExportRetentionHealthTable);
     if (baselineRows.length) await db.insert(readinessAuditExportAggregatesTable).values(baselineRows);
     if (baselineAttempts.length) await db.insert(readinessAuditExportAttemptsTable).values(baselineAttempts);
