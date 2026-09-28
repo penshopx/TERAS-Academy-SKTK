@@ -190,6 +190,7 @@ run_check() {
 # copy a production schema or seed demonstration data.
 run_check "resource URI policy helper" "command failed" psql "$test_database_url" -v ON_ERROR_STOP=1 -c "CREATE FUNCTION teras_is_valid_resource_uri(value text) RETURNS boolean LANGUAGE sql IMMUTABLE AS \$\$ SELECT value ~ '^https?://[^[:space:]]+$' AND value !~ '[<>\"{}|\\\\^\`]' \$\$;" >/dev/null || exit 1
 run_check "schema provisioning" "command failed" env DATABASE_URL="$test_database_url" pnpm --filter @workspace/db run push-force || exit 1
+run_check "operational query plan contract" "reproduce locally with: pnpm --filter @workspace/api-server run test:operational-query-plan:contract" pnpm --filter @workspace/api-server run test:operational-query-plan:contract || exit 1
 run_check "capability timeline query plans" "reproduce locally with: DATABASE_URL=<test-database-url> pnpm --filter @workspace/api-server run test:capability-timeline-query" env DATABASE_URL="$test_database_url" pnpm --filter @workspace/api-server run test:capability-timeline-query || exit 1
 run_check "admin escalation summary query plans" "reproduce locally with: DATABASE_URL=<test-database-url> pnpm --filter @workspace/api-server run test:admin-operational-summary" env DATABASE_URL="$test_database_url" pnpm --filter @workspace/api-server run test:admin-operational-summary || exit 1
 run_check "Super Admin provisioning policy" "reproduce locally with: pnpm --filter @workspace/scripts run test:super-admin-provisioning-policy" pnpm --filter @workspace/scripts run test:super-admin-provisioning-policy || exit 1

@@ -23,6 +23,7 @@
     "test:learner-provisioning": "NODE_ENV=test tsx ./src/learner-provisioning.integration.ts",
     "test:learner-isolation": "NODE_ENV=test tsx ./src/learner-isolation.integration-runner.ts",
     "test:passport-export-parity": "NODE_ENV=test tsx ./src/passport-export-parity.integration-runner.ts",
+    "test:operational-query-plan:contract": "NODE_ENV=test tsx --test ./src/operational-query-plan.contract.test.ts",
     "test:capability-timeline-query": "NODE_ENV=test tsx --test ./src/lib/explain-plan.test.ts ./src/operational-query-plan.contract.test.ts ./src/capability-timeline-query.contract.test.ts ./src/timeline-pagination.test.ts && NODE_ENV=test tsx ./src/capability-timeline-query.integration-runner.ts",
     "test:diagnostic-integration": "NODE_ENV=test tsx ./src/diagnostic.integration-runner.ts",
     "test:integration-schema-runner": "NODE_ENV=test tsx --test --test-concurrency=1 ./src/integration-schema-runner.test.ts ./src/integration-schema-runner.database.test.ts",

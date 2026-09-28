@@ -266,6 +266,14 @@ grep -Fq 'pnpm --filter @workspace/api-server run test:admin-operational-summary
   grep -Fq 'reproduce locally with: DATABASE_URL=<test-database-url> pnpm --filter @workspace/api-server run test:admin-operational-summary' "$gate" &&
   grep -Fq 'env DATABASE_URL="$test_database_url"' "$gate" ||
   fail "release gate must block on admin escalation summary query-plan regressions with an actionable reproduction command"
+node - "$repo_root/artifacts/api-server/package.json" <<'EOF' ||
+const { scripts } = require(process.argv[2]);
+if (scripts["test:operational-query-plan:contract"] !==
+  "NODE_ENV=test tsx --test ./src/operational-query-plan.contract.test.ts") process.exit(1);
+EOF
+  fail "API Server must expose a standalone operational query plan contract command"
+grep -Fq 'run_check "operational query plan contract" "reproduce locally with: pnpm --filter @workspace/api-server run test:operational-query-plan:contract" pnpm --filter @workspace/api-server run test:operational-query-plan:contract || exit 1' "$gate" ||
+  fail "release gate must independently block on the operational query plan contract"
 
 mock_dir="$(mktemp -d)"
 trap 'rm -rf "$mock_dir"' EXIT
@@ -336,6 +344,9 @@ EOF
 cat >"$mock_dir/pnpm" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$PNPM_MOCK_LOG"
+if [[ -n "${FAIL_OPERATIONAL_QUERY_PLAN_CONTRACT:-}" && "$*" == "--filter @workspace/api-server run test:operational-query-plan:contract" ]]; then
+  exit 24
+fi
 if [[ "$*" == *"test:browser-admin-access"* ]]; then
   exit 23
 fi
@@ -458,6 +469,8 @@ grep -Fq 'test:super-admin-provisioning-policy' "$mock_dir/pnpm-calls.log" &&
   fail "release gate did not execute both Super Admin checks before later checks"
 grep -Fq 'test:admin-module-catalogue' "$mock_dir/pnpm-calls.log" ||
   fail "release gate did not execute the legacy module catalogue integrity check"
+grep -Fxq -- '--filter @workspace/api-server run test:operational-query-plan:contract' "$mock_dir/pnpm-calls.log" ||
+  fail "release gate did not execute the standalone operational query plan contract"
 node - "$gate_json_report" <<'EOF' ||
 const fs = require("fs");
 const report = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
@@ -465,6 +478,7 @@ const expected = [
   "Super Admin provisioning policy",
   "Super Admin ready and legacy provisioning",
   "legacy module catalogue integrity",
+  "operational query plan contract",
 ];
 for (const name of expected) {
   const check = report.checks.find((candidate) => candidate.name === name);
@@ -475,6 +489,34 @@ EOF
   fail "release evidence must record sanitized PASS results for both Super Admin checks"
 grep -Fq 'dropdb ' "$mock_dir/database-calls.log" ||
   fail "cleanup failure simulation did not execute the mocked dropdb command"
+
+contract_run_id="query-plan-contract-failure"
+contract_log="$mock_dir/query-plan-contract-calls.log"
+if PATH="$mock_dir:$PATH" \
+  PNPM_MOCK_LOG="$contract_log" \
+  DATABASE_MOCK_LOG="$mock_dir/query-plan-contract-database-calls.log" \
+  FAIL_OPERATIONAL_QUERY_PLAN_CONTRACT=1 \
+  DATABASE_URL="postgresql://gate-test.invalid/postgres" \
+  TERAS_GATE_RUN_ID="$contract_run_id" \
+  TERAS_GATE_CANDIDATE_SHA="$gate_candidate_sha" \
+  TERAS_GATE_REPORT_DIR="$gate_report_dir" \
+  TERAS_GATE_STORAGE_ADAPTER="test" \
+  TERAS_GATE_STORAGE_NAMESPACE="release-gate-contract" \
+  bash "$gate"; then
+  fail "gate must exit non-zero when the standalone operational query plan contract fails"
+fi
+node - "$gate_report_dir/certification-preparation-$contract_run_id.json" <<'EOF' ||
+const fs = require("fs");
+const report = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+const check = report.checks.find(({ name }) => name === "operational query plan contract");
+if (report.testStatus !== "FAIL" || report.gateReview !== "NO-GO" ||
+  check?.status !== "FAIL" || !check.detail.includes("test:operational-query-plan:contract") ||
+  report.checks.some(({ name }) => name === "capability timeline query plans")) process.exit(1);
+EOF
+  fail "contract failure must be visible in release evidence and stop later feature checks"
+if grep -Fq 'test:capability-timeline-query' "$contract_log"; then
+  fail "release gate must stop before feature checks when the independent contract fails"
+fi
 
 cat >"$mock_dir/gh" <<'EOF'
 #!/usr/bin/env bash
