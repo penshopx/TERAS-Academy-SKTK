@@ -344,6 +344,12 @@ export interface TrainerReminderPreferenceRevision {
   recordedAt: string;
 }
 
+export interface TrainerReminderPreferenceHistoryPage {
+  items: TrainerReminderPreferenceRevision[];
+  /** @nullable */
+  nextCursor: string | null;
+}
+
 export type TrainerDiagnosticFollowUpDimensionSummaries = {[key: string]: number};
 
 export interface TrainerDiagnosticSafetyFinding {
@@ -3654,6 +3660,15 @@ export const CompleteRemediation409Error = {
 export type CompleteRemediation409 = {
   error: CompleteRemediation409Error;
   message: string;
+};
+
+export type GetTrainerReminderPreferenceHistoryParams = {
+/**
+ * Opaque continuation token returned by the preceding page.
+ * @minLength 1
+ * @maxLength 1024
+ */
+cursor?: string;
 };
 
 export type ListAdminReadinessHistoryParams = {

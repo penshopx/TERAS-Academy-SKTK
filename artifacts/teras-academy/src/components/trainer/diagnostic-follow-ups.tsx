@@ -42,9 +42,13 @@ function ReminderPreferences() {
       refetchInterval: 60_000,
     },
   });
-  const history = useGetTrainerReminderPreferenceHistory({
-    query: { queryKey: getGetTrainerReminderPreferenceHistoryQueryKey(), staleTime: 30_000 },
-  });
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyCursors, setHistoryCursors] = useState<(string | null)[]>([null]);
+  const historyCursor = historyCursors[historyCursors.length - 1];
+  const history = useGetTrainerReminderPreferenceHistory(
+    historyCursor ? { cursor: historyCursor } : undefined,
+    { query: { queryKey: getGetTrainerReminderPreferenceHistoryQueryKey(historyCursor ? { cursor: historyCursor } : undefined), enabled: historyOpen, staleTime: 30_000 } },
+  );
   const mutation = useUpdateTrainerReminderPreferences();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -78,6 +82,7 @@ function ReminderPreferences() {
     onSuccess: (updated) => {
       queryClient.setQueryData(getGetTrainerReminderPreferencesQueryKey(), updated);
       queryClient.invalidateQueries({ queryKey: getGetTrainerReminderPreferenceHistoryQueryKey() });
+      setHistoryCursors([null]);
       toast({ title: "Reminder preferences saved", description: "The scheduler will use these settings for future email attempts." });
     },
     onError: (error) => toast({
@@ -163,22 +168,21 @@ function ReminderPreferences() {
       <Button className="mt-4" size="sm" onClick={save} disabled={preferences.isLoading || mutation.isPending}>
         {mutation.isPending ? "Saving…" : "Save reminder preferences"}
       </Button>
-      <details className="mt-4 border-t border-border pt-4" data-testid="trainer-reminder-preference-history">
+      <details className="mt-4 border-t border-border pt-4" data-testid="trainer-reminder-preference-history" onToggle={(event) => setHistoryOpen(event.currentTarget.open)}>
         <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium">
           <History className="h-4 w-4" />
           View operational configuration history
-          {history.data?.length ? <Badge variant="outline">{history.data.length}</Badge> : null}
         </summary>
         <p className="mt-2 text-xs text-muted-foreground">This history records email delivery configuration only. It is separate from diagnostic evidence, follow-ups, and readiness decisions.</p>
         {history.isLoading ? <p className="mt-3 text-sm text-muted-foreground">Loading configuration history…</p> : null}
         {history.isError ? <p className="mt-3 text-sm text-destructive">Configuration history could not be loaded.</p> : null}
-        {history.data?.length === 0 ? <p className="mt-3 rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">No saved configuration revisions yet.</p> : null}
-        {history.data?.length ? (
+        {history.data?.items.length === 0 ? <p className="mt-3 rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">No saved configuration revisions yet.</p> : null}
+        {history.data?.items.length ? (
           <ol className="mt-3 space-y-2">
-            {history.data.map((revision, index) => (
+            {history.data.items.map((revision, index) => (
               <li key={revision.id} className="rounded-md border border-border bg-background/60 p-3 text-xs">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <strong>{index === 0 ? "Current configuration" : "Previous configuration"}</strong>
+                  <strong>{historyCursors.length === 1 && index === 0 ? "Current configuration" : "Previous configuration"}</strong>
                   <time className="text-muted-foreground" dateTime={revision.recordedAt}>{new Date(revision.recordedAt).toLocaleString()}</time>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
@@ -189,6 +193,15 @@ function ReminderPreferences() {
               </li>
             ))}
           </ol>
+        ) : null}
+        {historyOpen && (historyCursors.length > 1 || history.data?.nextCursor) ? (
+          <div className="mt-3 flex items-center gap-3">
+            <Button size="sm" variant="outline" disabled={historyCursors.length === 1 || history.isFetching} onClick={() => setHistoryCursors((cursors) => cursors.slice(0, -1))}>Newer revisions</Button>
+            <span className="text-xs text-muted-foreground">Page {historyCursors.length}</span>
+            <Button size="sm" variant="outline" disabled={!history.data?.nextCursor || history.isFetching} onClick={() => {
+              if (history.data?.nextCursor) setHistoryCursors((cursors) => [...cursors, history.data!.nextCursor!]);
+            }}>Older revisions</Button>
+          </div>
         ) : null}
       </details>
       <AlertDialog open={fullDayConfirmationOpen} onOpenChange={setFullDayConfirmationOpen}>

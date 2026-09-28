@@ -570,15 +570,19 @@ paths:
       operationId: getTrainerReminderPreferenceHistory
       tags: [trainer]
       summary: List operational revisions of the current trainer's email reminder preferences
+      parameters:
+        - in: query
+          name: cursor
+          description: Opaque continuation token returned by the preceding page.
+          schema: { type: string, minLength: 1, maxLength: 1024 }
       responses:
         "200":
-          description: Reminder preference revisions, newest first
+          description: Up to 25 reminder preference revisions, newest first
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/TrainerReminderPreferenceRevision"
+                $ref: "#/components/schemas/TrainerReminderPreferenceHistoryPage"
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /trainer/review-queue:
@@ -3120,6 +3124,14 @@ components:
         quietHoursStart: { type: ["string", "null"] }
         quietHoursEnd: { type: ["string", "null"] }
         recordedAt: { type: string, format: date-time }
+    TrainerReminderPreferenceHistoryPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/TrainerReminderPreferenceRevision" }
+        nextCursor: { type: ["string", "null"] }
     TrainerDiagnosticFollowUp:
       type: object
       required: [learnerId, learnerName, pathwayId, pathwayName, baselineScore, currentState, completedAt, dimensionSummaries, gaps, recommendations, safetyFindings]

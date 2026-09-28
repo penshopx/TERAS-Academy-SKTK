@@ -41,14 +41,14 @@ test("marks overdue follow-ups and exposes status and target filters", () => {
     configurationIssue: null,
     updatedAt: "2026-09-12T12:00:00.000Z",
   });
-  queryClient.setQueryData(getGetTrainerReminderPreferenceHistoryQueryKey(), [{
+  queryClient.setQueryData(getGetTrainerReminderPreferenceHistoryQueryKey(), { items: [{
     id: "preference-1",
     emailEnabled: true,
     timeZone: "Asia/Jakarta",
     quietHoursStart: "20:00",
     quietHoursEnd: "20:00",
     recordedAt: "2026-09-12T12:00:00.000Z",
-  }]);
+  }], nextCursor: null });
   const markup = renderToStaticMarkup(<QueryClientProvider client={queryClient}><DiagnosticFollowUps items={[{
     learnerId: "learner-1",
     learnerName: "Learner",

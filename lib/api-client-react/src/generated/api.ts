@@ -100,6 +100,7 @@ import type {
   GetAdminAgentObservabilityParams,
   GetAssessmentParams,
   GetLearnerJourneyPageParams,
+  GetTrainerReminderPreferenceHistoryParams,
   HealthStatus,
   JourneyPage,
   JourneyStep,
@@ -152,7 +153,7 @@ import type {
   TrainerPracticeReviewInput,
   TrainerRemediationOpen,
   TrainerRemediationOpenInput,
-  TrainerReminderPreferenceRevision,
+  TrainerReminderPreferenceHistoryPage,
   TrainerReminderPreferences,
   TrainerReminderPreferencesInput,
   UnauthorizedResponse
@@ -2739,20 +2740,27 @@ export const useUpdateTrainerReminderPreferences = <TError = ErrorType<BadReques
       return useMutation(getUpdateTrainerReminderPreferencesMutationOptions(options));
     }
 
-export const getGetTrainerReminderPreferenceHistoryUrl = () => {
+export const getGetTrainerReminderPreferenceHistoryUrl = (params?: GetTrainerReminderPreferenceHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/trainer/reminder-preferences/history`
+  return stringifiedParams.length > 0 ? `/api/trainer/reminder-preferences/history?${stringifiedParams}` : `/api/trainer/reminder-preferences/history`
 }
 
 /**
  * @summary List operational revisions of the current trainer's email reminder preferences
  */
-export const getTrainerReminderPreferenceHistory = async ( options?: Parameters<typeof customFetch>[1]): Promise<TrainerReminderPreferenceRevision[]> => {
+export const getTrainerReminderPreferenceHistory = async (params?: GetTrainerReminderPreferenceHistoryParams, options?: Parameters<typeof customFetch>[1]): Promise<TrainerReminderPreferenceHistoryPage> => {
 
-  return customFetch<TrainerReminderPreferenceRevision[]>(getGetTrainerReminderPreferenceHistoryUrl(),
+  return customFetch<TrainerReminderPreferenceHistoryPage>(getGetTrainerReminderPreferenceHistoryUrl(params),
   {
     ...options,
     method: 'GET'
@@ -2765,23 +2773,23 @@ export const getTrainerReminderPreferenceHistory = async ( options?: Parameters<
 
 
 
-export const getGetTrainerReminderPreferenceHistoryQueryKey = () => {
+export const getGetTrainerReminderPreferenceHistoryQueryKey = (params?: GetTrainerReminderPreferenceHistoryParams,) => {
     return [
-    `/api/trainer/reminder-preferences/history`
+    `/api/trainer/reminder-preferences/history`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetTrainerReminderPreferenceHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getTrainerReminderPreferenceHistory>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrainerReminderPreferenceHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetTrainerReminderPreferenceHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getTrainerReminderPreferenceHistory>>, TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>>(params?: GetTrainerReminderPreferenceHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrainerReminderPreferenceHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetTrainerReminderPreferenceHistoryQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetTrainerReminderPreferenceHistoryQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTrainerReminderPreferenceHistory>>> = ({ signal }) => getTrainerReminderPreferenceHistory({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTrainerReminderPreferenceHistory>>> = ({ signal }) => getTrainerReminderPreferenceHistory(params, { signal, ...requestOptions });
 
 
 
@@ -2791,19 +2799,19 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetTrainerReminderPreferenceHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getTrainerReminderPreferenceHistory>>>
-export type GetTrainerReminderPreferenceHistoryQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse>
+export type GetTrainerReminderPreferenceHistoryQueryError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>
 
 
 /**
  * @summary List operational revisions of the current trainer's email reminder preferences
  */
 
-export function useGetTrainerReminderPreferenceHistory<TData = Awaited<ReturnType<typeof getTrainerReminderPreferenceHistory>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrainerReminderPreferenceHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useGetTrainerReminderPreferenceHistory<TData = Awaited<ReturnType<typeof getTrainerReminderPreferenceHistory>>, TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse>>(
+ params?: GetTrainerReminderPreferenceHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrainerReminderPreferenceHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetTrainerReminderPreferenceHistoryQueryOptions(options)
+  const queryOptions = getGetTrainerReminderPreferenceHistoryQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

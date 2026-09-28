@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
 import { CreateTrainerEvidenceTriageRunResponse, CreateTrainerIntelligenceRunResponse, GetTrainerDashboardResponse, GetTrainerReminderPreferenceHistoryResponse, GetTrainerReminderPreferencesResponse, GetTrainerReviewQueueResponse, OpenTrainerRemediationBody, OpenTrainerRemediationResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse, UpdateTrainerReminderPreferencesBody, UpdateTrainerReminderPreferencesResponse } from "@workspace/api-zod";
 import { db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, trainerReminderPreferencesTable } from "@workspace/db";
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { evidenceRecords, gapRecords, pathwayHasModule, remediationRecords, workspaceAssignmentContexts } from "../lib/teras";
 import { authorizeWorkspaceRole } from "../lib/authorization";
 import { learningNextAction } from "../lib/learning-transition";
@@ -15,6 +15,24 @@ const router: IRouter = Router();
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const FOLLOW_UP_DUE_SOON_DAYS = 7;
 const TRAINER_REVIEW_HISTORY_LIMIT = 50;
+const REMINDER_HISTORY_PAGE_SIZE = 25;
+const REMINDER_CURSOR_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
+function decodeReminderHistoryCursor(raw: unknown, trainerId: string) {
+  if (raw === undefined) return null;
+  if (typeof raw !== "string" || raw.length > 1024 || !/^[A-Za-z0-9_-]+$/.test(raw)) return undefined;
+  try {
+    const decoded: unknown = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
+    if (!Array.isArray(decoded) || decoded.length !== 3
+      || decoded[0] !== trainerId || typeof decoded[1] !== "string"
+      || !REMINDER_CURSOR_TIMESTAMP.test(decoded[1])
+      || Number.isNaN(Date.parse(decoded[1]))
+      || typeof decoded[2] !== "string" || !decoded[2] || decoded[2].length > 256
+      || Buffer.from(JSON.stringify(decoded)).toString("base64url") !== raw) return undefined;
+    return { timestamp: decoded[1] as string, id: decoded[2] as string };
+  } catch {
+    return undefined;
+  }
+}
 const followUpFingerprint = (value: { status: string; targetAt: string | null; note: string }) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const reviewFingerprint = (value: object) =>
@@ -244,17 +262,39 @@ router.get("/trainer/reminder-preferences", async (req, res): Promise<void> => {
 });
 router.get("/trainer/reminder-preferences/history", async (req, res): Promise<void> => {
   const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;
-  const revisions = await db.select().from(trainerReminderPreferencesTable)
-    .where(eq(trainerReminderPreferencesTable.trainerId, trainerId))
-    .orderBy(desc(trainerReminderPreferencesTable.createdAt), desc(trainerReminderPreferencesTable.id));
-  res.json(GetTrainerReminderPreferenceHistoryResponse.parse(revisions.map((revision) => ({
+  const cursor = decodeReminderHistoryCursor(req.query.cursor, trainerId);
+  if (cursor === undefined) { res.status(400).json({ error: "Invalid history cursor" }); return; }
+  const timestamp = sql<string>`to_char(${trainerReminderPreferencesTable.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+  const revisions = await db.select({
+    id: trainerReminderPreferencesTable.id,
+    emailEnabled: trainerReminderPreferencesTable.emailEnabled,
+    timeZone: trainerReminderPreferencesTable.timeZone,
+    quietHoursStart: trainerReminderPreferencesTable.quietHoursStart,
+    quietHoursEnd: trainerReminderPreferencesTable.quietHoursEnd,
+    createdAt: trainerReminderPreferencesTable.createdAt,
+    cursorTimestamp: timestamp,
+  }).from(trainerReminderPreferencesTable)
+    .where(and(
+      eq(trainerReminderPreferencesTable.trainerId, trainerId),
+      cursor ? or(
+        lt(trainerReminderPreferencesTable.createdAt, sql`${cursor.timestamp}::timestamptz`),
+        and(eq(trainerReminderPreferencesTable.createdAt, sql`${cursor.timestamp}::timestamptz`), lt(trainerReminderPreferencesTable.id, cursor.id)),
+      ) : undefined,
+    ))
+    .orderBy(desc(trainerReminderPreferencesTable.createdAt), desc(trainerReminderPreferencesTable.id))
+    .limit(REMINDER_HISTORY_PAGE_SIZE + 1);
+  const items = revisions.slice(0, REMINDER_HISTORY_PAGE_SIZE);
+  const last = items.at(-1);
+  res.json(GetTrainerReminderPreferenceHistoryResponse.parse({ items: items.map((revision) => ({
     id: revision.id,
     emailEnabled: revision.emailEnabled,
     timeZone: revision.timeZone,
     quietHoursStart: revision.quietHoursStart,
     quietHoursEnd: revision.quietHoursEnd,
     recordedAt: revision.createdAt,
-  }))));
+  })), nextCursor: revisions.length > REMINDER_HISTORY_PAGE_SIZE && last
+    ? Buffer.from(JSON.stringify([trainerId, last.cursorTimestamp, last.id])).toString("base64url")
+    : null }));
 });
 router.put("/trainer/reminder-preferences", async (req, res): Promise<void> => {
   const body = UpdateTrainerReminderPreferencesBody.safeParse(req.body);

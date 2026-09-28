@@ -2411,15 +2411,25 @@ export const UpdateTrainerReminderPreferencesResponse = zod.object({
 /**
  * @summary List operational revisions of the current trainer's email reminder preferences
  */
-export const GetTrainerReminderPreferenceHistoryResponseItem = zod.object({
+export const getTrainerReminderPreferenceHistoryQueryCursorMax = 1024;
+
+
+
+export const GetTrainerReminderPreferenceHistoryQueryParams = zod.object({
+  "cursor": zod.coerce.string().min(1).max(getTrainerReminderPreferenceHistoryQueryCursorMax).optional().describe('Opaque continuation token returned by the preceding page.')
+})
+
+export const GetTrainerReminderPreferenceHistoryResponse = zod.object({
+  "items": zod.array(zod.object({
   "id": zod.string(),
   "emailEnabled": zod.boolean(),
   "timeZone": zod.string(),
   "quietHoursStart": zod.string().nullable(),
   "quietHoursEnd": zod.string().nullable(),
   "recordedAt": zod.coerce.date()
-}).describe('Immutable revision history retains raw legacy quiet-hour strings, even when they do not match the current input format.')
-export const GetTrainerReminderPreferenceHistoryResponse = zod.array(GetTrainerReminderPreferenceHistoryResponseItem)
+}).describe('Immutable revision history retains raw legacy quiet-hour strings, even when they do not match the current input format.')),
+  "nextCursor": zod.string().nullable()
+})
 
 
 /**
