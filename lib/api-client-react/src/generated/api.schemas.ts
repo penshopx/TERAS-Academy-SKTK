@@ -118,6 +118,8 @@ export interface DiagnosticQuestion {
   required: boolean;
   /** @nullable */
   competencyUnitId: string | null;
+  /** @nullable */
+  kukId?: string | null;
   options: DiagnosticOption[];
 }
 
@@ -652,11 +654,36 @@ export interface CompetencyOutcomeMapping {
      * @nullable
      */
   learningOutcomeId?: string | null;
+  /**
+     * @minLength 1
+     * @nullable
+     */
+  kukId?: string | null;
   /** @minLength 1 */
   outcomeCode: string;
   /** @minLength 1 */
   description: string;
   verificationMethod: CompetencyOutcomeMappingVerificationMethod;
+}
+
+export interface CompetencyPracticeMapping {
+  /** @minLength 1 */
+  taskId: string;
+  /**
+     * @minLength 1
+     * @nullable
+     */
+  kukId?: string | null;
+}
+
+export interface CompetencyEvidenceMapping {
+  /** @minLength 1 */
+  requirementId: string;
+  /**
+     * @minLength 1
+     * @nullable
+     */
+  kukId?: string | null;
 }
 
 export interface CompetencySimulation {
@@ -711,6 +738,8 @@ export interface CompetencyUnitInput {
   practiceTaskIds?: string[];
   /** @items.minLength 1 */
   evidenceRequirementIds?: string[];
+  practiceMappings?: CompetencyPracticeMapping[];
+  evidenceMappings?: CompetencyEvidenceMapping[];
   simulations?: CompetencySimulation[];
   safetyRules?: CompetencySafetyRule[];
 }
@@ -804,6 +833,8 @@ export interface CompetencyUnitUpdate {
   practiceTaskIds?: string[];
   /** @items.minLength 1 */
   evidenceRequirementIds?: string[];
+  practiceMappings?: CompetencyPracticeMapping[];
+  evidenceMappings?: CompetencyEvidenceMapping[];
   simulations?: CompetencySimulation[];
   safetyRules?: CompetencySafetyRule[];
 }

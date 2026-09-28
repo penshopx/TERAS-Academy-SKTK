@@ -326,13 +326,13 @@ async function seed(): Promise<void> {
     { id:"skttk-safety-installation", unitId:"skttk-u-installation", code:"SAFE-02", rule:"Gunakan APD dan prosedur kerja aman selama instalasi serta commissioning.", severity:"critical", verificationEvidence:"Observasi trainer dan catatan toolbox talk", blocking:true },
     { id:"skttk-safety-design", unitId:"skttk-u-design", code:"SAFE-03", rule:"Desain harus mengidentifikasi risiko listrik, struktur, dan akses pemeliharaan.", severity:"high", verificationEvidence:"Review risiko pada design pack", blocking:true },
   ]);
-  await insert(diagnosticTemplatesTable, [{ id:"diag-skttk-spv-v1", frameworkId:"framework-skttk-solar-pv", pathwayId:"path-a", version:"1.0", name:"SKTTK Solar PV Personal Diagnostic", description:"Initial self-diagnostic across six dimensions. This is not a competence or certification decision.", status:"active", dimensions:["Safety","Knowledge","Practice","Evidence","Problem solving","Readiness"] }]);
+  await insert(diagnosticTemplatesTable, [{ id:"diag-skttk-spv-v1", frameworkId:"framework-skttk-solar-pv", pathwayId:"path-a", version:"1.0", name:"SKTTK Solar PV Personal Diagnostic", description:"Internal synthetic self-diagnostic; not official SKTTK content or a competence decision.", status:"draft", dimensions:["Safety","Knowledge","Practice","Evidence","Problem solving","Readiness"] }]);
   await insert(diagnosticQuestionsTable, [
     { id:"diag-q-safety", templateId:"diag-skttk-spv-v1", frameworkId:"framework-skttk-solar-pv", competencyUnitId:"skttk-u-safe-isolation", dimension:"Safety", prompt:"Before touching a PV conductor, what do you do?", sequence:1 },
     { id:"diag-q-knowledge", templateId:"diag-skttk-spv-v1", frameworkId:"framework-skttk-solar-pv", competencyUnitId:"skttk-u-installation", dimension:"Knowledge", prompt:"How confident are you explaining the commissioning sequence?", sequence:2 },
     { id:"diag-q-practice", templateId:"diag-skttk-spv-v1", frameworkId:"framework-skttk-solar-pv", competencyUnitId:"skttk-u-installation", dimension:"Practice", prompt:"How much supervised PV practice have you completed?", sequence:3 },
     { id:"diag-q-evidence", templateId:"diag-skttk-spv-v1", frameworkId:"framework-skttk-solar-pv", competencyUnitId:"skttk-u-installation", dimension:"Evidence", prompt:"How much traceable evidence can you show?", sequence:4 },
-    { id:"diag-q-problem", templateId:"diag-skttk-spv-v1", frameworkId:"framework-skttk-solar-pv", competencyUnitId:"skttk-u-design", dimension:"Problem solving", prompt:"How do you approach an unexpected commissioning result?", sequence:5 },
+    { id:"diag-q-problem", templateId:"diag-skttk-spv-v1", frameworkId:"framework-skttk-solar-pv", competencyUnitId:"skttk-u-installation", dimension:"Problem solving", prompt:"How do you approach an unexpected commissioning result?", sequence:5 },
     { id:"diag-q-readiness", templateId:"diag-skttk-spv-v1", frameworkId:"framework-skttk-solar-pv", competencyUnitId:"skttk-u-safe-isolation", dimension:"Readiness", prompt:"What support would help you take your next supervised step?", sequence:6 },
   ]);
   await insert(diagnosticOptionsTable, [

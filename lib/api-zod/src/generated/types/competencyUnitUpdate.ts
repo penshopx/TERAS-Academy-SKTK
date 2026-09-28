@@ -5,7 +5,9 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { CompetencyEvidenceMapping } from './competencyEvidenceMapping';
 import type { CompetencyOutcomeMapping } from './competencyOutcomeMapping';
+import type { CompetencyPracticeMapping } from './competencyPracticeMapping';
 import type { CompetencySafetyRule } from './competencySafetyRule';
 import type { CompetencySimulation } from './competencySimulation';
 import type { CompetencyUnitUpdateStatus } from './competencyUnitUpdateStatus';
@@ -29,6 +31,8 @@ export interface CompetencyUnitUpdate {
   practiceTaskIds?: string[];
   /** @items.minLength 1 */
   evidenceRequirementIds?: string[];
+  practiceMappings?: CompetencyPracticeMapping[];
+  evidenceMappings?: CompetencyEvidenceMapping[];
   simulations?: CompetencySimulation[];
   safetyRules?: CompetencySafetyRule[];
 }

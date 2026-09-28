@@ -20,5 +20,7 @@ export interface DiagnosticQuestion {
   required: boolean;
   /** @nullable */
   competencyUnitId: string | null;
+  /** @nullable */
+  kukId?: string | null;
   options: DiagnosticOption[];
 }

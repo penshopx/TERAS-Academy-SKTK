@@ -9,6 +9,7 @@ import {
   competencyUnitPracticeTasksTable, competencyUnitEvidenceRequirementsTable,
   competencyUnitSimulationsTable, competencyUnitSafetyRulesTable, pathwayCompetencyUnitsTable,
   practiceTasksTable, evidenceRequirementsTable, readinessGatesTable, pathwayModuleContractsTable,
+  competencyFrameworkSourcesTable, regulatoryReferencesTable,
 } from "@workspace/db";
 import { GetDiagnosticResponse, StartDiagnosticSessionResponse, SaveDiagnosticResponsesBody, SaveDiagnosticResponsesResponse, CompleteDiagnosticSessionParams, CompleteDiagnosticSessionResponse, GetCompetencyProfileResponse, GetReadinessMapResponse } from "@workspace/api-zod";
 import { authorizeLearner } from "../lib/authorization";
@@ -19,8 +20,22 @@ const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const sessionView = (s: typeof diagnosticSessionsTable.$inferSelect) => ({ id: s.id, status: s.status, progress: s.progress, pathwayId: s.pathwayId, templateId: s.templateId, completedAt: s.completedAt });
 
 async function activeTemplate(pathwayId: string) {
-  const [template] = await db.select().from(diagnosticTemplatesTable).where(and(eq(diagnosticTemplatesTable.pathwayId, pathwayId), eq(diagnosticTemplatesTable.status, "active"))).orderBy(desc(diagnosticTemplatesTable.createdAt)).limit(1);
-  return template;
+  const [template] = await db.select().from(diagnosticTemplatesTable)
+    .innerJoin(competencyFrameworksTable, eq(diagnosticTemplatesTable.frameworkId, competencyFrameworksTable.id))
+    .where(and(
+      eq(diagnosticTemplatesTable.pathwayId, pathwayId),
+      eq(diagnosticTemplatesTable.status, "active"),
+      eq(competencyFrameworksTable.authorityStatus, "AUTHORITATIVE"),
+      sql`exists (
+        select 1 from ${competencyFrameworkSourcesTable} s
+        join ${regulatoryReferencesTable} r on r.id = s.regulatory_reference_id
+        where s.framework_id = ${diagnosticTemplatesTable.frameworkId}
+          and s.provenance_type = 'AUTHORITATIVE'
+          and r.authority_role = 'DOMAIN_AUTHORITY' and r.status = 'ACTIVE'
+      )`,
+    ))
+    .orderBy(desc(diagnosticTemplatesTable.createdAt)).limit(1);
+  return template?.teras_diagnostic_templates;
 }
 
 router.get("/diagnostic", async (req, res): Promise<void> => {

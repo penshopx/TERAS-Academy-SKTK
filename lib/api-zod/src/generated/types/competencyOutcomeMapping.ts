@@ -13,6 +13,11 @@ export interface CompetencyOutcomeMapping {
      * @nullable
      */
   learningOutcomeId?: string | null;
+  /**
+     * @minLength 1
+     * @nullable
+     */
+  kukId?: string | null;
   /** @minLength 1 */
   outcomeCode: string;
   /** @minLength 1 */

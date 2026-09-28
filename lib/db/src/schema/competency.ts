@@ -105,16 +105,19 @@ export const pathwayCompetencyUnitsTable = pgTable("teras_pathway_competency_uni
 /** Traceability edges intentionally keep each evidence type addressable. */
 export const competencyUnitOutcomesTable = pgTable("teras_competency_unit_outcomes", {
   id: text("id").primaryKey(), unitId: text("unit_id").notNull().references(() => competencyUnitsTable.id, { onDelete: "cascade" }),
+  kukId: text("kuk_id").references(() => competencyKuksTable.id),
   learningOutcomeId: text("learning_outcome_id").references(() => learningOutcomesTable.id), outcomeCode: text("outcome_code").notNull(), description: text("description").notNull(), verificationMethod: text("verification_method").notNull(), ...audit,
 }, table => [uniqueIndex("teras_competency_unit_outcomes_unit_code_unique").on(table.unitId, table.outcomeCode)]);
 
 export const competencyUnitPracticeTasksTable = pgTable("teras_competency_unit_practice_tasks", {
   id: text("id").primaryKey(), unitId: text("unit_id").notNull().references(() => competencyUnitsTable.id, { onDelete: "cascade" }),
+  kukId: text("kuk_id").references(() => competencyKuksTable.id),
   taskId: text("task_id").notNull().references(() => practiceTasksTable.id, { onDelete: "cascade" }), required: boolean("required").notNull().default(true), ...audit,
 }, table => [uniqueIndex("teras_competency_unit_practice_unique").on(table.unitId, table.taskId)]);
 
 export const competencyUnitEvidenceRequirementsTable = pgTable("teras_competency_unit_evidence_requirements", {
   id: text("id").primaryKey(), unitId: text("unit_id").notNull().references(() => competencyUnitsTable.id, { onDelete: "cascade" }),
+  kukId: text("kuk_id").references(() => competencyKuksTable.id),
   requirementId: text("requirement_id").notNull().references(() => evidenceRequirementsTable.id, { onDelete: "cascade" }), required: boolean("required").notNull().default(true), ...audit,
 }, table => [uniqueIndex("teras_competency_unit_evidence_unique").on(table.unitId, table.requirementId)]);
 

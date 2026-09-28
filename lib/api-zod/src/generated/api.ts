@@ -1158,6 +1158,7 @@ export const GetDiagnosticResponse = zod.object({
   "sequence": zod.int(),
   "required": zod.boolean(),
   "competencyUnitId": zod.string().nullable(),
+  "kukId": zod.string().nullish(),
   "options": zod.array(zod.object({
   "id": zod.string(),
   "code": zod.string(),
@@ -4033,6 +4034,11 @@ export const ListReadinessAuditPublicKeysResponse = zod.object({
 
 
 
+
+
+
+
+
 export const listAdminCompetencyFrameworksResponseTwoUnitsItemOneSimulationsItemDurationMinutesMin = 0;
 
 
@@ -4064,12 +4070,21 @@ export const ListAdminCompetencyFrameworksResponseItem = zod.object({
   "pathwayIds": zod.array(zod.string().min(1)).optional(),
   "outcomeMappings": zod.array(zod.object({
   "learningOutcomeId": zod.string().min(1).nullish(),
+  "kukId": zod.string().min(1).nullish(),
   "outcomeCode": zod.string().min(1),
   "description": zod.string().min(1),
   "verificationMethod": zod.enum(['TRAINER_REVIEW', 'SELF_CHECK', 'OBSERVATION', 'EVIDENCE_REVIEW', 'ASSESSMENT'])
 })).optional(),
   "practiceTaskIds": zod.array(zod.string().min(1)).optional(),
   "evidenceRequirementIds": zod.array(zod.string().min(1)).optional(),
+  "practiceMappings": zod.array(zod.object({
+  "taskId": zod.string().min(1),
+  "kukId": zod.string().min(1).nullish()
+})).optional(),
+  "evidenceMappings": zod.array(zod.object({
+  "requirementId": zod.string().min(1),
+  "kukId": zod.string().min(1).nullish()
+})).optional(),
   "simulations": zod.array(zod.object({
   "title": zod.string().min(1),
   "instructions": zod.string().min(1),
@@ -4124,6 +4139,11 @@ export const CreateAdminCompetencyFrameworkBody = zod.object({
 
 
 
+
+
+
+
+
 export const createAdminCompetencyFrameworkResponseTwoUnitsItemOneSimulationsItemDurationMinutesMin = 0;
 
 
@@ -4155,12 +4175,21 @@ export const CreateAdminCompetencyFrameworkResponse = zod.object({
   "pathwayIds": zod.array(zod.string().min(1)).optional(),
   "outcomeMappings": zod.array(zod.object({
   "learningOutcomeId": zod.string().min(1).nullish(),
+  "kukId": zod.string().min(1).nullish(),
   "outcomeCode": zod.string().min(1),
   "description": zod.string().min(1),
   "verificationMethod": zod.enum(['TRAINER_REVIEW', 'SELF_CHECK', 'OBSERVATION', 'EVIDENCE_REVIEW', 'ASSESSMENT'])
 })).optional(),
   "practiceTaskIds": zod.array(zod.string().min(1)).optional(),
   "evidenceRequirementIds": zod.array(zod.string().min(1)).optional(),
+  "practiceMappings": zod.array(zod.object({
+  "taskId": zod.string().min(1),
+  "kukId": zod.string().min(1).nullish()
+})).optional(),
+  "evidenceMappings": zod.array(zod.object({
+  "requirementId": zod.string().min(1),
+  "kukId": zod.string().min(1).nullish()
+})).optional(),
   "simulations": zod.array(zod.object({
   "title": zod.string().min(1),
   "instructions": zod.string().min(1),
@@ -4244,6 +4273,11 @@ export const UpdateAdminCompetencyFrameworkBody = zod.object({
 
 
 
+
+
+
+
+
 export const updateAdminCompetencyFrameworkResponseTwoUnitsItemOneSimulationsItemDurationMinutesMin = 0;
 
 
@@ -4275,12 +4309,21 @@ export const UpdateAdminCompetencyFrameworkResponse = zod.object({
   "pathwayIds": zod.array(zod.string().min(1)).optional(),
   "outcomeMappings": zod.array(zod.object({
   "learningOutcomeId": zod.string().min(1).nullish(),
+  "kukId": zod.string().min(1).nullish(),
   "outcomeCode": zod.string().min(1),
   "description": zod.string().min(1),
   "verificationMethod": zod.enum(['TRAINER_REVIEW', 'SELF_CHECK', 'OBSERVATION', 'EVIDENCE_REVIEW', 'ASSESSMENT'])
 })).optional(),
   "practiceTaskIds": zod.array(zod.string().min(1)).optional(),
   "evidenceRequirementIds": zod.array(zod.string().min(1)).optional(),
+  "practiceMappings": zod.array(zod.object({
+  "taskId": zod.string().min(1),
+  "kukId": zod.string().min(1).nullish()
+})).optional(),
+  "evidenceMappings": zod.array(zod.object({
+  "requirementId": zod.string().min(1),
+  "kukId": zod.string().min(1).nullish()
+})).optional(),
   "simulations": zod.array(zod.object({
   "title": zod.string().min(1),
   "instructions": zod.string().min(1),
@@ -4318,6 +4361,11 @@ export const UpdateAdminCompetencyFrameworkResponse = zod.object({
 
 
 
+
+
+
+
+
 export const createAdminCompetencyUnitBodySimulationsItemDurationMinutesMin = 0;
 
 
@@ -4336,12 +4384,21 @@ export const CreateAdminCompetencyUnitBody = zod.object({
   "pathwayIds": zod.array(zod.string().min(1)).optional(),
   "outcomeMappings": zod.array(zod.object({
   "learningOutcomeId": zod.string().min(1).nullish(),
+  "kukId": zod.string().min(1).nullish(),
   "outcomeCode": zod.string().min(1),
   "description": zod.string().min(1),
   "verificationMethod": zod.enum(['TRAINER_REVIEW', 'SELF_CHECK', 'OBSERVATION', 'EVIDENCE_REVIEW', 'ASSESSMENT'])
 })).optional(),
   "practiceTaskIds": zod.array(zod.string().min(1)).optional(),
   "evidenceRequirementIds": zod.array(zod.string().min(1)).optional(),
+  "practiceMappings": zod.array(zod.object({
+  "taskId": zod.string().min(1),
+  "kukId": zod.string().min(1).nullish()
+})).optional(),
+  "evidenceMappings": zod.array(zod.object({
+  "requirementId": zod.string().min(1),
+  "kukId": zod.string().min(1).nullish()
+})).optional(),
   "simulations": zod.array(zod.object({
   "title": zod.string().min(1),
   "instructions": zod.string().min(1),
@@ -4356,6 +4413,11 @@ export const CreateAdminCompetencyUnitBody = zod.object({
   "blocking": zod.boolean()
 })).optional()
 })
+
+
+
+
+
 
 
 
@@ -4389,12 +4451,21 @@ export const CreateAdminCompetencyUnitResponse = zod.object({
   "pathwayIds": zod.array(zod.string().min(1)).optional(),
   "outcomeMappings": zod.array(zod.object({
   "learningOutcomeId": zod.string().min(1).nullish(),
+  "kukId": zod.string().min(1).nullish(),
   "outcomeCode": zod.string().min(1),
   "description": zod.string().min(1),
   "verificationMethod": zod.enum(['TRAINER_REVIEW', 'SELF_CHECK', 'OBSERVATION', 'EVIDENCE_REVIEW', 'ASSESSMENT'])
 })).optional(),
   "practiceTaskIds": zod.array(zod.string().min(1)).optional(),
   "evidenceRequirementIds": zod.array(zod.string().min(1)).optional(),
+  "practiceMappings": zod.array(zod.object({
+  "taskId": zod.string().min(1),
+  "kukId": zod.string().min(1).nullish()
+})).optional(),
+  "evidenceMappings": zod.array(zod.object({
+  "requirementId": zod.string().min(1),
+  "kukId": zod.string().min(1).nullish()
+})).optional(),
   "simulations": zod.array(zod.object({
   "title": zod.string().min(1),
   "instructions": zod.string().min(1),
@@ -4435,6 +4506,11 @@ export const UpdateAdminCompetencyUnitParams = zod.object({
 
 
 
+
+
+
+
+
 export const updateAdminCompetencyUnitBodySimulationsItemDurationMinutesMin = 0;
 
 
@@ -4452,12 +4528,21 @@ export const UpdateAdminCompetencyUnitBody = zod.object({
   "pathwayIds": zod.array(zod.string().min(1)).optional(),
   "outcomeMappings": zod.array(zod.object({
   "learningOutcomeId": zod.string().min(1).nullish(),
+  "kukId": zod.string().min(1).nullish(),
   "outcomeCode": zod.string().min(1),
   "description": zod.string().min(1),
   "verificationMethod": zod.enum(['TRAINER_REVIEW', 'SELF_CHECK', 'OBSERVATION', 'EVIDENCE_REVIEW', 'ASSESSMENT'])
 })).optional(),
   "practiceTaskIds": zod.array(zod.string().min(1)).optional(),
   "evidenceRequirementIds": zod.array(zod.string().min(1)).optional(),
+  "practiceMappings": zod.array(zod.object({
+  "taskId": zod.string().min(1),
+  "kukId": zod.string().min(1).nullish()
+})).optional(),
+  "evidenceMappings": zod.array(zod.object({
+  "requirementId": zod.string().min(1),
+  "kukId": zod.string().min(1).nullish()
+})).optional(),
   "simulations": zod.array(zod.object({
   "title": zod.string().min(1),
   "instructions": zod.string().min(1),
@@ -4472,6 +4557,11 @@ export const UpdateAdminCompetencyUnitBody = zod.object({
   "blocking": zod.boolean()
 })).optional()
 })
+
+
+
+
+
 
 
 
@@ -4505,12 +4595,21 @@ export const UpdateAdminCompetencyUnitResponse = zod.object({
   "pathwayIds": zod.array(zod.string().min(1)).optional(),
   "outcomeMappings": zod.array(zod.object({
   "learningOutcomeId": zod.string().min(1).nullish(),
+  "kukId": zod.string().min(1).nullish(),
   "outcomeCode": zod.string().min(1),
   "description": zod.string().min(1),
   "verificationMethod": zod.enum(['TRAINER_REVIEW', 'SELF_CHECK', 'OBSERVATION', 'EVIDENCE_REVIEW', 'ASSESSMENT'])
 })).optional(),
   "practiceTaskIds": zod.array(zod.string().min(1)).optional(),
   "evidenceRequirementIds": zod.array(zod.string().min(1)).optional(),
+  "practiceMappings": zod.array(zod.object({
+  "taskId": zod.string().min(1),
+  "kukId": zod.string().min(1).nullish()
+})).optional(),
+  "evidenceMappings": zod.array(zod.object({
+  "requirementId": zod.string().min(1),
+  "kukId": zod.string().min(1).nullish()
+})).optional(),
   "simulations": zod.array(zod.object({
   "title": zod.string().min(1),
   "instructions": zod.string().min(1),

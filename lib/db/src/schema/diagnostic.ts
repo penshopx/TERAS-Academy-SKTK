@@ -3,7 +3,7 @@ import { bigint, boolean, check, foreignKey, integer, jsonb, pgTable, text, time
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { peopleTable, pathwaysTable, enrollmentsTable, modulesTable, practiceTasksTable, evidenceRequirementsTable } from "./teras";
-import { competencyFrameworksTable, competencyUnitsTable } from "./competency";
+import { competencyFrameworksTable, competencyKuksTable, competencyUnitsTable } from "./competency";
 
 const audit = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -21,6 +21,7 @@ export const diagnosticTemplatesTable = pgTable("teras_diagnostic_templates", {
 export const diagnosticQuestionsTable = pgTable("teras_diagnostic_questions", {
   id: text("id").primaryKey(), templateId: text("template_id").notNull().references(() => diagnosticTemplatesTable.id, { onDelete: "cascade" }),
   frameworkId: text("framework_id").notNull().references(() => competencyFrameworksTable.id), competencyUnitId: text("competency_unit_id").references(() => competencyUnitsTable.id),
+  kukId: text("kuk_id").references(() => competencyKuksTable.id),
   dimension: text("dimension").notNull(), questionType: text("question_type").notNull().default("single_choice"), prompt: text("prompt").notNull(), explanation: text("explanation"),
   difficulty: text("difficulty").notNull().default("core"), sequence: integer("sequence").notNull(),
   required: boolean("required").notNull().default(true), metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}), ...audit,

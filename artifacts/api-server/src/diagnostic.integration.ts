@@ -179,6 +179,16 @@ async function run() {
     { id: "skttk-map-path-a-install", pathwayId: "path-a", unitId: "skttk-u-installation", sequence: 2, createdBy: "diagnostic-test" },
     { id: "skttk-map-path-a-design", pathwayId: "path-a", unitId: "skttk-u-design", sequence: 3, createdBy: "diagnostic-test" },
   ]).onConflictDoNothing();
+  // This isolated fixture exercises the existing diagnostic journey; it is not
+  // an official SKTTK import. Only test-scoped provenance makes it publishable.
+  await pool.query(await readFile(new URL("../../../lib/db/migrations/0054_path_b_regulatory_competency_foundation.sql", import.meta.url), "utf8"));
+  await pool.query(await readFile(new URL("../../../lib/db/migrations/0058_skttk_integration_review_guards.sql", import.meta.url), "utf8"));
+  await pool.query(`INSERT INTO teras_competency_framework_sources
+    (id,framework_id,regulatory_reference_id,provenance_type)
+    VALUES ('diagnostic-test-authority','framework-skttk-solar-pv','reg-permen-esdm-6-2021','AUTHORITATIVE')
+    ON CONFLICT DO NOTHING`);
+  await pool.query(`UPDATE teras_competency_frameworks SET authority_status='AUTHORITATIVE'
+    WHERE id='framework-skttk-solar-pv'`);
   await db.insert(competencyUnitPracticeTasksTable).values([
     { id: "diagnostic-unit-practice-safe", unitId: "skttk-u-safe-isolation", taskId: "diagnostic-practice-task", createdBy: "diagnostic-test" },
     { id: "diagnostic-unit-practice-install", unitId: "skttk-u-installation", taskId: "diagnostic-practice-task", createdBy: "diagnostic-test" },

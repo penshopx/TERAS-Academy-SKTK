@@ -2980,6 +2980,7 @@ components:
         sequence: { type: integer }
         required: { type: boolean }
         competencyUnitId: { type: ["string", "null"] }
+        kukId: { type: ["string", "null"] }
         options: { type: array, items: { $ref: "#/components/schemas/DiagnosticOption" } }
     DiagnosticSession:
       type: object
@@ -3249,6 +3250,8 @@ components:
         outcomeMappings: { type: array, items: { $ref: "#/components/schemas/CompetencyOutcomeMapping" } }
         practiceTaskIds: { type: array, items: { type: string, minLength: 1 } }
         evidenceRequirementIds: { type: array, items: { type: string, minLength: 1 } }
+        practiceMappings: { type: array, items: { $ref: "#/components/schemas/CompetencyPracticeMapping" } }
+        evidenceMappings: { type: array, items: { $ref: "#/components/schemas/CompetencyEvidenceMapping" } }
         simulations: { type: array, items: { $ref: "#/components/schemas/CompetencySimulation" } }
         safetyRules: { type: array, items: { $ref: "#/components/schemas/CompetencySafetyRule" } }
     CompetencyUnitUpdate:
@@ -3264,6 +3267,8 @@ components:
         outcomeMappings: { type: array, items: { $ref: "#/components/schemas/CompetencyOutcomeMapping" } }
         practiceTaskIds: { type: array, items: { type: string, minLength: 1 } }
         evidenceRequirementIds: { type: array, items: { type: string, minLength: 1 } }
+        practiceMappings: { type: array, items: { $ref: "#/components/schemas/CompetencyPracticeMapping" } }
+        evidenceMappings: { type: array, items: { $ref: "#/components/schemas/CompetencyEvidenceMapping" } }
         simulations: { type: array, items: { $ref: "#/components/schemas/CompetencySimulation" } }
         safetyRules: { type: array, items: { $ref: "#/components/schemas/CompetencySafetyRule" } }
     AdminCompetencyUnit:
@@ -3280,9 +3285,24 @@ components:
       required: [outcomeCode, description, verificationMethod]
       properties:
         learningOutcomeId: { type: ["string", "null"], minLength: 1 }
+        kukId: { type: ["string", "null"], minLength: 1 }
         outcomeCode: { type: string, minLength: 1 }
         description: { type: string, minLength: 1 }
         verificationMethod: { type: string, enum: [TRAINER_REVIEW, SELF_CHECK, OBSERVATION, EVIDENCE_REVIEW, ASSESSMENT] }
+    CompetencyPracticeMapping:
+      type: object
+      additionalProperties: false
+      required: [taskId]
+      properties:
+        taskId: { type: string, minLength: 1 }
+        kukId: { type: ["string", "null"], minLength: 1 }
+    CompetencyEvidenceMapping:
+      type: object
+      additionalProperties: false
+      required: [requirementId]
+      properties:
+        requirementId: { type: string, minLength: 1 }
+        kukId: { type: ["string", "null"], minLength: 1 }
     CompetencySimulation:
       type: object
       additionalProperties: false

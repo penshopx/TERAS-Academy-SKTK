@@ -1028,7 +1028,7 @@ async function competencyView(framework: any, executor: any = db) {
       executor.select().from(competencyUnitSimulationsTable).where(eq(competencyUnitSimulationsTable.unitId, unit.id)),
       executor.select().from(competencyUnitSafetyRulesTable).where(eq(competencyUnitSafetyRulesTable.unitId, unit.id)),
     ]);
-    return { ...unit, pathwayIds: pathways.map((row: any) => row.pathwayId), outcomeMappings: outcomes, practiceTaskIds: tasks.map((row: any) => row.taskId), evidenceRequirementIds: evidence.map((row: any) => row.requirementId), simulations, safetyRules };
+    return { ...unit, pathwayIds: pathways.map((row: any) => row.pathwayId), outcomeMappings: outcomes, practiceTaskIds: tasks.map((row: any) => row.taskId), evidenceRequirementIds: evidence.map((row: any) => row.requirementId), practiceMappings: tasks.map((row: any) => ({ taskId: row.taskId, kukId: row.kukId })), evidenceMappings: evidence.map((row: any) => ({ requirementId: row.requirementId, kukId: row.kukId })), simulations, safetyRules };
   }));
   return { ...framework, units: result };
 }
@@ -1087,14 +1087,19 @@ router.patch("/admin/competency-frameworks/:frameworkId", async (req, res): Prom
 router.post("/admin/competency-units", async (req, res): Promise<void> => {
   const actor = await authorizeAdmin(req, res); if (!actor) return;
   const input = parsed(CreateAdminCompetencyUnitBody, req.body, res); if (!input) return;
+  if (input.practiceTaskIds && input.practiceMappings || input.evidenceRequirementIds && input.evidenceMappings) {
+    res.status(400).json({ error: "Use either legacy IDs or KUK mappings for each evidence type" }); return;
+  }
   try {
     const value = await db.transaction(async tx => {
-      const { pathwayIds = [], outcomeMappings = [], practiceTaskIds = [], evidenceRequirementIds = [], simulations = [], safetyRules = [], ...unit } = input as any;
+      const { pathwayIds = [], outcomeMappings = [], practiceTaskIds = [], evidenceRequirementIds = [], practiceMappings, evidenceMappings, simulations = [], safetyRules = [], ...unit } = input as any;
       const [record] = await tx.insert(competencyUnitsTable).values({ ...unit, createdBy: `supabase:${actor.authSubject}` }).returning();
       if (pathwayIds.length) await tx.insert(pathwayCompetencyUnitsTable).values(pathwayIds.map((pathwayId: string, i: number) => ({ id: crypto.randomUUID(), pathwayId, unitId: record.id, sequence: i + 1, createdBy: `supabase:${actor.authSubject}` })));
       if (outcomeMappings.length) await tx.insert(competencyUnitOutcomesTable).values(outcomeMappings.map((row: any) => ({ ...row, id: crypto.randomUUID(), unitId: record.id, createdBy: `supabase:${actor.authSubject}` })));
-      if (practiceTaskIds.length) await tx.insert(competencyUnitPracticeTasksTable).values(practiceTaskIds.map((taskId: string) => ({ id: crypto.randomUUID(), unitId: record.id, taskId, createdBy: `supabase:${actor.authSubject}` })));
-      if (evidenceRequirementIds.length) await tx.insert(competencyUnitEvidenceRequirementsTable).values(evidenceRequirementIds.map((requirementId: string) => ({ id: crypto.randomUUID(), unitId: record.id, requirementId, createdBy: `supabase:${actor.authSubject}` })));
+      const practice = practiceMappings ?? practiceTaskIds.map((taskId: string) => ({ taskId }));
+      const requirements = evidenceMappings ?? evidenceRequirementIds.map((requirementId: string) => ({ requirementId }));
+      if (practice.length) await tx.insert(competencyUnitPracticeTasksTable).values(practice.map((row: any) => ({ ...row, id: crypto.randomUUID(), unitId: record.id, createdBy: `supabase:${actor.authSubject}` })));
+      if (requirements.length) await tx.insert(competencyUnitEvidenceRequirementsTable).values(requirements.map((row: any) => ({ ...row, id: crypto.randomUUID(), unitId: record.id, createdBy: `supabase:${actor.authSubject}` })));
       if (simulations.length) await tx.insert(competencyUnitSimulationsTable).values(simulations.map((row: any) => ({ ...row, id: crypto.randomUUID(), unitId: record.id, createdBy: `supabase:${actor.authSubject}` })));
       if (safetyRules.length) await tx.insert(competencyUnitSafetyRulesTable).values(safetyRules.map((row: any) => ({ ...row, id: crypto.randomUUID(), unitId: record.id, createdBy: `supabase:${actor.authSubject}` })));
       await audit(tx as typeof db, actor, "create", "competency_unit", record.id, null, await competencyAggregate(record.id, tx));
@@ -1102,17 +1107,20 @@ router.post("/admin/competency-units", async (req, res): Promise<void> => {
     });
     const framework = await value; const unit = framework.units.find((row: any) => row.id === input.id);
     res.status(201).json(CreateAdminCompetencyUnitResponse.parse(unit));
-  } catch { res.status(409).json({ error: "Competency unit or mapping conflicts with existing records" }); }
+  } catch (error) { req.log.warn({ error }, "Competency unit create rejected"); res.status(409).json({ error: "Competency unit or mapping conflicts with existing records" }); }
 });
 router.patch("/admin/competency-units/:unitId", async (req, res): Promise<void> => {
   const actor = await authorizeAdmin(req, res); const params = parsed(UpdateAdminCompetencyUnitParams, req.params, res); const input = parsed(UpdateAdminCompetencyUnitBody, req.body, res);
   if (!actor || !params || !input) return;
+  if (input.practiceTaskIds && input.practiceMappings || input.evidenceRequirementIds && input.evidenceMappings) {
+    res.status(400).json({ error: "Use either legacy IDs or KUK mappings for each evidence type" }); return;
+  }
   try {
     const value = await db.transaction(async tx => {
       const [before] = await (tx.select().from(competencyUnitsTable).where(eq(competencyUnitsTable.id, params.unitId)) as any).for("update");
       if (!before) throw Object.assign(new Error("Competency unit not found"), { code: "NOT_FOUND" });
       const beforeAggregate = await competencyAggregate(params.unitId, tx);
-      const { pathwayIds, outcomeMappings, practiceTaskIds, evidenceRequirementIds, simulations, safetyRules, ...unit } = input as any;
+      const { pathwayIds, outcomeMappings, practiceTaskIds, evidenceRequirementIds, practiceMappings, evidenceMappings, simulations, safetyRules, ...unit } = input as any;
       const record = Object.keys(unit).length
         ? (await tx.update(competencyUnitsTable).set(unit).where(eq(competencyUnitsTable.id, params.unitId)).returning())[0]
         : before;
@@ -1122,16 +1130,33 @@ router.patch("/admin/competency-units/:unitId", async (req, res): Promise<void> 
         if (pathwayIds?.length) await tx.insert(pathwayCompetencyUnitsTable).values(pathwayIds.map((pathwayId: string, i: number) => ({ id: crypto.randomUUID(), pathwayId, unitId: record.id, sequence: i + 1, createdBy })));
       }
       if (Object.prototype.hasOwnProperty.call(input, "outcomeMappings")) {
+        const existing = await tx.select().from(competencyUnitOutcomesTable).where(eq(competencyUnitOutcomesTable.unitId, record.id));
+        const kukByOutcome = new Map(existing.map(row => [`${row.outcomeCode}\u0000${row.learningOutcomeId ?? ""}`, row.kukId]));
         await tx.delete(competencyUnitOutcomesTable).where(eq(competencyUnitOutcomesTable.unitId, record.id));
-        if (outcomeMappings?.length) await tx.insert(competencyUnitOutcomesTable).values(outcomeMappings.map((row: any) => ({ ...row, id: crypto.randomUUID(), unitId: record.id, createdBy })));
+        if (outcomeMappings?.length) await tx.insert(competencyUnitOutcomesTable).values(outcomeMappings.map((row: any) => ({
+          ...row, kukId: row.kukId === undefined ? (kukByOutcome.get(`${row.outcomeCode}\u0000${row.learningOutcomeId ?? ""}`) ?? null) : row.kukId,
+          id: crypto.randomUUID(), unitId: record.id, createdBy,
+        })));
       }
-      if (Object.prototype.hasOwnProperty.call(input, "practiceTaskIds")) {
+      if (Object.prototype.hasOwnProperty.call(input, "practiceTaskIds") || Object.prototype.hasOwnProperty.call(input, "practiceMappings")) {
+        const existing = await tx.select().from(competencyUnitPracticeTasksTable).where(eq(competencyUnitPracticeTasksTable.unitId, record.id));
+        const kukByTask = new Map(existing.map(row => [row.taskId, row.kukId]));
         await tx.delete(competencyUnitPracticeTasksTable).where(eq(competencyUnitPracticeTasksTable.unitId, record.id));
-        if (practiceTaskIds?.length) await tx.insert(competencyUnitPracticeTasksTable).values(practiceTaskIds.map((taskId: string) => ({ id: crypto.randomUUID(), unitId: record.id, taskId, createdBy })));
+        const practice = practiceMappings ?? practiceTaskIds?.map((taskId: string) => ({ taskId }));
+        if (practice?.length) await tx.insert(competencyUnitPracticeTasksTable).values(practice.map((row: any) => ({
+          ...row, kukId: row.kukId === undefined ? (kukByTask.get(row.taskId) ?? null) : row.kukId,
+          id: crypto.randomUUID(), unitId: record.id, createdBy,
+        })));
       }
-      if (Object.prototype.hasOwnProperty.call(input, "evidenceRequirementIds")) {
+      if (Object.prototype.hasOwnProperty.call(input, "evidenceRequirementIds") || Object.prototype.hasOwnProperty.call(input, "evidenceMappings")) {
+        const existing = await tx.select().from(competencyUnitEvidenceRequirementsTable).where(eq(competencyUnitEvidenceRequirementsTable.unitId, record.id));
+        const kukByRequirement = new Map(existing.map(row => [row.requirementId, row.kukId]));
         await tx.delete(competencyUnitEvidenceRequirementsTable).where(eq(competencyUnitEvidenceRequirementsTable.unitId, record.id));
-        if (evidenceRequirementIds?.length) await tx.insert(competencyUnitEvidenceRequirementsTable).values(evidenceRequirementIds.map((requirementId: string) => ({ id: crypto.randomUUID(), unitId: record.id, requirementId, createdBy })));
+        const requirements = evidenceMappings ?? evidenceRequirementIds?.map((requirementId: string) => ({ requirementId }));
+        if (requirements?.length) await tx.insert(competencyUnitEvidenceRequirementsTable).values(requirements.map((row: any) => ({
+          ...row, kukId: row.kukId === undefined ? (kukByRequirement.get(row.requirementId) ?? null) : row.kukId,
+          id: crypto.randomUUID(), unitId: record.id, createdBy,
+        })));
       }
       if (Object.prototype.hasOwnProperty.call(input, "simulations")) {
         await tx.delete(competencyUnitSimulationsTable).where(eq(competencyUnitSimulationsTable.unitId, record.id));
