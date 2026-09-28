@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { JSDOM } from "jsdom";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import {
   ReadinessSummaryStatus,
   type AdminReadinessExport,
@@ -17,6 +19,7 @@ import {
   ReadinessOutcomeSyncStatus,
   ReadinessAuditStatusBadge,
   ReadinessStatusDiagnostic,
+  readinessStatusIncidentText,
   enqueueReadinessExportOutcome,
   flushPendingReadinessExportOutcomes,
   READINESS_EXPORT_OUTCOME_QUEUE_KEY,
@@ -25,7 +28,26 @@ import {
   runReadinessAuditExport,
 } from "./admin/ReadinessAuditHistory";
 
+const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
+Object.assign(globalThis, {
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  MutationObserver: dom.window.MutationObserver,
+});
+Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
+afterEach(() => {
+  cleanup();
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+});
+
 const checksum = "a".repeat(64);
+const diagnosticIdentity = {
+  id: "evaluation-42",
+  gateCode: "GATE-7",
+  ruleVersion: 3,
+  evaluatedAt: "2026-09-28T10:00:00.000Z",
+};
 const payload = {
   schemaVersion: "1.0",
   exportedAt: "2026-09-10T08:00:00.000Z",
@@ -76,19 +98,63 @@ test("readiness audit badge presents an unknown runtime status conservatively", 
 
 test("readiness detail keeps canonical statuses free of diagnostic metadata", () => {
   for (const status of Object.values(ReadinessSummaryStatus)) {
-    const markup = renderToStaticMarkup(<ReadinessStatusDiagnostic status={status} />);
+    const markup = renderToStaticMarkup(<ReadinessStatusDiagnostic status={status} evaluation={diagnosticIdentity} />);
     assert.equal(markup, "");
   }
 });
 
 test("readiness detail exposes an unknown runtime status as escaped diagnostic text", () => {
   const rawStatus = '<img src=x onerror="alert(1)">Future API status';
-  const markup = renderToStaticMarkup(<ReadinessStatusDiagnostic status={rawStatus} />);
+  const markup = renderToStaticMarkup(<ReadinessStatusDiagnostic status={rawStatus} evaluation={diagnosticIdentity} />);
 
   assert.match(markup, /Status readiness tidak dikenal/);
   assert.match(markup, /hanya untuk pelacakan ketidaksesuaian kontrak dan bukan keputusan readiness/);
   assert.match(markup, /&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;Future API status/);
+  assert.match(markup, /Salin detail status/);
   assert.doesNotMatch(markup, /<img/);
+});
+
+test("unknown status copies only raw status and incident evaluation identifiers using a keyboard-accessible button", async () => {
+  const rawStatus = "Future API status";
+  const copied: string[] = [];
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+    writeText: async (text: string) => { copied.push(text); },
+  } });
+  const view = render(<ReadinessStatusDiagnostic status={rawStatus} evaluation={diagnosticIdentity} />);
+  const button = view.getByTestId("button-copy-readiness-status") as HTMLButtonElement;
+  assert.equal(button.tagName, "BUTTON");
+  assert.equal(button.type, "button");
+  button.focus();
+  assert.equal(document.activeElement, button);
+  fireEvent.keyDown(button, { key: "Enter", code: "Enter" });
+  fireEvent.click(button);
+
+  await waitFor(() => assert.match(view.getByRole("status").textContent ?? "", /berhasil disalin/));
+  assert.deepEqual(copied, [readinessStatusIncidentText(rawStatus, diagnosticIdentity)]);
+  assert.equal(copied[0], [
+    "ID evaluasi: evaluation-42",
+    "Kode gate: GATE-7",
+    "Versi aturan: 3",
+    "Waktu evaluasi: 2026-09-28T10:00:00.000Z",
+    "Status mentah: Future API status",
+  ].join("\n"));
+  assert.doesNotMatch(copied[0]!, /learner|enrollment|email|nama/i);
+});
+
+test("unknown status reports clipboard failure and allows a retry", async () => {
+  let fail = true;
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+    writeText: async () => { if (fail) throw new Error("permission denied"); },
+  } });
+  const view = render(<ReadinessStatusDiagnostic status="Unmapped" evaluation={diagnosticIdentity} />);
+  const button = view.getByTestId("button-copy-readiness-status");
+  fireEvent.click(button);
+  await waitFor(() => assert.match(view.getByTestId("status-readiness-copy").textContent ?? "", /Gagal menyalin/));
+  assert.equal(view.getByTestId("status-readiness-copy").getAttribute("role"), "alert");
+  fail = false;
+  fireEvent.click(button);
+  await waitFor(() => assert.match(view.getByTestId("status-readiness-copy").textContent ?? "", /berhasil disalin/));
+  assert.equal(view.getByTestId("status-readiness-copy").getAttribute("role"), "status");
 });
 
 test("readiness history export downloads the JSON and canonical checksum sidecar", async () => {

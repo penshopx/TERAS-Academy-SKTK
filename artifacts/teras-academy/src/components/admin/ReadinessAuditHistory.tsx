@@ -15,7 +15,7 @@ import {
   useListAdminReadinessHistory,
   useRecordAdminReadinessExportTrend,
 } from "@workspace/api-client-react";
-import { AlertTriangle, Download, Loader2, X } from "lucide-react";
+import { AlertTriangle, Copy, Download, Loader2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,8 +44,32 @@ function isCanonicalReadinessStatus(status: unknown): status is ReadinessStatus 
   return typeof status === "string" && statuses.includes(status as ReadinessStatus);
 }
 
-export function ReadinessStatusDiagnostic({ status }: { status: unknown }) {
+type ReadinessDiagnosticIdentity = Pick<AdminReadinessEvaluation, "id" | "gateCode" | "ruleVersion" | "evaluatedAt">;
+
+export function readinessStatusIncidentText(status: unknown, evaluation: ReadinessDiagnosticIdentity) {
+  return [
+    `ID evaluasi: ${evaluation.id}`,
+    `Kode gate: ${evaluation.gateCode}`,
+    `Versi aturan: ${evaluation.ruleVersion}`,
+    `Waktu evaluasi: ${evaluation.evaluatedAt}`,
+    `Status mentah: ${typeof status === "string" ? status : String(status)}`,
+  ].join("\n");
+}
+
+export function ReadinessStatusDiagnostic({ status, evaluation }: { status: unknown; evaluation: ReadinessDiagnosticIdentity }) {
+  const [copyFeedback, setCopyFeedback] = useState<"success" | "failed" | null>(null);
   if (isCanonicalReadinessStatus(status)) return null;
+
+  const copy = async () => {
+    setCopyFeedback(null);
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard tidak tersedia");
+      await navigator.clipboard.writeText(readinessStatusIncidentText(status, evaluation));
+      setCopyFeedback("success");
+    } catch {
+      setCopyFeedback("failed");
+    }
+  };
 
   return <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3" role="alert" data-testid="readiness-status-diagnostic">
     <p className="font-medium">Status readiness tidak dikenal</p>
@@ -55,6 +79,11 @@ export function ReadinessStatusDiagnostic({ status }: { status: unknown }) {
     <code className="mt-2 block break-all rounded bg-background/70 px-2 py-1 text-xs" data-testid="readiness-status-raw-value">
       {typeof status === "string" ? status : String(status)}
     </code>
+    <Button type="button" size="sm" variant="outline" className="mt-3" onClick={copy} data-testid="button-copy-readiness-status">
+      <Copy className="mr-2 h-4 w-4" aria-hidden="true" />Salin detail status
+    </Button>
+    {copyFeedback === "success" && <p className="mt-2 text-sm" role="status" data-testid="status-readiness-copy">Detail status dan identitas evaluasi berhasil disalin.</p>}
+    {copyFeedback === "failed" && <p className="mt-2 text-sm text-destructive" role="alert" data-testid="status-readiness-copy">Gagal menyalin detail status. Periksa izin clipboard dan coba lagi.</p>}
   </div>;
 }
 
@@ -625,7 +654,7 @@ export function ReadinessAuditHistory({ enabled, users, pathways, errorMessage }
         <DialogHeader><DialogTitle>Detail evaluasi readiness</DialogTitle><DialogDescription>Snapshot ini disimpan saat keputusan dibuat dan tidak dihitung ulang.</DialogDescription></DialogHeader>
         {selected && <div className="space-y-5 text-sm">
           <div className="flex flex-wrap gap-2"><ReadinessAuditStatusBadge status={selected.status} /><Badge variant="outline">Rule v{selected.ruleVersion}</Badge><Badge variant="outline">Skor {selected.score}%</Badge></div>
-          <ReadinessStatusDiagnostic status={selected.status} />
+           <ReadinessStatusDiagnostic key={selected.id} status={selected.status} evaluation={selected} />
           <section><h3 className="font-semibold">Alasan keputusan</h3><p className="mt-1 text-muted-foreground">{selected.decisionReason}</p></section>
           <section><h3 className="font-semibold">Blocker</h3>{selected.blockers.length ? <ul className="mt-2 list-disc space-y-1 pl-5">{selected.blockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul> : <p className="mt-1 text-muted-foreground">Tidak ada blocker.</p>}</section>
           <section><h3 className="font-semibold">Assessment snapshot</h3><div className="mt-2 grid gap-2">{selected.inputEvidence.assessments.map(item => <div key={item.id} className="rounded border p-3"><strong>{item.id}</strong><p>Skor {item.score} · {item.completed ? "Selesai" : "Belum selesai"} · {item.criticalFailure ? "Critical failure" : "Tanpa critical failure"}</p></div>)}</div></section>
