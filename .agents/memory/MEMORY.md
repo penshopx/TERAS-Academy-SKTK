@@ -22,6 +22,7 @@
 - [Browser identity harness contracts](browser-identity-harness-contracts.md) — make page creation and identity installation atomic; source-order checks cannot prove per-page isolation.
 - [Supabase owner recovery](supabase-owner-recovery.md) — trust AAL2 only while factor enrollment is provider-locked; keep recovery operator-controlled and audited.
 - [GitHub Actions lint compatibility](github-actions-lint-compatibility.md) — keep narrow suppressions for valid GitHub features unsupported by the pinned WASM linter.
+- [Actionlint path sensitivity](actionlint-path-sensitivity.md) — the pinned WASM linter can crash on absolute workflow paths while the same relative path validates.
 - [Legacy Clerk identity shape](legacy-clerk-identity-shape.md) — old admin rows may retain a Clerk ID while provider and subject are null; secure cutover must recognize this exact state.
 - [Verified learner self-provisioning](verified-learner-self-provisioning.md) — verified users auto-join the sole active Primary pathway; email alone never binds an existing identity.
 - [Assistant runtime grounding](assistant-runtime-grounding.md) — keep canonical TERAS context available when Production has no published Knowledge rows; never fall through to ungrounded chat.

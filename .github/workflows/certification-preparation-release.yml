@@ -232,7 +232,7 @@ jobs:
       candidate_sha: ${{ needs.resolve-release-candidate.outputs.sha }}
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:${{ needs.resolve-release-candidate.outputs.postgres_current_major }}-alpine
         env:
           POSTGRES_DB: postgres
           POSTGRES_USER: postgres

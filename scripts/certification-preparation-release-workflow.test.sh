@@ -22,9 +22,9 @@ fail() {
 [[ -f "$workflow_validator" ]] || fail "GitHub Actions workflow validator is missing"
 [[ -f "$invalid_workflow_fixture" ]] || fail "invalid workflow fixture is missing"
 
-node "$workflow_validator" "$workflow" ||
+(cd "$repo_root" && node "$workflow_validator" .github/workflows/certification-preparation-release.yml) ||
   fail "release workflow must parse and pass GitHub Actions semantic validation"
-if node "$workflow_validator" "$invalid_workflow_fixture"; then
+if (cd "$repo_root" && node "$workflow_validator" scripts/fixtures/certification-preparation-release.invalid.yml); then
   fail "invalid GitHub Actions syntax fixture must be rejected"
 fi
 
@@ -61,8 +61,16 @@ grep -Fq "github.rest.repos.getEnvironment" <<<"$verify_block" &&
   grep -Fq 'rule.type === "required_reviewers"' <<<"$verify_block" &&
   grep -Fq "rule.reviewers.length > 0" <<<"$verify_block" ||
   fail "workflow must reject an absent or unprotected review environment"
-grep -Fq "image: postgres:17-alpine" "$workflow" ||
-  fail "release evidence job must own disposable PostgreSQL"
+evidence_postgres_image="$(
+  awk '
+    /^    services:$/ { in_services = 1; next }
+    in_services && /^    [a-zA-Z]/ { exit }
+    in_services && /^        image:/ { print }
+  ' <<<"$evidence_block"
+)"
+grep -Fq '      postgres:' <<<"$evidence_block" &&
+  [[ "$evidence_postgres_image" == '        image: postgres:${{ needs.resolve-release-candidate.outputs.postgres_current_major }}-alpine' ]] ||
+  fail "release evidence PostgreSQL service must use only the validated production major version"
 grep -Fq "TERAS_GATE_STORAGE_ADAPTER: test" "$workflow" ||
   fail "release evidence must refuse real object storage"
 grep -Fq 'TERAS_GATE_STORAGE_NAMESPACE: release-gate/${{ github.run_id }}/${{ github.run_attempt }}' "$workflow" ||
@@ -74,8 +82,9 @@ grep -Fq "run: pnpm run gate:certification-preparation" "$workflow" ||
 grep -Fq 'sha: ${{ steps.candidate.outputs.sha }}' <<<"$candidate_block" &&
   grep -Fq 'ref: ${{ inputs.target_ref }}' <<<"$candidate_block" ||
   fail "release candidate SHA must be resolved exactly once from the requested ref"
-grep -Fq 'POSTGRES_CURRENT_MAJOR: "17"' "$workflow" &&
-  grep -Fq 'POSTGRES_TARGET_MAJOR: "18"' "$workflow" &&
+configured_current_major="$(sed -n 's/^  POSTGRES_CURRENT_MAJOR: "\([0-9][0-9]*\)"$/\1/p' "$workflow")"
+configured_target_major="$(sed -n 's/^  POSTGRES_TARGET_MAJOR: "\([0-9][0-9]*\)"$/\1/p' "$workflow")"
+[[ "$configured_current_major" =~ ^[0-9]+$ && "$configured_target_major" =~ ^[0-9]+$ ]] &&
   grep -Fq 'postgres_current_major: ${{ steps.postgres-upgrade.outputs.current_major }}' <<<"$candidate_block" &&
   grep -Fq 'postgres_target_major: ${{ steps.postgres-upgrade.outputs.target_major }}' <<<"$candidate_block" &&
   grep -Fq 'postgres_upgrade_matrix: ${{ steps.postgres-upgrade.outputs.matrix }}' <<<"$candidate_block" ||
