@@ -70,8 +70,8 @@ jobs:
             echo "::error::PostgreSQL upgrade pair must contain numeric major versions: current=${current_major}, target=${target_major}."
             exit 1
           fi
-          if [[ "$current_major" == "$target_major" ]]; then
-            echo "::error::PostgreSQL upgrade pair must use different major versions: current=${current_major}, target=${target_major}."
+          if (( 10#$target_major <= 10#$current_major )); then
+            echo "::error::PostgreSQL upgrade pair target must be newer than current: current=${current_major}, target=${target_major}."
             exit 1
           fi
           echo "current_major=$current_major" >> "$GITHUB_OUTPUT"

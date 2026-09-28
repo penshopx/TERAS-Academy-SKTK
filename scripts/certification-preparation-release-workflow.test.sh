@@ -136,7 +136,7 @@ if ! (
   POSTGRES_CURRENT_MAJOR=17 POSTGRES_TARGET_MAJOR=18 bash -c "$postgres_upgrade_validation_script"
 ); then
   rm -rf "$postgres_upgrade_fixture_dir"
-  fail "complete, different PostgreSQL upgrade versions must be accepted"
+  fail "a newer PostgreSQL target major version must be accepted"
 fi
 grep -Fq 'current_major=17' "$postgres_upgrade_fixture_dir/github-output" &&
   grep -Fq 'target_major=18' "$postgres_upgrade_fixture_dir/github-output" &&
@@ -144,7 +144,7 @@ grep -Fq 'current_major=17' "$postgres_upgrade_fixture_dir/github-output" &&
   rm -rf "$postgres_upgrade_fixture_dir"
   fail "validated PostgreSQL versions must drive comparator outputs and the rehearsal matrix"
 }
-for invalid_pair in missing-current missing-target same nonnumeric; do
+for invalid_pair in missing-current missing-target same nonnumeric downgrade; do
   current=17
   target=18
   case "$invalid_pair" in
@@ -152,6 +152,7 @@ for invalid_pair in missing-current missing-target same nonnumeric; do
     missing-target) target="" ;;
     same) target=17 ;;
     nonnumeric) target=next ;;
+    downgrade) current=18; target=17 ;;
   esac
   if (
     export GITHUB_OUTPUT="$postgres_upgrade_fixture_dir/github-output-$invalid_pair"
@@ -164,6 +165,13 @@ for invalid_pair in missing-current missing-target same nonnumeric; do
     rm -rf "$postgres_upgrade_fixture_dir"
     fail "$invalid_pair PostgreSQL upgrade pair must fail with a clear error"
   }
+  if [[ "$invalid_pair" == downgrade ]]; then
+    grep -Fq 'current=18, target=17' "$postgres_upgrade_output" &&
+      grep -Fq 'target must be newer than current' "$postgres_upgrade_output" || {
+      rm -rf "$postgres_upgrade_fixture_dir"
+      fail "downgrade rejection must identify both versions and the required direction"
+    }
+  fi
 done
 rm -rf "$postgres_upgrade_fixture_dir"
 
