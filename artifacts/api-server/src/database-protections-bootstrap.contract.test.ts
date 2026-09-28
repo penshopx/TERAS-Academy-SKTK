@@ -94,6 +94,50 @@ test("bootstrap stops before psql when schema push fails", () => {
   }
 });
 
+test("bootstrap stops before psql when schema push reports an error despite exit status 0", () => {
+  const fixtureDirectory = mkdtempSync(resolve(tmpdir(), "database-protection-push-reported-error-"));
+  const binDirectory = resolve(fixtureDirectory, "bin");
+  const invocationLog = resolve(fixtureDirectory, "psql-invocations.log");
+
+  try {
+    mkdirSync(binDirectory);
+
+    const fakePnpm = resolve(binDirectory, "pnpm");
+    writeFileSync(
+      fakePnpm,
+      "#!/bin/bash\nprintf '%s\\n' 'error: schema push fixture requires interaction' >&2\nexit 0\n",
+    );
+    chmodSync(fakePnpm, 0o755);
+
+    const fakePsql = resolve(binDirectory, "psql");
+    writeFileSync(fakePsql, "#!/bin/bash\nprintf '%s\\n' called >> \"$PSQL_INVOCATION_LOG\"\n");
+    chmodSync(fakePsql, 0o755);
+
+    const result = spawnSync("bash", [bootstrapPath], {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        DATABASE_URL: "postgresql://unused-by-fake-psql",
+        PATH: `${binDirectory}:${process.env.PATH ?? ""}`,
+        PSQL_INVOCATION_LOG: invocationLog,
+      },
+    });
+
+    assert.equal(result.error, undefined, "bootstrap process must start");
+    assert.notEqual(result.status, 0, "reported push error must make bootstrap exit non-zero");
+    assert.match(result.stdout, /error: schema push fixture requires interaction/, "operator must see the push error");
+    assert.match(
+      result.stderr,
+      /Database schema push reported an error before protection migrations\./,
+      "operator must see why protection migrations did not run",
+    );
+    assert.equal(existsSync(invocationLog), false, "psql must never be invoked");
+  } finally {
+    rmSync(fixtureDirectory, { recursive: true, force: true });
+  }
+});
+
 test("bootstrap reports a real psql failure and stops before later migrations", () => {
   const fixtureDirectory = mkdtempSync(resolve(tmpdir(), "database-protection-bootstrap-"));
   const binDirectory = resolve(fixtureDirectory, "bin");
