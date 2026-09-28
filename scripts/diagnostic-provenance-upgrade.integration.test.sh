@@ -508,7 +508,10 @@ fi
 
 last_exception_baseline_output="$(mktemp)"
 last_exception_resolved_output="$(mktemp)"
-trap 'rm -f "$check_sql" "$baseline_output" "$second_output" "$cancelled_output" "$post_cancel_output" "$parallel_a_output" "$parallel_b_output" "$decrease_output" "$retention_first_output" "$retention_second_output" "$last_exception_baseline_output" "$last_exception_resolved_output" "$lock_ready_file" "$cancel_lock_ready_file"; cleanup' EXIT
+zero_cancelled_output="$(mktemp)"
+zero_cancel_lock_ready_file="$(mktemp)"
+rm -f "$zero_cancel_lock_ready_file"
+trap 'rm -f "$check_sql" "$baseline_output" "$second_output" "$cancelled_output" "$post_cancel_output" "$parallel_a_output" "$parallel_b_output" "$decrease_output" "$retention_first_output" "$retention_second_output" "$last_exception_baseline_output" "$last_exception_resolved_output" "$zero_cancelled_output" "$lock_ready_file" "$cancel_lock_ready_file" "$zero_cancel_lock_ready_file"; cleanup' EXIT
 
 # Isolate one group so resolving its last exception leaves no current count row.
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
@@ -543,6 +546,124 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "
   WHERE entity_type = 'profile' AND entity_id = 'last-exception'
     AND reason = 'NO_VALID_RESPONSE_CHAIN'
 " >/dev/null
+
+# An AFTER INSERT trigger pauses the zero-exception check after its run exists
+# inside the transaction, without relying on a count row that will not exist.
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+CREATE FUNCTION block_zero_exception_check_run()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtext('teras_diagnostic_provenance_zero_cancel_fixture'));
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER block_zero_exception_check_run
+AFTER INSERT ON teras_diagnostic_provenance_check_runs
+FOR EACH ROW
+EXECUTE FUNCTION block_zero_exception_check_run();
+SQL
+
+pre_zero_cancel_state="$(psql "$DATABASE_URL" -Atqc "
+  SELECT
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_runs),
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_counts),
+    (SELECT max(id) FROM teras_diagnostic_provenance_check_runs),
+    (SELECT count(*) FROM teras_diagnostic_provenance_exceptions)
+")"
+if [ "${pre_zero_cancel_state##*|}" != "0" ]; then
+  echo "Zero-exception cancellation fixture still has exceptions: $pre_zero_cancel_state" >&2
+  exit 1
+fi
+
+PGAPPNAME="diagnostic-provenance-zero-cancel-lock-holder" psql "$DATABASE_URL" \
+  -v ON_ERROR_STOP=1 <<SQL >/dev/null &
+    SELECT pg_advisory_lock(hashtext('teras_diagnostic_provenance_zero_cancel_fixture'));
+\! touch "$zero_cancel_lock_ready_file"
+    SELECT pg_sleep(30);
+    SELECT pg_advisory_unlock(hashtext('teras_diagnostic_provenance_zero_cancel_fixture'));
+SQL
+zero_cancel_lock_holder_pid=$!
+
+for _ in $(seq 1 50); do
+  if [ -f "$zero_cancel_lock_ready_file" ]; then
+    break
+  fi
+  sleep 0.1
+done
+
+if [ ! -f "$zero_cancel_lock_ready_file" ]; then
+  echo "Zero-exception cancellation fixture did not acquire its advisory lock" >&2
+  wait "$zero_cancel_lock_holder_pid" || true
+  exit 1
+fi
+
+run_schema_check "$zero_cancelled_output" "diagnostic-provenance-zero-cancelled-check" &
+zero_cancelled_check_pid=$!
+zero_cancelled_backend_pid=""
+for _ in $(seq 1 50); do
+  zero_cancelled_backend_pid="$(psql "$DATABASE_URL" -Atqc "
+    SELECT pid
+    FROM pg_stat_activity
+    WHERE application_name = 'diagnostic-provenance-zero-cancelled-check'
+      AND wait_event = 'advisory'
+    LIMIT 1
+  ")"
+  if [ -n "$zero_cancelled_backend_pid" ]; then
+    break
+  fi
+  sleep 0.1
+done
+
+if [ -z "$zero_cancelled_backend_pid" ]; then
+  echo "Zero-exception check did not reach its post-run-insert trigger" >&2
+  wait "$zero_cancelled_check_pid" || true
+  kill "$zero_cancel_lock_holder_pid" 2>/dev/null || true
+  wait "$zero_cancel_lock_holder_pid" || true
+  exit 1
+fi
+
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+  "SELECT pg_terminate_backend($zero_cancelled_backend_pid)" >/dev/null
+if wait "$zero_cancelled_check_pid"; then
+  echo "Cancelled zero-exception schema check unexpectedly completed" >&2
+  kill "$zero_cancel_lock_holder_pid" 2>/dev/null || true
+  wait "$zero_cancel_lock_holder_pid" || true
+  exit 1
+fi
+
+kill "$zero_cancel_lock_holder_pid" 2>/dev/null || true
+wait "$zero_cancel_lock_holder_pid" || true
+
+post_zero_cancel_state="$(psql "$DATABASE_URL" -Atqc "
+  SELECT
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_runs),
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_counts),
+    (SELECT max(id) FROM teras_diagnostic_provenance_check_runs),
+    (SELECT count(*) FROM teras_diagnostic_provenance_exceptions)
+")"
+if [ "$post_zero_cancel_state" != "$pre_zero_cancel_state" ]; then
+  echo "Cancelled zero-exception check left an empty run or changed its baseline: before=$pre_zero_cancel_state after=$post_zero_cancel_state" >&2
+  exit 1
+fi
+
+zero_cancel_main_lock_released="$(psql "$DATABASE_URL" -Atqc "
+  SELECT pg_try_advisory_lock(hashtext('teras_diagnostic_provenance_schema_check'));
+  SELECT pg_advisory_unlock(hashtext('teras_diagnostic_provenance_schema_check'));
+")"
+if [ "$zero_cancel_main_lock_released" != $'t\nt' ]; then
+  echo "Cancelled zero-exception check did not release its advisory lock" >&2
+  exit 1
+fi
+
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+DROP TRIGGER block_zero_exception_check_run
+  ON teras_diagnostic_provenance_check_runs;
+DROP FUNCTION block_zero_exception_check_run();
+SQL
+
 run_schema_check "$last_exception_resolved_output"
 assert_contains "$last_exception_resolved_output" \
   "TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS total=0"
