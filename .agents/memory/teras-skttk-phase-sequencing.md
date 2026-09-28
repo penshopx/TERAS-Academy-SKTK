@@ -11,6 +11,12 @@ Keep the Phase 1 foundation locked. Complete the SKTTK Competency Framework firs
 
 **How to apply:** Report Path B as OPEN / FOUNDATION IN PROGRESS. Do not treat existing screenshots, routes, page copy, branding, or synthetic seed content as authoritative SKTTK integration. Do not invent official unit, element, KUK, safety, or evidence content; require cited source material and review. Verify that approved framework entities can be referenced by diagnostic questions and existing LMS objects before diagnostic implementation. Preserve the existing readiness engine until the later readiness-rules phase.
 
+Do not ingest or present any SKTTK domain content as official merely because the regulatory schema or foreign keys exist. First complete cross-relationship validation across framework, competency units, elements/KUK, LMS and diagnostic; review citations against concrete field-specific SKTTK sources; and verify catalogue changes cannot silently break competency links.
+
+**Why:** The user explicitly locked these as separate prerequisites for official-content ingestion. Structural links do not prove business-rule consistency, source authority, or resilience when learning catalogue entries change.
+
+**How to apply:** Keep draft and synthetic content visibly non-authoritative until all three reviews have passed. Do not interpret a schema migration or an in-progress review as clearance to import official content.
+
 The initial regulatory layer is deliberately limited to Permen ESDM 6/2021 as domain authority and Permen ESDM 5/2021 as regulatory context. PP 5/2021 is not an active modeled source; the user stated it was replaced by PP 28/2025, which also remains outside this focused slice.
 
 **Why:** Narrowing the source set keeps the first framework foundation reviewable and avoids embedding an outdated PP or unverified cross-regulation assumptions.
