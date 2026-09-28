@@ -22,6 +22,21 @@ const parse = (schema: any, value: unknown, res: any) => {
 };
 const conflict = (message = "Article changed concurrently; reload and retry.") => Object.assign(new Error(message), { code: "CONFLICT" });
 const missing = () => Object.assign(new Error("Knowledge article not found."), { code: "NOT_FOUND" });
+const knowledgeWriteFailure = (error: any, req: any, operation: string) => {
+  if (error?.code === "NOT_FOUND") return { status: 404, message: "Knowledge article not found." };
+  if (error?.code === "CONFLICT") return { status: 409, message: error.message };
+  const databaseError = error?.cause ?? error;
+  if (databaseError?.code === "23505") {
+    if (databaseError.constraint === "teras_knowledge_articles_pkey") {
+      return { status: 409, message: "Knowledge article ID already exists." };
+    }
+    if (databaseError.constraint === "teras_knowledge_articles_family_version_unique") {
+      return { status: 409, message: "Article changed concurrently; reload and retry." };
+    }
+  }
+  req.log?.error({ err: error, operation }, "Knowledge article write failed");
+  return { status: 500, message: "Could not save knowledge article. Please try again." };
+};
 const audienceOverlap = (roles: string[]) =>
   sql`${knowledgeArticlesTable.audience} && ARRAY[${sql.join(roles.map(role => sql`${role}`), sql`, `)}]::text[]`;
 async function lockFamily(tx: any, familyId: string) {
@@ -126,17 +141,20 @@ router.post("/admin/knowledge", async (req, res): Promise<void> => {
   try {
     const article = await db.transaction(async tx => { const [created] = await tx.insert(knowledgeArticlesTable).values({ ...input, createdBy: `supabase:${actor.authSubject}` }).returning(); await audit(tx, actor, "create", created.id, null, created); return created; });
     res.status(201).json(CreateAdminKnowledgeArticleResponse.parse(article));
-  } catch { res.status(409).json({ error: "Knowledge article ID already exists." }); }
+  } catch (error) {
+    const failure = knowledgeWriteFailure(error, req, "create");
+    res.status(failure.status).json({ error: failure.message });
+  }
 });
 router.patch("/admin/knowledge/:articleId", async (req, res): Promise<void> => {
   const actor = await authorizeAdmin(req, res); const params = parse(UpdateAdminKnowledgeArticleParams, req.params, res); const input = parse(UpdateAdminKnowledgeArticleBody, req.body, res);
   if (!actor || !params || !input) return;
   if (input.body && hasUnsafeKnowledgeLink(input.body)) { res.status(400).json({ error: "Unsafe links are not allowed in knowledge articles." }); return; }
-  const [snapshot] = await db.select().from(knowledgeArticlesTable).where(eq(knowledgeArticlesTable.id, params.articleId));
-  if (!snapshot) { res.status(404).json({ error: "Knowledge article not found." }); return; }
   // A published row is immutable to readers: editing starts a separate draft,
   // leaving the currently published guidance available until that draft is published.
   try {
+    const [snapshot] = await db.select().from(knowledgeArticlesTable).where(eq(knowledgeArticlesTable.id, params.articleId));
+    if (!snapshot) { res.status(404).json({ error: "Knowledge article not found." }); return; }
     const article = await db.transaction(async tx => {
       const family = snapshot.parentArticleId ?? snapshot.id;
       await lockFamily(tx, family);
@@ -154,7 +172,8 @@ router.patch("/admin/knowledge/:articleId", async (req, res): Promise<void> => {
     });
     res.json(UpdateAdminKnowledgeArticleResponse.parse(article));
   } catch (error: any) {
-    res.status(error?.code === "NOT_FOUND" ? 404 : 409).json({ error: error?.message || "Article changed concurrently; reload and retry." });
+    const failure = knowledgeWriteFailure(error, req, "update");
+    res.status(failure.status).json({ error: failure.message });
   }
 });
 router.post("/admin/knowledge/:articleId/publish", async (req, res): Promise<void> => {

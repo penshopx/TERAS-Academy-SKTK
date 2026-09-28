@@ -86,6 +86,11 @@ async function run() {
     });
     const draft = await readResponse(response, 201) as any;
     assert.equal(draft.status, "draft");
+    response = await request("/admin/knowledge", "admin", {
+      id: articleId, category: "help", title: "Duplicate article ID",
+      body: "Must not overwrite existing article.", audience: ["learner"],
+    });
+    assert.deepEqual(await readResponse(response, 409), { error: "Knowledge article ID already exists." });
 
     response = await request("/admin/knowledge", "admin", {
       id: failedUpdateId, category: "help", title: `Rollback draft ${suffix}`,
@@ -121,14 +126,14 @@ async function run() {
         id: failedCreateId, category: "help", title: `Must not exist ${suffix}`,
         body: "Create must roll back.", audience: ["learner"],
       });
-      assert(response.status >= 400, "Rejected create audit must fail the API request");
+      assert.deepEqual(await readResponse(response, 500), { error: "Could not save knowledge article. Please try again." });
       assert.deepEqual(await db.select().from(knowledgeArticlesTable).where(eq(knowledgeArticlesTable.id, failedCreateId)), [], "Failed create audit must roll back the new article");
       assert.deepEqual(await auditFor(failedCreateId), [], "Failed create must not leave an audit event");
 
       response = await request(`/admin/knowledge/${failedUpdateId}`, "admin", {
         title: `Must not be saved ${suffix}`, body: "Update must roll back.",
       }, "PATCH");
-      assert(response.status >= 400, "Rejected update audit must fail the API request");
+      assert.deepEqual(await readResponse(response, 500), { error: "Could not save knowledge article. Please try again." });
       const [afterUpdate] = await db.select().from(knowledgeArticlesTable).where(eq(knowledgeArticlesTable.id, failedUpdateId));
       assert.deepEqual(afterUpdate, beforeUpdate, "Failed update audit must roll back the draft and its version");
       assert.deepEqual(await auditFor(failedUpdateId), beforeUpdateAudits, "Failed update must not append an audit event");
