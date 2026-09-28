@@ -1,0 +1,84 @@
+Saya memahami masalah ini: **missing row problem** dalam delta reporting ketika suatu kelompok pengecualian hilang sepenuhnya dari snapshot terbaru.
+
+## Analisis Masalah
+
+**Skenario saat ini:**
+```
+Snapshot lama:
+  Group A: 3 exceptions
+  Group B: 2 exceptions
+
+Snapshot baru (setelah Group A selesai semua):
+  Group B: 1 exception
+
+Delta calculation saat ini:
+  Group B: -1 ✓
+  Group A: ??? (tidak muncul karena tidak ada di snapshot baru)
+```
+
+**Risiko:**
+- Operator tidak bisa melihat bahwa Group A turun dari 3 → 0
+- Total delta mungkin terlihat benar (-3), tapi breakdown per kelompok hilang
+- Audit trail tidak lengkap: tidak ada bukti eksplisit bahwa Group A diselesaikan
+
+## Solusi yang Direkomendasikan
+
+### 1. Full Outer Join atau Left Join dari Previous Snapshot
+
+Query delta harus menggunakan **previous snapshot sebagai base**, bukan current snapshot:
+
+```sql
+-- Sebelum (problematic)
+SELECT 
+  group_name,
+  COUNT(*) as current_count
+FROM exceptions
+WHERE snapshot_id = :current
+GROUP BY group_name;
+
+-- Sesudah (correct)
+SELECT 
+  prev.group_name,
+  COALESCE(curr.count, 0) as current_count,
+  prev.count as previous_count,
+  COALESCE(curr.count, 0) - prev.count as delta
+FROM (
+  SELECT group_name, COUNT(*) as count
+  FROM exceptions
+  WHERE snapshot_id = :previous
+  GROUP BY group_name
+) prev
+LEFT JOIN (
+  SELECT group_name, COUNT(*) as count
+  FROM exceptions
+  WHERE snapshot_id = :current
+  GROUP BY group_name
+) curr ON prev.group_name = curr.group_name;
+```
+
+### 2. Explicit Zero-Row Emission
+
+Jika suatu kelompok ada di snapshot lama tapi tidak ada di snapshot baru, sistem harus tetap menghasilkan baris dengan:
+- `current_count = 0`
+- `previous_count = N`
+- `delta = -N`
+
+### 3. Total Verification
+
+Total delta harus tetap konsisten:
+```
+Sum of all group deltas = Total current - Total previous
+```
+
+## Pertanyaan Sebelum Implementasi
+
+Sebelum saya mulai coding, saya perlu konfirmasi:
+
+1. **Apakah task ini sudah resmi dialokasikan?** (mengingat batas konkurensi yang Anda sebutkan sebelumnya)
+2. **File mana** yang menangani delta reporting ini?
+3. **Struktur tabel** exceptions dan snapshot?
+4. **Bahasa/framework** yang digunakan?
+
+Atau jika Anda ingin saya langsung investigasi codebase, silakan beri tahu lokasi file yang relevan atau jalankan command untuk menunjukkan kode delta reporting yang ada.
+
+**Saya tidak akan memulai perubahan file tanpa assignment eksplisit** sesuai protokol yang sudah disepakati.
