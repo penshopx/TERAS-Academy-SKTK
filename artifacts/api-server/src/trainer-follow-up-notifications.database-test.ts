@@ -18,7 +18,25 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { readFile } from "node:fs/promises";
+import type { AddressInfo } from "node:net";
 import { dispatchTrainerFollowUpReminders } from "./lib/trainer-follow-up-notifications";
+import { createIntegrationTestApp } from "./integration-test-app";
+
+async function updatePreferences(timeZone: string) {
+  const app = createIntegrationTestApp(() => ({ userId: "trainer-a-subject", role: "trainer", learnerId: "learner" }));
+  const server = app.listen(0);
+  await new Promise<void>(resolve => server.once("listening", resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/trainer/reminder-preferences`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ emailEnabled: true, timeZone, quietHoursStart: null, quietHoursEnd: null, confirmFullDayQuietHours: false }),
+    });
+    return { status: response.status, body: await response.json() };
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
+}
 
 async function main() {
   await db.insert(competencyFrameworksTable).values({ id: "framework", code: "FW", name: "Framework", description: "Test", version: "1", status: "active", createdBy: "test" });
@@ -219,6 +237,32 @@ async function main() {
   const recoveredFallbackAudit = recoveredAudit.find(item => item.channel === "webhook");
   if (recoveredFallbackAudit?.status !== "sent" || !recoveredFallbackAudit.sentAt) throw new Error("Recovered fallback notification did not reach a sent audit state");
   if (failedSends !== 3) throw new Error("Recovering the operations outbox retried the trainer email");
+
+  // The rejected edit cannot close either incident; a valid revision closes
+  // both without altering the blocked events. A later invalid revision is new.
+  if ((await updatePreferences("Bad/Zone")).status !== 400) throw new Error("Invalid edit was accepted");
+  if ((await db.select().from(adminAuditEventsTable)).length !== 2) throw new Error("Rejected edit changed audit history");
+  const fixed = await updatePreferences("Asia/Jakarta");
+  if (fixed.status !== 200) throw new Error(`Valid time zone edit failed: ${JSON.stringify(fixed.body)}`);
+  const recovered = await db.select().from(adminAuditEventsTable);
+  const recoveredIds = recovered.filter(row => row.action === "delivery_configuration_recovered").map(row => (row.after as { incidentId: string }).incidentId);
+  if (recovered.length !== 4 || recoveredIds.length !== 2
+    || !blockedEvents.every(row => recoveredIds.includes(row.id))
+    || JSON.stringify(recovered).includes("Bad/Zone")
+    || JSON.stringify(recovered).includes("learner@example")) throw new Error("Recovery did not preserve and safely close both incidents");
+  if ((await updatePreferences("UTC")).status !== 200
+    || (await db.select().from(adminAuditEventsTable)).length !== 4) throw new Error("Repeated valid edit duplicated recoveries");
+  await db.insert(trainerReminderPreferencesTable).values({
+    id: "preference-invalid-after-recovery", trainerId: "trainer-a", emailEnabled: true,
+    timeZone: "Bad/Zone", createdAt: new Date(Date.now() + 60_000), createdBy: "trainer-a",
+  });
+  await db.delete(enrollmentPathwayEventsTable);
+  await dispatchTrainerFollowUpReminders(now, { sendEmail });
+  const afterRegression = await db.select().from(adminAuditEventsTable);
+  if (afterRegression.length !== 5 || afterRegression.filter(row => row.action === "delivery_blocked").length !== 3
+    || afterRegression.filter(row => row.action === "delivery_configuration_recovered").length !== 2) {
+    throw new Error("New invalid revision was not left active while old incidents remained recovered");
+  }
 }
 
 main().then(

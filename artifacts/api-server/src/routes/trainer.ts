@@ -1,13 +1,13 @@
 import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
 import { CreateTrainerEvidenceTriageRunResponse, CreateTrainerIntelligenceRunResponse, GetTrainerDashboardResponse, GetTrainerReminderPreferenceHistoryResponse, GetTrainerReminderPreferencesResponse, GetTrainerReviewQueueResponse, OpenTrainerRemediationBody, OpenTrainerRemediationResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse, UpdateTrainerReminderPreferencesBody, UpdateTrainerReminderPreferencesResponse } from "@workspace/api-zod";
-import { db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, trainerReminderPreferencesTable } from "@workspace/db";
+import { adminAuditEventsTable, db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, trainerReminderPreferencesTable } from "@workspace/db";
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { evidenceRecords, gapRecords, pathwayHasModule, remediationRecords, workspaceAssignmentContexts } from "../lib/teras";
 import { authorizeWorkspaceRole } from "../lib/authorization";
 import { learningNextAction } from "../lib/learning-transition";
 import { latestPracticeReviewRows, latestPracticeReviews, practiceQueueState, recentPracticeReviewRows, scopedPracticeQueue, trainerBottlenecks } from "../lib/trainer-bottlenecks";
-import { hasValidQuietHours, isValidIanaTimeZone, reminderDeliveryAvailability } from "../lib/trainer-follow-up-notifications";
+import { hasValidQuietHours, isValidIanaTimeZone, reminderDeliveryAvailability, resolvedTimeZoneAuditEvent } from "../lib/trainer-follow-up-notifications";
 import { createTrainerIntelligenceRun } from "../lib/trainer-intelligence";
 import { createEvidenceTriageRun } from "../lib/evidence-triage";
 
@@ -315,15 +315,33 @@ router.put("/trainer/reminder-preferences", async (req, res): Promise<void> => {
     return;
   }
   const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;
-  const [revision] = await db.insert(trainerReminderPreferencesTable).values({
-    id: id("trainer-reminder-preference"),
-    trainerId,
-    emailEnabled: body.data.emailEnabled,
-    timeZone: body.data.timeZone,
-    quietHoursStart: body.data.quietHoursStart,
-    quietHoursEnd: body.data.quietHoursEnd,
-    createdBy: trainerId,
-  }).returning();
+  const revision = await db.transaction(async tx => {
+    // Serialize with scheduler incident creation for this trainer.
+    await tx.select({ id: peopleTable.id }).from(peopleTable)
+      .where(eq(peopleTable.id, trainerId)).for("update");
+    const [saved] = await tx.insert(trainerReminderPreferencesTable).values({
+      id: id("trainer-reminder-preference"),
+      trainerId,
+      emailEnabled: body.data.emailEnabled,
+      timeZone: body.data.timeZone,
+      quietHoursStart: body.data.quietHoursStart,
+      quietHoursEnd: body.data.quietHoursEnd,
+      createdBy: trainerId,
+    }).returning();
+    const incidents = await tx.select({ id: adminAuditEventsTable.id })
+      .from(adminAuditEventsTable)
+      .where(and(
+        eq(adminAuditEventsTable.entityType, "trainer_reminder_preference"),
+        eq(adminAuditEventsTable.entityId, trainerId),
+        eq(adminAuditEventsTable.action, "delivery_blocked"),
+      ));
+    if (incidents.length) {
+      await tx.insert(adminAuditEventsTable).values(
+        incidents.map(incident => resolvedTimeZoneAuditEvent(trainerId, incident.id)),
+      ).onConflictDoNothing();
+    }
+    return saved;
+  });
   res.json(UpdateTrainerReminderPreferencesResponse.parse(reminderPreferencesResponse({
     emailEnabled: revision!.emailEnabled,
     timeZone: revision!.timeZone,

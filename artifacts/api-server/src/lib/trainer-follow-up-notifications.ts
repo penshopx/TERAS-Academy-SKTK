@@ -189,6 +189,20 @@ export function invalidTimeZoneAuditEvent(trainerId: string, preferenceRevisionI
   };
 }
 
+export function resolvedTimeZoneAuditEvent(trainerId: string, incidentId: string) {
+  const digest = createHash("sha256").update(JSON.stringify([trainerId, incidentId])).digest("hex");
+  return {
+    id: `trainer-reminder-time-zone-recovered-${digest}`,
+    actorClerkUserId: "system:trainer-reminder-preference-recovery",
+    action: "delivery_configuration_recovered",
+    entityType: "trainer_reminder_preference",
+    entityId: trainerId,
+    before: null,
+    after: { issue: "invalid_time_zone", incidentId },
+    createdBy: "trainer-reminder-preference-recovery",
+  };
+}
+
 async function sendReminderEmail(input: ReminderEmailInput) {
   const from = process.env.TERAS_NOTIFICATION_FROM;
   if (!from) throw new Error("TERAS_NOTIFICATION_FROM is not configured");
@@ -519,9 +533,19 @@ export async function dispatchTrainerFollowUpReminders(
     if (!preferences.emailEnabled) continue;
     if (!isValidIanaTimeZone(preferences.timeZone)) {
       if (preferences.id) {
-        await db.insert(adminAuditEventsTable)
-          .values(invalidTimeZoneAuditEvent(trainer.id, preferences.id))
-          .onConflictDoNothing();
+        await db.transaction(async tx => {
+          await tx.select({ id: peopleTable.id }).from(peopleTable)
+            .where(eq(peopleTable.id, trainer.id)).for("update");
+          const [current] = await tx.select({ id: trainerReminderPreferencesTable.id })
+            .from(trainerReminderPreferencesTable)
+            .where(eq(trainerReminderPreferencesTable.trainerId, trainer.id))
+            .orderBy(desc(trainerReminderPreferencesTable.createdAt), desc(trainerReminderPreferencesTable.id)).limit(1);
+          if (current?.id === preferences.id) {
+            await tx.insert(adminAuditEventsTable)
+              .values(invalidTimeZoneAuditEvent(trainer.id, preferences.id!))
+              .onConflictDoNothing();
+          }
+        });
       }
       continue;
     }

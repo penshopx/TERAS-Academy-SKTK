@@ -6,6 +6,7 @@ import {
   createSignedPermanentFailureWebhookRequest,
   dueReminderKind,
   invalidTimeZoneAuditEvent,
+  resolvedTimeZoneAuditEvent,
   latestFollowUps,
   sendPermanentFailureFallback,
   verifySignedPermanentFailureWebhookRequest,
@@ -24,6 +25,16 @@ test("invalid time zone incident identifies the trainer but never exposes prefer
   assert.notEqual(invalidTimeZoneAuditEvent("trainer-a", "revision-b").id, event.id);
   assert.notEqual(invalidTimeZoneAuditEvent("trainer-b", "revision-a").id, event.id);
   assert.doesNotMatch(JSON.stringify(event), /revision-a|learner|Bad\/Zone/);
+});
+
+test("recovery links only to the blocked incident without storing preference details", () => {
+  const blocked = invalidTimeZoneAuditEvent("trainer-a", "revision-a");
+  const recovered = resolvedTimeZoneAuditEvent("trainer-a", blocked.id);
+  assert.equal(recovered.action, "delivery_configuration_recovered");
+  assert.deepEqual(recovered.after, { issue: "invalid_time_zone", incidentId: blocked.id });
+  assert.deepEqual(resolvedTimeZoneAuditEvent("trainer-a", blocked.id), recovered);
+  assert.notEqual(resolvedTimeZoneAuditEvent("trainer-b", blocked.id).id, recovered.id);
+  assert.doesNotMatch(JSON.stringify(recovered), /revision-a|learner|Bad\/Zone/);
 });
 
 test("only active follow-ups near or past their target are eligible", () => {
