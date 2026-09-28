@@ -3,6 +3,8 @@ import type { AddressInfo } from "node:net";
 import {
   db,
   enrollmentsTable,
+  gapEventsTable,
+  gapsTable,
   learningActivitiesTable,
   learningRecordLinksTable,
   peopleTable,
@@ -11,6 +13,9 @@ import {
   practiceAttemptsTable,
   practiceReviewsTable,
   practiceTasksTable,
+  remediationActivitiesTable,
+  remediationEventsTable,
+  remediationPlansTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { createIntegrationTestApp } from "./integration-test-app";
@@ -33,6 +38,9 @@ const trainerId = `trainer-queue-trainer-${suffix}`;
 const learnerId = `trainer-queue-learner-${suffix}`;
 const enrollmentId = `trainer-queue-enrollment-${suffix}`;
 const attemptId = `trainer-queue-attempt-${suffix}`;
+const gapId = `trainer-queue-gap-${suffix}`;
+const remediationPlanId = `trainer-queue-plan-${suffix}`;
+const remediationActivityId = `trainer-queue-remediation-${suffix}`;
 const unrelatedLearnerId = `trainer-queue-unrelated-${suffix}`;
 const unrelatedAttemptPrefix = `trainer-queue-unrelated-attempt-${suffix}`;
 const reviewTimestamp = new Date("2026-09-16T08:30:00.000Z");
@@ -96,6 +104,15 @@ function practiceItem(queue: QueueItem[]) {
   return queue.find((item) => item.kind === "Practice" && item.id === attemptId);
 }
 
+async function revisionEventCounts() {
+  const [gapEvents, remediationEvents] = await Promise.all([
+    db.select({ id: gapEventsTable.id }).from(gapEventsTable).where(eq(gapEventsTable.gapId, gapId)),
+    db.select({ id: remediationEventsTable.id }).from(remediationEventsTable)
+      .where(eq(remediationEventsTable.activityId, remediationActivityId)),
+  ]);
+  return { gapEvents: gapEvents.length, remediationEvents: remediationEvents.length };
+}
+
 async function run() {
   const [task] = await db.select().from(practiceTasksTable)
     .where(eq(practiceTasksTable.moduleId, "m03"))
@@ -145,6 +162,32 @@ async function run() {
     pathwayId: "path-a",
     trainerId,
     createdBy: "trainer-queue-integration",
+  });
+  await db.insert(gapsTable).values({
+    id: gapId,
+    learnerId,
+    pathwayId: "path-a",
+    moduleId: "m03",
+    capability: "Safe isolation",
+    criterion: "SAFE-01",
+    severity: "Moderate",
+    priority: "High",
+    diagnosis: "Practice output needs revision.",
+    gate: "G1",
+    recommendedAction: "Repeat supervised practice.",
+  });
+  await db.insert(remediationPlansTable).values({
+    id: remediationPlanId,
+    gapId,
+    title: "Revise safe isolation practice",
+    description: "Repeat practice before review.",
+  });
+  await db.insert(remediationActivitiesTable).values({
+    id: remediationActivityId,
+    planId: remediationPlanId,
+    title: "Repeat practice",
+    description: "Submit the revised practice output.",
+    type: "practice",
   });
   const submittedAt = new Date("2026-09-16T08:00:00.000Z");
   await db.insert(practiceAttemptsTable).values({
@@ -211,6 +254,9 @@ async function run() {
     const [createdReview] = await db.select().from(practiceReviewsTable)
       .where(eq(practiceReviewsTable.idempotencyKey, needsRevisionBody.idempotencyKey));
     assert(createdReview, "Review endpoint must persist the Needs revision review");
+    const eventsAfterFirstReview = await revisionEventCounts();
+    assert.deepEqual(eventsAfterFirstReview, { gapEvents: 1, remediationEvents: 1 },
+      "Needs revision review must append gap and remediation events for this learner's module");
 
     item = practiceItem(await requestQueue(baseUrl));
     assert(item, "Needs revision practice attempt must remain in the trainer queue");
@@ -221,6 +267,8 @@ async function run() {
     const retryResponse = await requestPracticeReview(baseUrl, needsRevisionBody);
     assert.deepEqual(retryResponse, firstReviewResponse, "Idempotent retry must return the original review result");
     assert.deepEqual(await requestQueue(baseUrl), queueAfterFirstReview, "Idempotent retry must not change the queue");
+    assert.deepEqual(await revisionEventCounts(), eventsAfterFirstReview,
+      "Idempotent retry must not append gap or remediation events");
     assert.equal(
       (await db.select().from(practiceReviewsTable).where(eq(practiceReviewsTable.attemptId, attemptId))).length,
       1,
@@ -270,6 +318,8 @@ async function run() {
         reviewsBeforeConflict.length,
         `${change} conflict must not append a review`,
       );
+      assert.deepEqual(await revisionEventCounts(), eventsAfterFirstReview,
+        `${change} conflict must not append gap or remediation events`);
     }
 
     await requestPracticeReview(baseUrl, {
