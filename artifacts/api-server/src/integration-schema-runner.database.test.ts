@@ -1258,3 +1258,77 @@ test("an immediate connection rejection preserves its original cause and skips f
     await assert.rejects(readFile(markerFile, "utf8"), { code: "ENOENT" });
   });
 });
+
+function controlledAdminConnection() {
+  let rejectConnection!: (reason: Error) => void;
+  let destroyed = 0;
+  const connection = new Promise<void>((_, reject) => {
+    rejectConnection = reject;
+  });
+  const admin = {
+    connection: {
+      stream: {
+        destroy: () => { destroyed += 1; },
+      },
+    },
+    connect: () => connection,
+    query: () => { throw new Error("query must not run before connection"); },
+    end: () => { throw new Error("end must not run before connection"); },
+  } as unknown as InstanceType<typeof Client>;
+  return { admin, rejectConnection, get destroyed() { return destroyed; } };
+}
+
+test("connection rejection just before the deadline preserves the driver error", async (t) => {
+  const connectionError = new Error("simulated late driver connection rejection");
+  const controlled = controlledAdminConnection();
+  await withMarkerFile(async (markerFile) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const run = runIsolatedIntegrationTest({
+        schemaPrefix: "connection_late_rejection_test",
+        testFile: afterSetupFixture,
+        setupCommand: ["pnpm", "--filter", "@workspace/api-server", "exec", "tsx", setupFixture],
+        connectionTimeoutMs: 100,
+        createAdminClient: () => controlled.admin,
+      });
+      t.mock.timers.tick(99);
+      assert.equal(controlled.destroyed, 0);
+      controlled.rejectConnection(connectionError);
+      await assert.rejects(run, (error: unknown) => {
+        assert.equal(error, connectionError);
+        return true;
+      });
+      t.mock.timers.tick(1);
+      assert.equal(controlled.destroyed, 0);
+      await assert.rejects(readFile(markerFile, "utf8"), { code: "ENOENT" });
+    } finally {
+      t.mock.timers.reset();
+    }
+  });
+});
+
+test("connection timeout wins over a later driver rejection and stops the connection", async (t) => {
+  const controlled = controlledAdminConnection();
+  await withMarkerFile(async (markerFile) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const run = runIsolatedIntegrationTest({
+        schemaPrefix: "connection_late_timeout_test",
+        testFile: afterSetupFixture,
+        setupCommand: ["pnpm", "--filter", "@workspace/api-server", "exec", "tsx", setupFixture],
+        connectionTimeoutMs: 100,
+        createAdminClient: () => controlled.admin,
+      });
+      t.mock.timers.tick(99);
+      assert.equal(controlled.destroyed, 0);
+      t.mock.timers.tick(1);
+      await assert.rejects(run, /Integration database connection timed out after 100ms/);
+      assert.equal(controlled.destroyed, 1);
+      controlled.rejectConnection(new Error("driver rejected after deadline"));
+      await Promise.resolve();
+      await assert.rejects(readFile(markerFile, "utf8"), { code: "ENOENT" });
+    } finally {
+      t.mock.timers.reset();
+    }
+  });
+});
