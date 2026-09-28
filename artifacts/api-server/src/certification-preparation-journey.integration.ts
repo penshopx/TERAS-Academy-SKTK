@@ -8,10 +8,10 @@ import type { AddressInfo } from "node:net";
 import { eq, sql } from "drizzle-orm";
 import {
   assessmentAttemptsTable, assessmentCriteriaTable, assessmentsTable, baselineModulesTable, contentResourcesTable, courseVersionsTable, coursesTable, db, evidenceRequirementsTable,
-  competencyFrameworksTable, competencyUnitsTable, diagnosticGapsTable, diagnosticOptionsTable, diagnosticQuestionsTable,
+  competencyFrameworksTable, competencyFrameworkSourcesTable, competencyUnitsTable, diagnosticGapsTable, diagnosticOptionsTable, diagnosticQuestionsTable,
     diagnosticRecommendationsTable, diagnosticTemplatesTable, pathwayCompetencyUnitsTable, competencyUnitPracticeTasksTable,
   evidenceReviewsTable, enrollmentsTable, gapEventsTable, gapsTable, learningRecordLinksTable, learningTransitionEventsTable, reassessmentLinksTable, readinessEventsTable, readinessTransferEventsTable,
-  learningBaselinesTable, learningBaselineVersionsTable, modulesTable, pathwaysTable, pathwayBaselineModulesTable, pathwayModuleContractsTable,
+  learningBaselinesTable, learningBaselineVersionsTable, modulesTable, pathwaysTable, pathwayBaselineModulesTable, pathwayModuleContractsTable, regulatoryReferencesTable,
     practiceAttemptsTable, practiceReviewsTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable,
     practiceTasksTable, readinessGatesTable,
 } from "@workspace/db";
@@ -168,6 +168,20 @@ async function main() {
       { id: id("competency-practice"), unitId: competencyUnitId, taskId: ids.task },
       { id: id("second-competency-practice"), unitId: secondCompetencyUnitId, taskId: secondTask },
     ]);
+    // This disposable gate database contains only synthetic competency content.
+    // Exercise the production authority requirement without claiming that the
+    // run-scoped framework or its units are official SKTTK content.
+    const fixtureReferenceId = id("synthetic-reference");
+    await db.insert(regulatoryReferencesTable).values({
+      id: fixtureReferenceId, type: "TEST_FIXTURE", issuer: "Gate fixture", number: run, year: 2026,
+      title: "Synthetic authority for isolated journey test", enactedDate: "2026-01-01",
+      effectiveDate: "2026-01-01", beritaNegara: "Not a legal citation",
+      authorityRole: "DOMAIN_AUTHORITY", status: "ACTIVE", contentSha256: "0".repeat(64),
+    });
+    await db.insert(competencyFrameworkSourcesTable).values({
+      id: id("framework-source"), frameworkId, regulatoryReferenceId: fixtureReferenceId, provenanceType: "AUTHORITATIVE",
+    });
+    await db.update(competencyFrameworksTable).set({ authorityStatus: "AUTHORITATIVE" }).where(eq(competencyFrameworksTable.id, frameworkId));
     await db.insert(diagnosticTemplatesTable).values({ id: diagnosticTemplateId, frameworkId, pathwayId: ids.path, version: "1.0", name: "Gate diagnostic", description: "Run-scoped diagnostic", status: "active", dimensions: ["KNOWLEDGE"] });
     await db.insert(diagnosticQuestionsTable).values([
       { id: diagnosticQuestionId, templateId: diagnosticTemplateId, frameworkId, competencyUnitId, dimension: "KNOWLEDGE", prompt: "Can the learner complete the gate capability?", sequence: 1 },
