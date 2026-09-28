@@ -7,6 +7,7 @@ const { Client } = pg;
 type IsolatedIntegrationOptions = {
   schemaPrefix: string;
   testFile: string;
+  createSchemaName?: typeof createIntegrationSchemaName;
   setupCommand?: readonly string[];
   setupTimeoutMs?: number;
   testTimeoutMs?: number;
@@ -34,6 +35,7 @@ const POSTGRES_IDENTIFIER_MAX_BYTES = 63;
 const SCHEMA_NAME_SEPARATOR = "_";
 const SCHEMA_SUFFIX_LENGTH = 32;
 const SCHEMA_SUFFIX_PATTERN = /^[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}$/;
+const MAX_SCHEMA_CREATION_ATTEMPTS = 3;
 export const generateIntegrationSchemaSuffix = () =>
   crypto.randomUUID().replaceAll("-", "");
 const EMPTY_DATABASE_PRIVILEGE_ERROR =
@@ -117,6 +119,12 @@ function schemaMetadata(schemaPrefix: string, createdAt = new Date()) {
     schemaPrefix,
     createdAt: createdAt.toISOString(),
   } satisfies IntegrationSchemaMetadata);
+}
+
+class SchemaNameCollisionError extends Error {
+  constructor(schemaName: string, cause: unknown) {
+    super(`Integration schema ${schemaName} already exists`, { cause });
+  }
 }
 
 export function isStaleOwnedIntegrationSchema({
@@ -273,7 +281,14 @@ export async function initializeIntegrationSchema(
   try {
     await admin.query("BEGIN");
     try {
-      await admin.query(`CREATE SCHEMA ${quoteIdentifier(schemaName)}`);
+      try {
+        await admin.query(`CREATE SCHEMA ${quoteIdentifier(schemaName)}`);
+      } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "42P06") {
+          throw new SchemaNameCollisionError(schemaName, error);
+        }
+        throw error;
+      }
       await afterSchemaCreated?.();
       await admin.query(
         `COMMENT ON SCHEMA ${quoteIdentifier(schemaName)} IS ${quoteLiteral(schemaMetadata(schemaPrefix))}`,
@@ -466,6 +481,7 @@ function combineRunAndCleanupErrors(runError: unknown, cleanupError: unknown) {
 export async function runIsolatedIntegrationTest({
   schemaPrefix,
   testFile,
+  createSchemaName = createIntegrationSchemaName,
   setupCommand,
   setupTimeoutMs = DEFAULT_SETUP_TIMEOUT_MS,
   testTimeoutMs = DEFAULT_TEST_TIMEOUT_MS,
@@ -485,10 +501,11 @@ export async function runIsolatedIntegrationTest({
   assertTestEnvironment();
   assertPositiveTimeout("Integration database connection timeout", connectionTimeoutMs);
   assertPositiveTimeout("Integration database cleanup timeout", cleanupTimeoutMs);
-  const schemaName = createIntegrationSchemaName(schemaPrefix);
+  let schemaName = createSchemaName(schemaPrefix);
   const prefix = schemaPrefix;
   const admin = createAdminClient(process.env.DATABASE_URL!, connectionTimeoutMs);
   let connected = false;
+  let schemaCreated = false;
   let runError: unknown;
 
   try {
@@ -518,7 +535,22 @@ export async function runIsolatedIntegrationTest({
         error,
       );
     }
-    await initializeIntegrationSchema(admin, schemaName, prefix);
+    for (let attempt = 1; attempt <= MAX_SCHEMA_CREATION_ATTEMPTS; attempt++) {
+      try {
+        await initializeIntegrationSchema(admin, schemaName, prefix);
+        schemaCreated = true;
+        break;
+      } catch (error) {
+        if (!(error instanceof SchemaNameCollisionError)) throw error;
+        if (attempt === MAX_SCHEMA_CREATION_ATTEMPTS) {
+          throw new Error(
+            `Could not create integration schema after ${MAX_SCHEMA_CREATION_ATTEMPTS} attempts: generated names already exist`,
+            { cause: error },
+          );
+        }
+        schemaName = createSchemaName(prefix);
+      }
+    }
     const sourceTables = await admin.query<{ tablename: string }>(
       `
         SELECT tablename
@@ -559,7 +591,7 @@ export async function runIsolatedIntegrationTest({
           } finally {
             await admin.end();
           }
-        } else {
+        } else if (schemaCreated) {
           try {
             await admin.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
           } finally {
@@ -572,6 +604,8 @@ export async function runIsolatedIntegrationTest({
               await admin.end();
             }
           }
+        } else {
+          await admin.end();
         }
       };
       try {

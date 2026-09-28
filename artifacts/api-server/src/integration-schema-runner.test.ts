@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import test from "node:test";
 import { promisify } from "node:util";
+import type pg from "pg";
 import {
   assertCanCreateDisposableDatabase,
   canDropStaleIntegrationSchema,
   createIntegrationSchemaName,
   isStaleOwnedIntegrationSchema,
+  runIsolatedIntegrationTest,
   safeSchemaPrefix,
 } from "./integration-schema-runner";
 
@@ -15,6 +17,119 @@ const validSuffix = "123456789abc4def8abc123456789abc";
 const now = new Date("2026-09-10T12:00:00.000Z");
 const staleSchemaAgeMs = 60 * 60 * 1000;
 const execFileAsync = promisify(execFile);
+const successFixture = "./src/fixtures/integration-schema-runner-success.fixture.ts";
+
+async function withFakeDatabaseUrl(run: () => Promise<void>) {
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  process.env.DATABASE_URL = "postgres://fake-admin.invalid/integration_test";
+  try {
+    await run();
+  } finally {
+    if (previousDatabaseUrl === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = previousDatabaseUrl;
+    }
+  }
+}
+
+function fakeAdminWithSchemaFailure(failCreate: (attempt: number) => Error | undefined) {
+  const queries: string[] = [];
+  let attempts = 0;
+  let ended = false;
+  const admin = {
+    connect: async () => undefined,
+    query: async (query: string) => {
+      queries.push(query);
+      if (query.startsWith("CREATE SCHEMA")) {
+        attempts += 1;
+        const error = failCreate(attempts);
+        if (error) throw error;
+      }
+      return { rows: [] };
+    },
+    end: async () => { ended = true; },
+  } as unknown as pg.Client;
+  return { admin, queries, get attempts() { return attempts; }, get ended() { return ended; } };
+}
+
+function schemaNames(...suffixes: string[]) {
+  let index = 0;
+  return (prefix: string) => createIntegrationSchemaName(prefix, suffixes[index++] ?? suffixes.at(-1)!);
+}
+
+const anotherSuffix = "abcdef1234564abc8defabcdef123456";
+const thirdSuffix = "fedcba6543214abc8defabcdef123456";
+const duplicateSchema = () => Object.assign(new Error("schema already exists"), { code: "42P06" });
+
+test("retries a CREATE SCHEMA name collision with a new name and only drops its own schema", async () => {
+  await withFakeDatabaseUrl(async () => {
+    const fake = fakeAdminWithSchemaFailure((attempt) => attempt === 1 ? duplicateSchema() : undefined);
+    const first = createIntegrationSchemaName(schemaPrefix, validSuffix);
+    const second = createIntegrationSchemaName(schemaPrefix, anotherSuffix);
+    await runIsolatedIntegrationTest({
+      schemaPrefix,
+      testFile: successFixture,
+      createSchemaName: schemaNames(validSuffix, anotherSuffix),
+      createAdminClient: () => fake.admin,
+      cleanupStaleSchemas: async () => undefined,
+    });
+    assert.equal(fake.attempts, 2);
+    assert.deepEqual(fake.queries.filter((query) => query.startsWith("CREATE SCHEMA")), [
+      `CREATE SCHEMA "${first}"`,
+      `CREATE SCHEMA "${second}"`,
+    ]);
+    assert.deepEqual(fake.queries.filter((query) => query.startsWith("DROP SCHEMA")), [
+      `DROP SCHEMA IF EXISTS "${second}" CASCADE`,
+    ]);
+    assert.equal(fake.queries.filter((query) => query === "ROLLBACK").length, 1);
+    assert.equal(fake.ended, true);
+  });
+});
+
+test("stops after three schema name collisions without dropping any existing schema", async () => {
+  await withFakeDatabaseUrl(async () => {
+    const fake = fakeAdminWithSchemaFailure(duplicateSchema);
+    await assert.rejects(
+      runIsolatedIntegrationTest({
+        schemaPrefix,
+        testFile: successFixture,
+        createSchemaName: schemaNames(validSuffix, anotherSuffix, thirdSuffix),
+        createAdminClient: () => fake.admin,
+        cleanupStaleSchemas: async () => undefined,
+      }),
+      (error: Error) => {
+        assert.match(error.message, /Could not create integration schema after 3 attempts: generated names already exist/);
+        assert.match(String(error.cause), /already exists/);
+        return true;
+      },
+    );
+    assert.equal(fake.attempts, 3);
+    assert.equal(fake.queries.filter((query) => query === "ROLLBACK").length, 3);
+    assert.equal(fake.queries.some((query) => query.startsWith("DROP SCHEMA")), false);
+    assert.equal(fake.ended, true);
+  });
+});
+
+test("does not retry or drop a schema on other CREATE SCHEMA failures", async () => {
+  await withFakeDatabaseUrl(async () => {
+    const denied = Object.assign(new Error("permission denied"), { code: "42501" });
+    const fake = fakeAdminWithSchemaFailure(() => denied);
+    await assert.rejects(
+      runIsolatedIntegrationTest({
+        schemaPrefix,
+        testFile: successFixture,
+        createSchemaName: schemaNames(validSuffix, anotherSuffix),
+        createAdminClient: () => fake.admin,
+        cleanupStaleSchemas: async () => undefined,
+      }),
+      (error: unknown) => error === denied,
+    );
+    assert.equal(fake.attempts, 1);
+    assert.equal(fake.queries.some((query) => query.startsWith("DROP SCHEMA")), false);
+    assert.equal(fake.ended, true);
+  });
+});
 
 function metadata(createdAt: string) {
   return JSON.stringify({
