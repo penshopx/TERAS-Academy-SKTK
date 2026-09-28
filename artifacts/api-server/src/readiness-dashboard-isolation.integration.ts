@@ -1,4 +1,5 @@
 import type { AddressInfo } from "node:net";
+import { deepStrictEqual } from "node:assert/strict";
 import {
   assessmentAttemptsTable,
   assessmentCriteriaTable,
@@ -151,7 +152,31 @@ async function run() {
 
       const revisionQuality = { valid: false, relevant: true, sufficient: false, traceable: true };
       const validQuality = { valid: true, relevant: true, sufficient: true, traceable: true };
-      await request(trainerAServer.baseUrl, `/trainer/evidence/${evidenceA}/review`, { method: "POST", body: JSON.stringify({ idempotencyKey: `readiness-first-review-${suffix}`, status: "Needs revision", comment: "first trainer review", quality: revisionQuality }) });
+      const firstReview = { idempotencyKey: `readiness-first-review-${suffix}`, status: "Needs revision", comment: "first trainer review", quality: revisionQuality };
+      const reviewPath = `/trainer/evidence/${evidenceA}/review`;
+      const reviewedEvidence = await request<any>(trainerAServer.baseUrl, reviewPath, { method: "POST", body: JSON.stringify(firstReview) });
+      assert(reviewedEvidence.status === "Needs revision" && reviewedEvidence.reviewerComment === firstReview.comment, "Initial trainer review was not applied to the evidence");
+      const evidenceBeforeConflict = await db.select().from(evidenceTable).where(eq(evidenceTable.id, evidenceA));
+      const reviewsBeforeConflict = await db.select().from(evidenceReviewsTable).where(eq(evidenceReviewsTable.evidenceId, evidenceA));
+      const dashboardBeforeConflict = await request<any>(trainerAServer.baseUrl, "/trainer/dashboard");
+      const queueBeforeConflict = await request<any[]>(trainerAServer.baseUrl, "/trainer/review-queue");
+      assert(reviewsBeforeConflict.length === 2 && dashboardBeforeConflict.reviewHistory.some((event: any) =>
+        event.kind === "Evidence" && event.learnerId === learnerA && event.comment === firstReview.comment
+      ), "Initial trainer review is missing from the stored or dashboard history");
+      for (const [change, conflict] of [
+        ["status", { ...firstReview, status: "Valid", quality: validQuality }],
+        ["comment", { ...firstReview, comment: "conflicting trainer comment" }],
+        ["quality", { ...firstReview, quality: { ...revisionQuality, valid: true } }],
+      ] as const) {
+        await request(trainerAServer.baseUrl, reviewPath, { method: "POST", body: JSON.stringify(conflict) }, 409);
+        deepStrictEqual(await db.select().from(evidenceTable).where(eq(evidenceTable.id, evidenceA)), evidenceBeforeConflict, `${change} conflict changed evidence`);
+        deepStrictEqual(await db.select().from(evidenceReviewsTable).where(eq(evidenceReviewsTable.evidenceId, evidenceA)), reviewsBeforeConflict, `${change} conflict appended or changed a review`);
+        deepStrictEqual(await request<any[]>(trainerAServer.baseUrl, "/trainer/review-queue"), queueBeforeConflict, `${change} conflict changed trainer evidence queue`);
+        const dashboardAfterConflict = await request<any>(trainerAServer.baseUrl, "/trainer/dashboard");
+        deepStrictEqual(dashboardAfterConflict.reviewHistory, dashboardBeforeConflict.reviewHistory, `${change} conflict changed trainer dashboard history`);
+        deepStrictEqual(dashboardAfterConflict.recentActivity, dashboardBeforeConflict.recentActivity, `${change} conflict changed trainer recent activity`);
+        deepStrictEqual(dashboardAfterConflict.pendingEvidenceCount, dashboardBeforeConflict.pendingEvidenceCount, `${change} conflict changed trainer evidence count`);
+      }
       await request(trainerAServer.baseUrl, `/trainer/evidence/${evidenceA}/review`, { method: "POST", body: JSON.stringify({ idempotencyKey: `readiness-second-review-${suffix}`, status: "Valid", comment: "second trainer review", quality: validQuality }) });
       await db.insert(practiceReviewsTable).values([
         { id: `readiness-practice-review-1-${suffix}`, attemptId: practiceA, reviewerId: trainerA, status: "Reviewed", feedback: "first practice feedback", createdBy: trainerA },
@@ -164,16 +189,16 @@ async function run() {
 
       const detail = await request<any>(assessorAServer.baseUrl, `/assessments/${assessmentA.id}?learnerId=${learnerA}`);
       assert(detail.assessment.id === assessmentA.id && detail.attempts.length === 0, "Assessor detail did not resolve only its assigned learner assessment");
-      const decision = (outcome: "Not competent" | "Competent", observation: string) => request(
+      const decision = (outcome: "Not competent" | "Competent", observation: string, expected = 201) => request(
         assessorAServer.baseUrl,
         `/assessor/assessments/${assessmentA.id}/decision`,
         { method: "POST", body: JSON.stringify({ learnerId: learnerA, decision: outcome, observation, criteria: criteriaA.map((criterion) => ({ criterionId: criterion.id, score: outcome === "Competent" ? 3 : 1, observation, evidenceId: null })) }) },
-        201,
+        expected,
       );
       await decision("Not competent", "first assessor recommendation");
-      await decision("Competent", "second assessor recommendation");
+      await decision("Competent", "second assessor recommendation", 409);
       const decisionHistory = await db.select().from(assessmentAttemptsTable).where(and(eq(assessmentAttemptsTable.assessmentId, assessmentA.id), eq(assessmentAttemptsTable.learnerId, learnerA)));
-      assert(decisionHistory.length === 2 && decisionHistory.some((attempt) => attempt.decisionRationale === "first assessor recommendation") && decisionHistory.some((attempt) => attempt.decisionRationale === "second assessor recommendation"), "Assessor decision history was overwritten instead of appended");
+      assert(decisionHistory.length === 1 && decisionHistory[0]?.decisionRationale === "first assessor recommendation", "Rejected reassessment changed assessor decision history");
     } finally {
       await Promise.all([trainerAServer.close(), trainerBServer.close(), assessorAServer.close(), assessorBServer.close()]);
     }
