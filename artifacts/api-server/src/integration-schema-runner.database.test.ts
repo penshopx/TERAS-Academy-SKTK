@@ -1059,6 +1059,71 @@ test("a timed out setup under a real role without CREATEDB kills its database se
   }
 });
 
+test("a timed out test file under a real role without CREATEDB closes its transaction and removes the schema before dropping the role", {
+  skip: !databaseUrl,
+}, async () => {
+  const admin = new Client({ connectionString: databaseUrl });
+  const contractPrefix = "schema_runner_ci_timeout";
+  const command = [
+    "pnpm",
+    "--filter",
+    "@workspace/api-server",
+    "exec",
+    "tsx",
+    hangFixture,
+  ] as const;
+  let temporaryRoleName = "";
+  await admin.connect();
+  try {
+    await withNoCreateDbRole(admin, async (roleDatabaseUrl, roleName) => {
+      temporaryRoleName = roleName;
+      const previousDatabaseUrl = process.env.DATABASE_URL;
+      process.env.DATABASE_URL = roleDatabaseUrl;
+      try {
+        await withMarkerFile(async (markerFile) => {
+          await assert.rejects(
+            runIsolatedIntegrationTest({
+              schemaPrefix: contractPrefix,
+              testFile: hangFixture,
+              testTimeoutMs: 3_000,
+              testEnvironment: {
+                SCHEMA_RUNNER_EXPECTED_ROLE: roleName,
+                SCHEMA_RUNNER_HANG_IN_TRANSACTION: "true",
+              },
+            }),
+            new RegExp(
+              `Integration command ${command.join(" ")} timed out after 3000ms`,
+            ),
+          );
+          const marker = await readFile(markerFile, "utf8");
+          const match = /^schema:(schema_runner_ci_timeout_[a-z0-9]+)\nbackend:(\d+)\ntest\n$/.exec(marker);
+          assert.ok(match, `Expected the restricted test fixture to connect and begin a transaction: ${marker}`);
+          const backend = await admin.query(
+            "SELECT 1 FROM pg_stat_activity WHERE pid = $1",
+            [Number(match[2])],
+          );
+          assert.equal(backend.rowCount, 0);
+          assert.equal(await schemaExists(admin, match[1]), false);
+          const schemas = await admin.query<{ schema_name: string }>(
+            `SELECT nspname AS schema_name FROM pg_namespace WHERE nspname LIKE $1 ESCAPE '\\'`,
+            [`${contractPrefix.replaceAll("_", "\\_")}_%`],
+          );
+          assert.deepEqual(schemas.rows, []);
+        });
+      } finally {
+        process.env.DATABASE_URL = previousDatabaseUrl;
+      }
+    });
+    const role = await admin.query(
+      "SELECT 1 FROM pg_roles WHERE rolname = $1",
+      [temporaryRoleName],
+    );
+    assert.equal(role.rowCount, 0);
+  } finally {
+    await admin.end();
+  }
+});
+
 test("a timed out setup is killed and removes its empty disposable database", {
   skip: !databaseUrl,
 }, async () => {

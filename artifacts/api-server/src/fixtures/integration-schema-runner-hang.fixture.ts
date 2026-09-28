@@ -27,10 +27,19 @@ if (process.env.SCHEMA_RUNNER_EXPECTED_ROLE) {
   assert.equal(session?.role_name, process.env.SCHEMA_RUNNER_EXPECTED_ROLE);
   assert.equal(session.can_create_database, false);
   assert.match(session.schema_name, /^schema_runner_ci_timeout_/);
+  if (process.env.SCHEMA_RUNNER_HANG_IN_TRANSACTION === "true") {
+    await client.query("CREATE TABLE schema_runner_timeout_lock (id integer)");
+    await client.query("BEGIN");
+    await client.query("LOCK TABLE schema_runner_timeout_lock IN ACCESS EXCLUSIVE MODE");
+    await appendFile(markerFile, `schema:${session.schema_name}\n`);
+  }
   await appendFile(markerFile, `backend:${session.backend_pid}\n`);
   // Keep the database session open until the runner kills this process group.
 }
-await appendFile(markerFile, "setup\n");
+await appendFile(
+  markerFile,
+  process.env.SCHEMA_RUNNER_HANG_IN_TRANSACTION === "true" ? "test\n" : "setup\n",
+);
 await new Promise(() => {
   setInterval(() => {}, 60_000);
 });
