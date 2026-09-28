@@ -1,0 +1,55 @@
+name: Verify API contract on pull request
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/verify-api-contract-pr.yml
+      - lib/api-spec/openapi.yaml
+      - lib/api-spec/orval.config.ts
+      - lib/api-spec/normalize-generated-eof.mjs
+      - lib/api-spec/check-duplicate-schemas.mjs
+      - lib/api-spec/package.json
+      - lib/api-zod/src/generated/**
+      - lib/api-client-react/src/generated/**
+      - pnpm-lock.yaml
+
+permissions:
+  contents: read
+
+jobs:
+  verify-api-contract:
+    name: Verify generated API contract and API Server types
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Regenerate OpenAPI outputs
+        run: pnpm --filter @workspace/api-spec run codegen
+
+      - name: Reject uncommitted generated API drift
+        run: |
+          git diff --exit-code -- lib/api-zod/src/generated lib/api-client-react/src/generated
+          if [ -n "$(git ls-files --others --exclude-standard -- lib/api-zod/src/generated lib/api-client-react/src/generated)" ]; then
+            echo "::error::Generated API output contains untracked files."
+            git ls-files --others --exclude-standard -- lib/api-zod/src/generated lib/api-client-react/src/generated
+            exit 1
+          fi
+
+      - name: Typecheck API Server
+        run: pnpm --filter @workspace/api-server run typecheck
