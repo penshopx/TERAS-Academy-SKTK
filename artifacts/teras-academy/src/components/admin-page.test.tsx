@@ -5,7 +5,7 @@ import { JSDOM } from "jsdom";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
-import { adminErrorMessage, filterQueueItems, getReminderDeliveryRefetchInterval, getReminderEscalationHistoryRefetchInterval, hasPermanentReminderEscalations, isAdminForbidden, isAdminMfaRequired, queueStateFromSearch, ReminderEscalationHistory, reminderDeliveryPollingInterval, reminderEscalationStateFromSearch, shouldEnableAdminQueries, validateQueueFilters } from "../pages/admin";
+import { adminErrorMessage, filterQueueItems, getReminderDeliveryRefetchInterval, getReminderEscalationHistoryRefetchInterval, hasPermanentReminderEscalations, isAdminForbidden, isAdminMfaRequired, pendingReminderEscalationPageOffsets, queueStateFromSearch, ReminderEscalationHistory, reminderDeliveryPollingInterval, reminderEscalationStateFromSearch, shouldEnableAdminQueries, validateQueueFilters } from "../pages/admin";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
 Object.assign(globalThis, {
@@ -183,7 +183,7 @@ test("history refreshes a temporary channel status and keeps loaded pages after 
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const view = render(
     <QueryClientProvider client={queryClient}>
-      <ReminderEscalationHistory enabled onResolve={() => undefined} loadPage={loadPage} />
+      <ReminderEscalationHistory enabled onResolve={() => undefined} loadPage={loadPage} pollInterval={30} />
     </QueryClientProvider>,
   );
 
@@ -192,12 +192,63 @@ test("history refreshes a temporary channel status and keeps loaded pages after 
   await waitFor(() => assert.ok(view.getByTestId("reminder-escalation-two")));
   const cachedHistory = () => queryClient.getQueryCache().getAll()[0]?.state.data as Parameters<typeof getReminderEscalationHistoryRefetchInterval>[0];
   assert.equal(getReminderEscalationHistoryRefetchInterval(cachedHistory(), 1), reminderDeliveryPollingInterval);
-  await queryClient.refetchQueries();
   await waitFor(() => assert.match(view.getByTestId("reminder-escalation-one").textContent ?? "", /Terkirim/));
   assert.equal(view.getAllByTestId("reminder-escalation-one").length, 1);
   assert.ok(view.getByTestId("reminder-escalation-two"));
-  assert.deepEqual(requests, [0, 1, 0, 1]);
+  assert.deepEqual(requests, [0, 1, 0]);
   assert.equal(getReminderEscalationHistoryRefetchInterval(cachedHistory(), 1), false);
+  view.unmount();
+  queryClient.clear();
+});
+
+test("polling several pages requests only visible unfinished pages and preserves history order", async () => {
+  const requests: number[] = [];
+  const notification = (status: "pending" | "sending" | "sent" | "failed") => ({
+    status, attemptedAt: null, sentAt: null, reason: null,
+  });
+  const row = (id: string, status?: "pending" | "sending" | "sent" | "failed") => ({
+    ...escalation(id, "open"),
+    emailNotification: status ? notification(status) : null,
+  });
+  const loadPage = async (params?: { offset?: number }) => {
+    const offset = params?.offset ?? 0;
+    requests.push(offset);
+    const calls = requests.filter(value => value === offset).length;
+    const items = offset === 0 ? [row("one")] : offset === 2
+      ? calls === 1 ? [row("two", "pending"), row("three")] : [row("new", "sent"), row("three"), row("two", "sent")]
+      : calls === 1 ? [row("four", "sending"), row("five")] : [row("five"), row("four", "failed")];
+    return {
+      items,
+      pagination: { offset, limit: 25, returned: 2, total: 5, hasMore: offset < 4 },
+      counts: { open: 5, resolved: 0, total: 5 },
+    };
+  };
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <ReminderEscalationHistory enabled onResolve={() => undefined} loadPage={loadPage} pollInterval={80} />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => assert.ok(view.getByTestId("reminder-escalation-one")));
+  fireEvent.click(view.getByTestId("button-load-more-reminder-escalations"));
+  await waitFor(() => assert.ok(view.getByTestId("reminder-escalation-two")));
+  fireEvent.click(view.getByTestId("button-load-more-reminder-escalations"));
+  await waitFor(() => assert.ok(view.getByTestId("reminder-escalation-four")));
+  assert.deepEqual(requests, [0, 2, 4]);
+  const cache = () => queryClient.getQueryCache().getAll()[0]?.state.data as Parameters<typeof pendingReminderEscalationPageOffsets>[0];
+  assert.deepEqual(pendingReminderEscalationPageOffsets(cache(), 2), [2]);
+  assert.deepEqual(pendingReminderEscalationPageOffsets(cache(), 4), [2, 4]);
+  await waitFor(() => assert.match(view.getByTestId("reminder-escalation-two").textContent ?? "", /Terkirim/));
+  await waitFor(() => assert.match(view.getByTestId("reminder-escalation-four").textContent ?? "", /Gagal/));
+  assert.deepEqual(requests, [0, 2, 4, 2, 4]);
+  assert.deepEqual(Array.from(view.container.querySelectorAll("[data-testid^='reminder-escalation-']")).filter(element => element.tagName === "ARTICLE").map(element => element.getAttribute("data-testid")), [
+    "reminder-escalation-one", "reminder-escalation-two", "reminder-escalation-three", "reminder-escalation-four", "reminder-escalation-five",
+  ]);
+  assert.equal(view.queryByTestId("reminder-escalation-new"), null);
+  assert.equal(view.getAllByTestId("reminder-escalation-two").length, 1);
+  assert.deepEqual(pendingReminderEscalationPageOffsets(cache(), 4), []);
+  await new Promise(resolve => setTimeout(resolve, 120));
+  assert.deepEqual(requests, [0, 2, 4, 2, 4]);
   view.unmount();
   queryClient.clear();
 });

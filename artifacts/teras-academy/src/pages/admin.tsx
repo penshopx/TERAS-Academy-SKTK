@@ -1,5 +1,5 @@
 import React, { type FormEvent, type ReactNode, useEffect, useState } from "react";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -500,9 +500,40 @@ export function getReminderEscalationHistoryRefetchInterval(
   data: { pages: ReminderEscalationPage[] } | undefined,
   displayedOffset: number,
 ) {
-  return data?.pages.some(page =>
+  return pendingReminderEscalationPageOffsets(data, displayedOffset).length ? reminderDeliveryPollingInterval : false;
+}
+
+export function pendingReminderEscalationPageOffsets(
+  data: { pages: ReminderEscalationPage[] } | undefined,
+  displayedOffset: number,
+) {
+  return data?.pages.filter(page =>
     page.pagination.offset <= displayedOffset && page.items.some(hasReminderDeliveryInProgress)
-  ) ? reminderDeliveryPollingInterval : false;
+  ).map(page => page.pagination.offset) ?? [];
+}
+
+function updateReminderEscalationChannels(
+  data: InfiniteData<ReminderEscalationPage, number> | undefined,
+  offset: number,
+  refreshed: ReminderEscalationPage,
+) {
+  if (!data) return data;
+  const notifications = new Map(refreshed.items.map(item => [item.id, item]));
+  let changed = false;
+  const pages = data.pages.map(page => {
+    if (page.pagination.offset !== offset) return page;
+    let pageChanged = false;
+    const items = page.items.map(item => {
+      const latest = notifications.get(item.id);
+      if (!latest || item.status !== latest.status || !hasReminderDeliveryInProgress(item)) return item;
+      if (JSON.stringify([item.emailNotification, item.webhookNotification]) === JSON.stringify([latest.emailNotification, latest.webhookNotification])) return item;
+      changed = true;
+      pageChanged = true;
+      return { ...item, emailNotification: latest.emailNotification, webhookNotification: latest.webhookNotification };
+    });
+    return pageChanged ? { ...page, items } : page;
+  });
+  return changed ? { ...data, pages } : data;
 }
 
 export type ReminderEscalationUrlState = {
@@ -545,11 +576,13 @@ export function mergeReminderEscalationPages(pages: ReminderEscalationPage[] = [
   }));
 }
 
-export function ReminderEscalationHistory({ enabled, onResolve, loadPage = listAdminReminderEscalations }: {
+export function ReminderEscalationHistory({ enabled, onResolve, loadPage = listAdminReminderEscalations, pollInterval = reminderDeliveryPollingInterval }: {
   enabled: boolean;
   onResolve: (item: AdminReminderEscalation) => void;
   loadPage?: typeof listAdminReminderEscalations;
+  pollInterval?: number;
 }) {
+  const client = useQueryClient();
   const [urlState, setUrlState] = useState<ReminderEscalationUrlState>(() => reminderEscalationStateFromSearch(window.location.search));
   const { status, offset } = urlState;
   useEffect(() => {
@@ -557,16 +590,40 @@ export function ReminderEscalationHistory({ enabled, onResolve, loadPage = listA
     window.addEventListener("popstate", restoreFromUrl);
     return () => window.removeEventListener("popstate", restoreFromUrl);
   }, []);
+  const historyKey = getListAdminReminderEscalationsQueryKey(reminderEscalationQueryParams(status));
   const history = useInfiniteQuery({
-    queryKey: getListAdminReminderEscalationsQueryKey(reminderEscalationQueryParams(status)),
+    queryKey: historyKey,
     queryFn: ({ pageParam }) => loadPage(reminderEscalationQueryParams(status, pageParam)),
     initialPageParam: 0,
     getNextPageParam: nextReminderEscalationPageOffset,
     enabled,
     staleTime: queryOptions.staleTime,
     refetchOnMount: queryOptions.refetchOnMount,
-    refetchInterval: query => getReminderEscalationHistoryRefetchInterval(query.state.data, offset),
   });
+  // Poll only pages with in-flight channels. Full infinite-query refetches still serve
+  // explicit invalidation and remounts, but must not be used for each status tick.
+  useEffect(() => {
+    const pendingOffsets = enabled ? pendingReminderEscalationPageOffsets(history.data, offset) : [];
+    if (!pendingOffsets.length) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      await Promise.all(pendingOffsets.map(async pageOffset => {
+        try {
+          const refreshed = await loadPage(reminderEscalationQueryParams(status, pageOffset));
+          if (active) client.setQueryData<InfiniteData<ReminderEscalationPage, number>>(
+            historyKey,
+            current => updateReminderEscalationChannels(current, pageOffset, refreshed),
+          );
+        } catch {
+          // Preserve the last known status and retry the pending page next tick.
+        }
+      }));
+      if (active) timer = setTimeout(poll, pollInterval);
+    };
+    timer = setTimeout(poll, pollInterval);
+    return () => { active = false; clearTimeout(timer); };
+  }, [client, enabled, history.data, loadPage, offset, pollInterval, status]);
   const loadedPages = history.data?.pages ?? [];
   const displayedPages = loadedPages.filter(page => page.pagination.offset <= offset);
   const displayedLastPage = displayedPages.at(-1);
