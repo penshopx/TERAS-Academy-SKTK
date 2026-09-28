@@ -234,4 +234,28 @@ test("fallback transport preserves signed headers and raw body while rejecting t
   assert.deepEqual(received.map(item => item.accepted), [true, false, false, false, false]);
   assert.equal(received[3]?.body, currentRequest.body);
   assert.equal(received[4]?.body, currentRequest.body);
+
+  const postSignedBody = async (body: string) => {
+    const headers = {
+      ...currentRequest.headers,
+      "X-Teras-Webhook-Signature": `v1=${createHmac("sha256", signingKey.secret)
+        .update(`${currentRequest.headers["X-Teras-Webhook-Timestamp"]}.${body}`, "utf8")
+        .digest("hex")}`,
+    };
+    const response = await fetch(url, { method: "POST", headers, body });
+    assert.equal(received.at(-1)?.body, body);
+    assert.equal(received.at(-1)?.accepted, false);
+    assert.equal(response.status, 401);
+  };
+
+  await t.test("receiver rejects malformed JSON even with a valid HMAC", async () => {
+    await postSignedBody('{"idempotencyKey":');
+  });
+
+  await t.test("receiver rejects signed payloads with missing or non-string idempotency keys", async () => {
+    const payload = JSON.parse(currentRequest.body);
+    delete payload.idempotencyKey;
+    await postSignedBody(JSON.stringify(payload));
+    await postSignedBody(JSON.stringify({ ...payload, idempotencyKey: 123 }));
+  });
 });
