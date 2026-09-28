@@ -384,31 +384,48 @@ BEGIN
 
   FOR exception_group IN
     SELECT
-      current.entity_type,
-      current.reason,
-      current.exception_count,
-      current.exception_count - COALESCE(previous.exception_count, 0) AS delta
-    FROM teras_diagnostic_provenance_check_counts current
-    LEFT JOIN teras_diagnostic_provenance_check_counts previous
-      ON previous.check_run_id = previous_run_id
-      AND previous.entity_type = current.entity_type
+      COALESCE(current.entity_type, previous.entity_type) AS entity_type,
+      COALESCE(current.reason, previous.reason) AS reason,
+      COALESCE(previous.exception_count, 0) AS previous_count,
+      COALESCE(current.exception_count, 0) AS exception_count,
+      COALESCE(current.exception_count, 0) - COALESCE(previous.exception_count, 0) AS delta
+    FROM (
+      SELECT entity_type, reason, exception_count
+      FROM teras_diagnostic_provenance_check_counts
+      WHERE check_run_id = current_run_id
+    ) current
+    FULL OUTER JOIN (
+      SELECT entity_type, reason, exception_count
+      FROM teras_diagnostic_provenance_check_counts
+      WHERE check_run_id = previous_run_id
+    ) previous
+      ON previous.entity_type = current.entity_type
       AND previous.reason = current.reason
-    WHERE current.check_run_id = current_run_id
-    ORDER BY current.entity_type, current.reason
+    ORDER BY entity_type, reason
   LOOP
-    RAISE NOTICE
-      'TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS entity_type=% reason=% count=% delta=%',
-      exception_group.entity_type,
-      exception_group.reason,
-      exception_group.exception_count,
-      exception_group.delta;
+    IF exception_group.exception_count = 0 THEN
+      RAISE NOTICE
+        'TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS entity_type=% reason=% previous_count=% current_count=% delta=%',
+        exception_group.entity_type,
+        exception_group.reason,
+        exception_group.previous_count,
+        exception_group.exception_count,
+        exception_group.delta;
+    ELSE
+      RAISE NOTICE
+        'TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS entity_type=% reason=% count=% delta=%',
+        exception_group.entity_type,
+        exception_group.reason,
+        exception_group.exception_count,
+        exception_group.delta;
+    END IF;
 
     IF previous_run_id IS NOT NULL AND exception_group.delta > 0 THEN
       RAISE WARNING
         'TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS_INCREASE entity_type=% reason=% previous_count=% current_count=% delta=%',
         exception_group.entity_type,
         exception_group.reason,
-        exception_group.exception_count - exception_group.delta,
+        exception_group.previous_count,
         exception_group.exception_count,
         exception_group.delta;
     END IF;

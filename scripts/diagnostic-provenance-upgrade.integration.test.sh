@@ -506,4 +506,59 @@ if [ "$second_retained_state" != "$expected_second_retained_state" ]; then
   exit 1
 fi
 
+last_exception_baseline_output="$(mktemp)"
+last_exception_resolved_output="$(mktemp)"
+trap 'rm -f "$check_sql" "$baseline_output" "$second_output" "$cancelled_output" "$post_cancel_output" "$parallel_a_output" "$parallel_b_output" "$decrease_output" "$retention_first_output" "$retention_second_output" "$last_exception_baseline_output" "$last_exception_resolved_output" "$lock_ready_file" "$cancel_lock_ready_file"; cleanup' EXIT
+
+# Isolate one group so resolving its last exception leaves no current count row.
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+DELETE FROM teras_diagnostic_provenance_exceptions;
+INSERT INTO teras_diagnostic_provenance_exceptions
+  (entity_type, entity_id, profile_id, session_id, reason, details)
+VALUES (
+  'profile', 'last-exception', 'profile-last-exception', 'session-last-exception',
+  'NO_VALID_RESPONSE_CHAIN', '{}'::jsonb
+);
+SQL
+
+run_schema_check "$last_exception_baseline_output"
+baseline_one_state="$(psql "$DATABASE_URL" -Atqc "
+  SELECT
+    (SELECT count(*) FROM teras_diagnostic_provenance_exceptions),
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_counts
+     WHERE check_run_id = (SELECT max(id) FROM teras_diagnostic_provenance_check_runs)),
+    (SELECT exception_count FROM teras_diagnostic_provenance_check_counts
+     WHERE check_run_id = (SELECT max(id) FROM teras_diagnostic_provenance_check_runs)
+       AND entity_type = 'profile' AND reason = 'NO_VALID_RESPONSE_CHAIN')
+")"
+if [ "$baseline_one_state" != "1|1|1" ]; then
+  echo "Last-exception baseline did not record exactly one exception: $baseline_one_state" >&2
+  exit 1
+fi
+assert_contains "$last_exception_baseline_output" \
+  "TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS entity_type=profile reason=NO_VALID_RESPONSE_CHAIN count=1"
+
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "
+  DELETE FROM teras_diagnostic_provenance_exceptions
+  WHERE entity_type = 'profile' AND entity_id = 'last-exception'
+    AND reason = 'NO_VALID_RESPONSE_CHAIN'
+" >/dev/null
+run_schema_check "$last_exception_resolved_output"
+assert_contains "$last_exception_resolved_output" \
+  "TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS total=0"
+assert_contains "$last_exception_resolved_output" \
+  "TERAS_DIAGNOSTIC_PROVENANCE_EXCEPTIONS entity_type=profile reason=NO_VALID_RESPONSE_CHAIN previous_count=1 current_count=0 delta=-1"
+assert_no_increase_warning "$last_exception_resolved_output"
+assert_output_is_aggregate_only "$last_exception_resolved_output"
+resolved_state="$(psql "$DATABASE_URL" -Atqc "
+  SELECT
+    (SELECT count(*) FROM teras_diagnostic_provenance_exceptions),
+    (SELECT count(*) FROM teras_diagnostic_provenance_check_counts
+     WHERE check_run_id = (SELECT max(id) FROM teras_diagnostic_provenance_check_runs))
+")"
+if [ "$resolved_state" != "0|0" ]; then
+  echo "Resolved exception left a current exception or count snapshot: $resolved_state" >&2
+  exit 1
+fi
+
 echo "Diagnostic provenance upgrade migration passed"
