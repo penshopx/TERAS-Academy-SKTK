@@ -36,6 +36,8 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 
 ## Product
 
+The first release-ready MVP includes the agentic capability. Do not approve that MVP for release until the production agent-quality gate, the required structural regression evidence, incident review, and governance approval for a Verified Operational Baseline have passed. A local gate PASS is not release approval. Official SKTTK domain content remains outside the MVP until its source, cross-relationship, and catalogue-resilience reviews are complete.
+
 The product is not complete until role-specific operational dashboards function end-to-end for administrators, learners, instructors/trainers, verifiers/validators, assessors, and other parties required by the preparation journey.
 
 Required product scope includes:
