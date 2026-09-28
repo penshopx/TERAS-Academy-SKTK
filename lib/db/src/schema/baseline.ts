@@ -63,7 +63,11 @@ export const learningBaselineAuditTable = pgTable("teras_learning_baseline_audit
   details: jsonb("details").$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+}, table => [
+  uniqueIndex("teras_learning_baseline_audit_cancel_version_unique")
+    .on(table.versionId)
+    .where(sql`${table.action} = 'CANCEL_DRAFT'`),
+]);
 
 /** One canonical definition for each M01-M10 record. */
 export const baselineModulesTable = pgTable("teras_baseline_modules", {

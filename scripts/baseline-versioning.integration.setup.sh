@@ -64,5 +64,6 @@ WHERE NOT EXISTS (SELECT 1 FROM teras_pathway_baseline_modules WHERE id = 'pathw
   AND p.id = 'baseline-integration-pathway';
 SQL
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$repo_root/lib/db/migrations/0039_baseline_versioned_publishing.sql" >/dev/null
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$repo_root/lib/db/migrations/0057_baseline_cancel_audit_unique.sql" >/dev/null
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$repo_root/lib/db/migrations/0053_baseline_pathway_scope_projection.sql" >/dev/null
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$repo_root/lib/db/migrations/0054_path_b_regulatory_competency_foundation.sql" >/dev/null

@@ -445,6 +445,48 @@ async function main() {
       idempotencyKey: cancellationRequest.idempotencyKey,
     });
     await assert.rejects(
+      db.insert(learningBaselineAuditTable).values({
+        id: id("duplicate-cancel-audit"),
+        baselineId: baseline.id,
+        versionId: cancellationDraft.versionId,
+        action: "CANCEL_DRAFT",
+        actorId: "another-writer",
+        details: { reason: "A competing writer" },
+      }),
+      error => {
+        assert.equal((error as { cause?: { code?: string } }).cause?.code, "23505",
+          "the database unique index rejects another cancellation audit, independent of the API");
+        return true;
+      },
+    );
+    await pool.query(fs.readFileSync("../../lib/db/migrations/0057_baseline_cancel_audit_unique.sql", "utf8"));
+    const cancellationAuditsAfterMigration = await db.select().from(learningBaselineAuditTable).where(and(
+      eq(learningBaselineAuditTable.versionId, cancellationDraft.versionId),
+      eq(learningBaselineAuditTable.action, "CANCEL_DRAFT"),
+    ));
+    assert.equal(cancellationAuditsAfterMigration.length, 1, "replaying the migration preserves existing cancellation history");
+    const upgradeClient = await pool.connect();
+    try {
+      await upgradeClient.query("BEGIN");
+      await upgradeClient.query("DROP INDEX teras_learning_baseline_audit_cancel_version_unique");
+      await upgradeClient.query(`
+        INSERT INTO teras_learning_baseline_audit (id, baseline_id, version_id, action, actor_id)
+        VALUES ($1, $2, $3, 'CANCEL_DRAFT', 'legacy-writer')
+      `, [id("legacy-duplicate-cancel"), baseline.id, cancellationDraft.versionId]);
+      await assert.rejects(
+        upgradeClient.query(fs.readFileSync("../../lib/db/migrations/0057_baseline_cancel_audit_unique.sql", "utf8")
+          .replace(/^BEGIN;\s*/, "").replace(/\s*COMMIT;\s*$/, "")),
+        error => {
+          assert.match((error as Error).message, /duplicate CANCEL_DRAFT audits for version_id/);
+          return true;
+        },
+        "migration refuses conflicting legacy history instead of silently deleting audit rows",
+      );
+    } finally {
+      await upgradeClient.query("ROLLBACK");
+      upgradeClient.release();
+    }
+    await assert.rejects(
       db.update(learningBaselineVersionsTable).set({ snapshot: { malformed: true } }).where(eq(learningBaselineVersionsTable.id, cancellationDraft.versionId)),
     );
     await assert.rejects(

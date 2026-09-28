@@ -127,6 +127,10 @@ if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_people') IS
     -f lib/db/migrations/0038_learning_resource_progress_context.sql
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0039_baseline_versioned_publishing.sql
+  # Preserve append-only history: refuse conflicting cancellation audits
+  # before the schema push attempts to create their unique index.
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0057_baseline_cancel_audit_unique.sql
   # Reconcile the additive agent run ledger before schema evaluation on
   # existing installations; the migration is safe to replay below.
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
