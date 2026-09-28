@@ -259,6 +259,69 @@ try {
       `DELETE FROM ${preflightCase.table} WHERE id = 'context-legacy-mismatch'`,
     );
   }
+
+  // Both legacy events match their own activity, but the second one has no
+  // recorded pathway selection. Unlike enrol-demo, this history is ambiguous.
+  await client.query(`
+    INSERT INTO teras_enrollments
+      (id, learner_id, program_id, pathway_id, status)
+    VALUES
+      ('ownership-real-enrollment', 'ownership-real-learner',
+       'ownership-program-a', 'ownership-pathway-a', 'active')
+  `);
+  await client.query(`
+    INSERT INTO teras_activity_completion_events
+      (id, activity_id, learner_id, enrollment_id, pathway_id, status, actor_id, created_at)
+    VALUES
+      ('context-real-original', 'ownership-activity-a', 'ownership-real-learner',
+       'ownership-real-enrollment', 'ownership-pathway-a', 'completed', 'ownership-actor',
+       '2020-03-01T00:00:00Z'),
+      ('context-real-switch', 'ownership-activity-a-switch', 'ownership-real-learner',
+       'ownership-real-enrollment', 'ownership-pathway-a-switch', 'completed', 'ownership-actor',
+       '2020-03-03T00:00:00Z')
+  `);
+  const realSelections = async () => (await client.query<{
+    pathway_id: string;
+    program_id: string;
+    sequence: number;
+    created_by: string | null;
+  }>(`
+    SELECT pathway_id, program_id, sequence, created_by
+    FROM teras_enrollment_pathway_events
+    WHERE enrollment_id = 'ownership-real-enrollment'
+    ORDER BY sequence
+  `)).rows;
+  assert.deepEqual(await realSelections(), [], "real enrollment starts without selection history");
+  await assert.rejects(
+    client.query(contextMigration),
+    /Cannot enforce enrollment event context: program or pathway mismatch in teras_activity_completion_events/,
+  );
+  await client.query("ROLLBACK");
+  assert.deepEqual(await realSelections(), [], "failed migration must not invent a real learner selection");
+  assert.deepEqual(await demoSelections(), [], "failed migration also rolls back demo recovery");
+  assert.deepEqual(
+    (await client.query(`
+      SELECT id, pathway_id FROM teras_activity_completion_events
+      WHERE enrollment_id = 'ownership-real-enrollment'
+      ORDER BY created_at
+    `)).rows,
+    [
+      { id: "context-real-original", pathway_id: "ownership-pathway-a" },
+      { id: "context-real-switch", pathway_id: "ownership-pathway-a-switch" },
+    ],
+    "failed migration leaves both original learner events untouched",
+  );
+
+  // Provide a verified selection timestamp between the two immutable events,
+  // rather than letting the migration derive one from the later event.
+  await client.query(`
+    INSERT INTO teras_enrollment_pathway_events
+      (id, enrollment_id, pathway_id, program_id, sequence, created_at, created_by)
+    VALUES
+      ('context-real-verified-selection', 'ownership-real-enrollment',
+       'ownership-pathway-a-switch', 'ownership-program-a', 1,
+       '2020-03-02T00:00:00Z', 'ownership-verified-history')
+  `);
   await client.query(contextMigration);
   const recoveredDemoSelections = [{
     pathway_id: "ownership-pathway-a-switch",
@@ -271,11 +334,27 @@ try {
     recoveredDemoSelections,
     "corrected context allows exactly one recovered demo pathway selection",
   );
+  const verifiedRealSelections = [{
+    pathway_id: "ownership-pathway-a-switch",
+    program_id: "ownership-program-a",
+    sequence: 1,
+    created_by: "ownership-verified-history",
+  }];
+  assert.deepEqual(
+    await realSelections(),
+    verifiedRealSelections,
+    "rerunning migration accepts verified history without adding inferred selections",
+  );
   await client.query(contextMigration);
   assert.deepEqual(
     await demoSelections(),
     recoveredDemoSelections,
     "reapplying migration 0033 does not duplicate recovered selection history",
+  );
+  assert.deepEqual(
+    await realSelections(),
+    verifiedRealSelections,
+    "reapplying migration 0033 preserves the real learner's verified history",
   );
 
   await client.query(`
