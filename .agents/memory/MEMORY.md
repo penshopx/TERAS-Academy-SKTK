@@ -65,3 +65,4 @@
 - [PostgreSQL timeout cancellation grace](postgres-timeout-cancellation-grace.md) — client-side watchdogs need time for server cancellation to reach the driver before destroying a reusable session.
 - [Post-merge timeout diagnosis](post-merge-timeout-diagnosis.md) — a moving stall across test stages is not evidence that a larger global timeout will fix setup.
 - [Immutable incident recovery](immutable-incident-recovery.md) — resolve blocked trainer configuration incidents with linked recovery events, not edits to audit history.
+- [React Query Node polling tests](react-query-node-polling-tests.md) — jsdom added after imports does not enable polling; override server mode and release query timers.

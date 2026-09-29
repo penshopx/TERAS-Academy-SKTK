@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
-import test, { afterEach } from "node:test";
-import React from "react";
+import test, { afterEach, mock } from "node:test";
+import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { JSDOM } from "jsdom";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { environmentManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   ReadinessSummaryStatus,
   type AdminReadinessExport,
+  type AdminReadinessExportTrendSummary,
 } from "@workspace/api-client-react";
 import { ReadinessCleanupStatus } from "./admin/ReadinessCleanupStatus";
 import { customFetch } from "../../../../lib/api-client-react/src/custom-fetch";
@@ -26,6 +28,7 @@ import {
   readPendingReadinessExportOutcomes,
   readinessExportTrendInput,
   runReadinessAuditExport,
+  ReadinessAuditHistory,
 } from "./admin/ReadinessAuditHistory";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
@@ -36,8 +39,12 @@ Object.assign(globalThis, {
   MutationObserver: dom.window.MutationObserver,
 });
 Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
+const originalFetch = globalThis.fetch;
 afterEach(() => {
   cleanup();
+  environmentManager.setIsServer(() => true);
+  mock.timers.reset();
+  globalThis.fetch = originalFetch;
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
 });
 
@@ -328,6 +335,71 @@ test("cleanup alarm shows the server threshold and timestamps, then clears on re
   assert.match(delayedFirstRun, /Jadwal terlambat/);
   assert.match(delayedFirstRun, /Belum tercatat/);
   assert.doesNotMatch(delayedFirstRun, /learner|email|personId/);
+});
+
+test("admin cleanup alarm recovers on the scheduled trend refresh and a later failure cannot show cached health", async () => {
+  environmentManager.setIsServer(() => false);
+  mock.timers.enable({ apis: ["setInterval"] });
+  const active: AdminReadinessExportTrendSummary = {
+    thresholds: { minimumRecordCount: 5_000, minimumSampleSize: 5, failureRatio: 0.4, periodDays: 7 },
+    periodStart: "2026-09-22",
+    periodEnd: "2026-09-28",
+    aggregates: [],
+    alerts: [],
+    retentionCleanup: {
+      alertActive: true, consecutiveFailures: 3, failureThreshold: 3,
+      lastFailureAt: "2026-09-27T10:00:00.000Z", lastSuccessAt: "2026-09-23T08:00:00.000Z",
+      missedCycles: 0, missedCycleThreshold: 1, scheduleDelayed: false,
+    },
+  };
+  const recovered: AdminReadinessExportTrendSummary = {
+    ...active,
+    retentionCleanup: {
+      ...active.retentionCleanup,
+      alertActive: false,
+      consecutiveFailures: 0,
+      lastSuccessAt: "2026-09-28T10:00:00.000Z",
+    },
+  };
+  let trendRequests = 0;
+  globalThis.fetch = async input => {
+    const url = String(input);
+    if (url.endsWith("/readiness-history/export-trends")) {
+      trendRequests++;
+      if (trendRequests === 1) return Response.json(active);
+      if (trendRequests === 2) return Response.json(recovered);
+      return new Response("Trends unavailable", { status: 503 });
+    }
+    if (url.includes("/readiness-history")) {
+      return Response.json({ items: [], total: 0, page: 1, pageSize: 25 });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  const view = render(<QueryClientProvider client={client}>
+    <ReadinessAuditHistory enabled users={[]} pathways={[]} errorMessage={String} />
+  </QueryClientProvider>);
+  const cleanupStatus = () => view.queryByTestId("readiness-cleanup-status");
+
+  try {
+    await waitFor(() => assert.match(cleanupStatus()?.textContent ?? "", /Alarm kegagalan aktif/));
+    assert.equal(cleanupStatus()?.getAttribute("role"), "alert");
+    assert.equal(trendRequests, 1);
+
+    await act(async () => { mock.timers.tick(60_000); });
+    await waitFor(() => assert.match(cleanupStatus()?.textContent ?? "", /Cleanup tren ekspor: Normal/));
+    assert.equal(trendRequests, 2, "Recovery must come from a new trend request, not a remount");
+    assert.equal(cleanupStatus()?.getAttribute("role"), "status");
+    assert.doesNotMatch(cleanupStatus()?.textContent ?? "", /Alarm kegagalan aktif/);
+
+    await act(async () => { mock.timers.tick(60_000); });
+    await waitFor(() => assert.match(view.container.textContent ?? "", /Tren ekspor anonim tidak tersedia saat ini/));
+    assert.equal(trendRequests, 3);
+    assert.equal(cleanupStatus(), null, "Failed refresh must not display healthy cached trends");
+  } finally {
+    view.unmount();
+    client.clear();
+  }
 });
 
 test("export trend mutation cannot send device time to the server", () => {
