@@ -12,6 +12,20 @@ if ! flock -n 9; then
   exit 1
 fi
 
+# Preserve every validation step while making slow stages visible in setup logs.
+# Write markers to stderr so command substitutions below keep their stdout contract.
+pnpm() {
+  local started=$SECONDS
+  local status=0
+  printf 'Post-merge stage started at %s: pnpm' "$(date -u +%FT%TZ)" >&2
+  printf ' %q' "$@" >&2
+  printf '\n' >&2
+  command pnpm "$@" || status=$?
+  printf 'Post-merge stage finished at %s: %ss (exit %s)\n' \
+    "$(date -u +%FT%TZ)" "$((SECONDS - started))" "$status" >&2
+  return "$status"
+}
+
 pnpm install --frozen-lockfile
 if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_people') IS NOT NULL")" = "t" ]; then
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/post-merge.sql

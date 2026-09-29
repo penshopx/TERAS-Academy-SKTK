@@ -58,6 +58,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
+- Post-merge setup must keep the complete automatic validation suite, even if reconciliation takes longer. Do not make it appear successful by skipping tests; a running preview is not proof that post-merge setup passed.
 - The native Replit scheduled job `App Storage weekday smoke` runs `pnpm run smoke:app-storage` each weekday at 16:00 UTC with a 180-second timeout, alongside the unchanged autoscale deployment. Its failures notify the webhook configured in `TERAS_APP_STORAGE_ALERT_WEBHOOK_URL`; PASS runs do not notify. This operational early warning never constitutes release approval.
 
 ## Pointers
