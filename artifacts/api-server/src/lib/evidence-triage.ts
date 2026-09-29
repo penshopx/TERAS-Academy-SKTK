@@ -1,5 +1,6 @@
 import { inArray } from "drizzle-orm";
-import { agentRunsTable, db, modulesTable } from "@workspace/db";
+import { db, modulesTable } from "@workspace/db";
+import { recordAgentRun } from "./agent-observability";
 import { EVIDENCE_TRIAGE_AGENT, policyFor, resultHash, validateProviderSelection, type AgentRunStatus } from "./agentic";
 import { evidenceTriageAssignments, evidenceTriageMissingModules, evidenceTriageScope, selectedBaselineModuleIds } from "./teras";
 
@@ -137,7 +138,7 @@ export async function createEvidenceTriageRun(trainerId: string, complete: Compl
     agentVersion: EVIDENCE_TRIAGE_AGENT.version, policyDecision: policyFor(EVIDENCE_TRIAGE_AGENT.id, "READ"),
     provider, model,
   } : null;
-  await db.insert(agentRunsTable).values({
+  await recordAgentRun({
     id: runId, agentId: EVIDENCE_TRIAGE_AGENT.id, agentVersion: EVIDENCE_TRIAGE_AGENT.version,
     actorPersonId: trainerId, objective: OBJECTIVE, policyDecision: policyFor(EVIDENCE_TRIAGE_AGENT.id, "READ"),
     toolRefs: ["get_assigned_path_a_evidence_projection"], evidenceRefs: refs,

@@ -1950,7 +1950,49 @@ export type AdminAgentObservabilityDimensionsItem = {
   runCount: number;
 };
 
+export type AdminAgentHealthPeriodTotals = {
+  /** @minimum 0 */
+  runCount: number;
+  /** @minimum 0 */
+  completedCount: number;
+  /** @minimum 0 */
+  partialCount: number;
+  /** @minimum 0 */
+  failedCount: number;
+  /** @minimum 0 */
+  fallbackCount: number;
+};
+
+export type AdminAgentHealthPeriodTrendsItem = {
+  day: string;
+  /** @minimum 0 */
+  runCount: number;
+  /** @minimum 0 */
+  completedCount: number;
+  /** @minimum 0 */
+  partialCount: number;
+  /** @minimum 0 */
+  failedCount: number;
+  /** @minimum 0 */
+  fallbackCount: number;
+};
+
+/**
+ * Complete last 30 UTC calendar days including today; independent of the paged rolling ledger window.
+ */
+export interface AdminAgentHealthPeriod {
+  fromDay: string;
+  toDay: string;
+  totals: AdminAgentHealthPeriodTotals;
+  /**
+     * @minItems 30
+     * @maxItems 30
+     */
+  trends: AdminAgentHealthPeriodTrendsItem[];
+}
+
 export interface AdminAgentObservability {
+  period: AdminAgentHealthPeriod;
   windowDays: 30;
   from: string;
   to: string;

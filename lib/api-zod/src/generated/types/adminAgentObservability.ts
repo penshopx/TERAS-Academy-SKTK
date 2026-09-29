@@ -5,6 +5,7 @@
  * TERAS Academy capability development API
  * OpenAPI spec version: 0.1.0
  */
+import type { AdminAgentHealthPeriod } from './adminAgentHealthPeriod';
 import type { AdminAgentObservabilityDimensionsItem } from './adminAgentObservabilityDimensionsItem';
 import type { AdminAgentObservabilityPolicyCounts } from './adminAgentObservabilityPolicyCounts';
 import type { AdminAgentObservabilityStatusCounts } from './adminAgentObservabilityStatusCounts';
@@ -12,6 +13,7 @@ import type { AdminAgentObservabilityTotals } from './adminAgentObservabilityTot
 import type { AdminAgentObservabilityTrendsItem } from './adminAgentObservabilityTrendsItem';
 
 export interface AdminAgentObservability {
+  period: AdminAgentHealthPeriod;
   windowDays: 30;
   from: Date;
   to: Date;

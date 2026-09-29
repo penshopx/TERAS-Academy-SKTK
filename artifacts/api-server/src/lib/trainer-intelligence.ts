@@ -1,6 +1,6 @@
 import { and, desc, eq, or } from "drizzle-orm";
 import {
-  db, pool, agentRunsTable, diagnosticGapsTable, diagnosticProfilesTable,
+  db, pool, diagnosticGapsTable, diagnosticProfilesTable,
   diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceTable,
   practiceAttemptsTable, practiceReviewsTable, evidenceReviewsTable,
 } from "@workspace/db";
@@ -11,6 +11,7 @@ import {
   validateProviderSelection, type ProviderSelection,
 } from "./agentic";
 import { scopedPracticeQueue } from "./trainer-bottlenecks";
+import { recordAgentRun } from "./agent-observability";
 
 const ADVISORY = "Advisory only. This analysis does not determine competency, certification, readiness, or official assessment outcomes." as const;
 type AggregateCounts = { criticalGaps: number; pendingEvidence: number; activeRemediation: number };
@@ -235,7 +236,7 @@ export async function createTrainerIntelligenceRun(trainerId: string, complete: 
   }
   const completedAt = new Date();
   const result = { ...envelope, runId, status, agentId: TRAINER_INTELLIGENCE_AGENT.id, agentVersion: TRAINER_INTELLIGENCE_AGENT.version, policyDecision, provider, model };
-  await db.insert(agentRunsTable).values({
+  await recordAgentRun({
     id: runId, agentId: TRAINER_INTELLIGENCE_AGENT.id, agentVersion: TRAINER_INTELLIGENCE_AGENT.version,
     actorPersonId: trainerId, objective: CANONICAL_OBJECTIVE,
     policyDecision, toolRefs: projection.toolRefs, evidenceRefs: envelope.sourceRefs,

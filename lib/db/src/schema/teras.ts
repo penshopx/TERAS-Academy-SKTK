@@ -345,6 +345,25 @@ export const agentRunsTable = pgTable("teras_agent_runs", {
   check("teras_agent_runs_status_check", sql`${table.status} IN ('PLANNED','RUNNING','COMPLETED','FAILED','PARTIAL')`),
 ]);
 
+/** UTC calendar-day counts only; no run, learner, prompt, or evidence identifiers. */
+export const agentHealthDaysTable = pgTable("teras_agent_health_days", {
+  day: date("day", { mode: "string" }).primaryKey(),
+  runCount: integer("run_count").notNull().default(0),
+  completedCount: integer("completed_count").notNull().default(0),
+  partialCount: integer("partial_count").notNull().default(0),
+  failedCount: integer("failed_count").notNull().default(0),
+  fallbackCount: integer("fallback_count").notNull().default(0),
+}, table => [
+  check("teras_agent_health_days_nonnegative", sql`${table.runCount} >= 0 AND ${table.completedCount} >= 0 AND ${table.partialCount} >= 0 AND ${table.failedCount} >= 0 AND ${table.fallbackCount} >= 0`),
+]);
+
+export const agentHealthStateTable = pgTable("teras_agent_health_state", {
+  id: text("id").primaryKey(),
+  backfilledAt: timestamp("backfilled_at", { withTimezone: true }),
+}, table => [
+  check("teras_agent_health_state_singleton", sql`${table.id} = 'global'`),
+]);
+
 export const programRelations = relations(programsTable, ({ many }) => ({ modules: many(modulesTable), pathways: many(pathwaysTable) }));
 export const moduleRelations = relations(modulesTable, ({ many }) => ({ tasks: many(practiceTasksTable), assessments: many(assessmentsTable) }));
 

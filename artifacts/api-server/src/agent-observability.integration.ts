@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { createIntegrationTestApp } from "./integration-test-app";
-import { agentRunsTable, db, peopleTable, pool } from "@workspace/db";
+import { agentHealthDaysTable, agentRunsTable, db, peopleTable, pool } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { AGENT_HEALTH_PAGE_SIZE, openAgentCursor, sealAgentCursor, safeAgentDimension } from "./lib/agent-observability";
+import { AGENT_HEALTH_PAGE_SIZE, openAgentCursor, reconcileAgentHealthDay, recordAgentRun, sealAgentCursor, safeAgentDimension } from "./lib/agent-observability";
 
 const suffix = crypto.randomUUID();
 const actor = `observability-admin-${suffix}`;
@@ -67,7 +67,7 @@ async function run() {
     completedAt: row.start === null ? null : new Date(now),
   })));
   // A legacy row is deliberately missing resultSummary fields and must not fail aggregation.
-  await db.insert(agentRunsTable).values({
+  await recordAgentRun({
     id: `observability-legacy-${suffix}`, agentId: "trainer-intelligence",
     agentVersion: `observability-${suffix}`, actorPersonId: actor,
     objective: prohibited.objective, policyDecision: "ALLOW_READ",
@@ -75,6 +75,8 @@ async function run() {
     status: "COMPLETED", resultSummary: {}, resultHash: prohibited.raw,
     createdAt: new Date(now - 5000), startedAt: new Date(now - 5100), completedAt: new Date(now - 5000),
   });
+  // A fresh published schema has tables, not the development SQL backfill.
+  await pool.query("UPDATE teras_agent_health_state SET backfilled_at = NULL WHERE id = 'global'");
   const beforeCount = Number((await pool.query("SELECT count(*) AS count FROM teras_agent_runs")).rows[0].count);
   const app = createIntegrationTestApp(req => {
     const identity = req.get("x-agentic-identity");
@@ -91,6 +93,13 @@ async function run() {
     const { response, body } = await request(baseUrl, "admin");
     assert.equal(response.status, 200);
     assert.equal(body.windowDays, 30);
+    assert.equal(body.period.trends.length, 30);
+    assert.equal(body.period.trends.reduce((sum: number, day: any) => sum + day.runCount, 0), body.period.totals.runCount);
+    assert(body.period.totals.runCount >= 6);
+    const projected = await db.select().from(agentHealthDaysTable);
+    assert.deepEqual(Object.keys(projected[0]!).sort(), ["completedCount", "day", "failedCount", "fallbackCount", "partialCount", "runCount"].sort());
+    assert(!JSON.stringify(projected).includes(prohibited.evidence));
+    assert(!JSON.stringify(projected).includes(prohibited.actor));
     const allRows = [...existing, ...runRows.map(row => ({
       status: row.status, resultSummary: row.summary, startedAt: row.start === null ? null : new Date(now - row.start),
       completedAt: row.start === null ? null : new Date(now),
@@ -138,8 +147,11 @@ async function run() {
       createdAt: new Date(now - 10_000),
     }));
     await db.insert(agentRunsTable).values(bulk);
+    await reconcileAgentHealthDay(new Date().toISOString().slice(0, 10));
     const first = await request(baseUrl, "admin");
     assert.equal(first.body.totals.runCount, AGENT_HEALTH_PAGE_SIZE);
+    assert.equal(first.body.period.totals.runCount, body.period.totals.runCount + bulk.length);
+    assert.equal(first.body.period.trends.reduce((sum: number, day: any) => sum + day.runCount, 0), first.body.period.totals.runCount);
     assert.equal(first.body.trends.reduce((sum: number, day: any) => sum + day.runCount, 0), AGENT_HEALTH_PAGE_SIZE);
     assert(first.body.nextCursor);
     assert(!first.body.nextCursor.includes(bulk[0]!.id));
@@ -150,6 +162,31 @@ async function run() {
     assert.equal(secondResponse.status, 200);
     assert.equal(first.body.totals.runCount + second.totals.runCount, bulk.length + body.totals.runCount);
     assert.equal(second.to, first.body.to);
+    assert.deepEqual(second.period, first.body.period, "Period totals must not depend on ledger pagination");
+    await assert.rejects(recordAgentRun(bulk[0]!));
+    assert.equal((await request(baseUrl, "admin")).body.period.totals.runCount, first.body.period.totals.runCount, "Duplicate run must not increment projection");
+    const today = new Date().toISOString().slice(0, 10);
+    await pool.query("UPDATE teras_agent_health_days SET run_count = 0 WHERE day = $1", [today]);
+    await reconcileAgentHealthDay(today);
+    await reconcileAgentHealthDay(today);
+    assert.equal((await request(baseUrl, "admin")).body.period.totals.runCount, first.body.period.totals.runCount, "Reconciliation repairs drift without double counting");
+    await Promise.all([
+      reconcileAgentHealthDay(today),
+      ...Array.from({ length: 5 }, (_, index) => recordAgentRun({
+        id: `observability-concurrent-${suffix}-${index}`,
+        agentId: "trainer-intelligence", agentVersion: "1.0.0", objective: prohibited.objective,
+        policyDecision: "ALLOW_READ", status: "COMPLETED",
+      })),
+    ]);
+    assert.equal((await request(baseUrl, "admin")).body.period.totals.runCount, first.body.period.totals.runCount + 5,
+      "Concurrent reconciliation must not lose new runs");
+    await pool.query("INSERT INTO teras_agent_health_days (day, run_count) VALUES ((now() AT TIME ZONE 'UTC')::date - 45, 1)");
+    await pool.query("DELETE FROM teras_agent_health_days WHERE day < (now() AT TIME ZONE 'UTC')::date - 44");
+    assert.equal(Number((await pool.query("SELECT count(*) AS n FROM teras_agent_health_days WHERE day < (now() AT TIME ZONE 'UTC')::date - 44")).rows[0].n), 0);
+    const dailyPlan = await pool.query(`EXPLAIN SELECT * FROM teras_agent_health_days
+      WHERE day >= (now() AT TIME ZONE 'UTC')::date - 29 AND day <= (now() AT TIME ZONE 'UTC')::date
+      ORDER BY day LIMIT 30`);
+    assert.match(dailyPlan.rows.map(row => row["QUERY PLAN"]).join("\n"), /Limit/);
     assert.equal((await fetch(`${baseUrl}/admin/agent-observability?cursor=${encodeURIComponent(first.body.nextCursor)}`, {
       headers: { "x-agentic-identity": "learner" },
     })).status, 403);

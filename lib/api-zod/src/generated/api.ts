@@ -4931,6 +4931,29 @@ export const GetAdminAgentObservabilityQueryParams = zod.object({
   "cursor": zod.coerce.string().max(getAdminAgentObservabilityQueryCursorMax).optional().describe('Opaque next-page cursor returned by this endpoint')
 })
 
+export const getAdminAgentObservabilityResponsePeriodTotalsRunCountMin = 0;
+
+export const getAdminAgentObservabilityResponsePeriodTotalsCompletedCountMin = 0;
+
+export const getAdminAgentObservabilityResponsePeriodTotalsPartialCountMin = 0;
+
+export const getAdminAgentObservabilityResponsePeriodTotalsFailedCountMin = 0;
+
+export const getAdminAgentObservabilityResponsePeriodTotalsFallbackCountMin = 0;
+
+export const getAdminAgentObservabilityResponsePeriodTrendsItemRunCountMin = 0;
+
+export const getAdminAgentObservabilityResponsePeriodTrendsItemCompletedCountMin = 0;
+
+export const getAdminAgentObservabilityResponsePeriodTrendsItemPartialCountMin = 0;
+
+export const getAdminAgentObservabilityResponsePeriodTrendsItemFailedCountMin = 0;
+
+export const getAdminAgentObservabilityResponsePeriodTrendsItemFallbackCountMin = 0;
+
+export const getAdminAgentObservabilityResponsePeriodTrendsMin = 30;
+export const getAdminAgentObservabilityResponsePeriodTrendsMax = 30;
+
 export const getAdminAgentObservabilityResponsePolicyCountsMinOne = 0;
 
 export const getAdminAgentObservabilityResponseStatusCountsMinOne = 0;
@@ -4961,6 +4984,25 @@ export const getAdminAgentObservabilityResponseDimensionsItemRunCountMin = 0;
 
 
 export const GetAdminAgentObservabilityResponse = zod.object({
+  "period": zod.object({
+  "fromDay": zod.coerce.date(),
+  "toDay": zod.coerce.date(),
+  "totals": zod.object({
+  "runCount": zod.int().min(getAdminAgentObservabilityResponsePeriodTotalsRunCountMin),
+  "completedCount": zod.int().min(getAdminAgentObservabilityResponsePeriodTotalsCompletedCountMin),
+  "partialCount": zod.int().min(getAdminAgentObservabilityResponsePeriodTotalsPartialCountMin),
+  "failedCount": zod.int().min(getAdminAgentObservabilityResponsePeriodTotalsFailedCountMin),
+  "fallbackCount": zod.int().min(getAdminAgentObservabilityResponsePeriodTotalsFallbackCountMin)
+}),
+  "trends": zod.array(zod.object({
+  "day": zod.coerce.date(),
+  "runCount": zod.int().min(getAdminAgentObservabilityResponsePeriodTrendsItemRunCountMin),
+  "completedCount": zod.int().min(getAdminAgentObservabilityResponsePeriodTrendsItemCompletedCountMin),
+  "partialCount": zod.int().min(getAdminAgentObservabilityResponsePeriodTrendsItemPartialCountMin),
+  "failedCount": zod.int().min(getAdminAgentObservabilityResponsePeriodTrendsItemFailedCountMin),
+  "fallbackCount": zod.int().min(getAdminAgentObservabilityResponsePeriodTrendsItemFallbackCountMin)
+})).min(getAdminAgentObservabilityResponsePeriodTrendsMin).max(getAdminAgentObservabilityResponsePeriodTrendsMax)
+}).describe('Complete last 30 UTC calendar days including today; independent of the paged rolling ledger window.'),
   "windowDays": zod.literal(30),
   "from": zod.coerce.date(),
   "to": zod.coerce.date(),

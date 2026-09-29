@@ -3,7 +3,7 @@
 // @ts-nocheck
 import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
-import { AGENT_HEALTH_PAGE_SIZE, AGENT_HEALTH_WINDOW_MS, openAgentCursor, sealAgentCursor, safeAgentDimension } from "../lib/agent-observability";
+import { AGENT_HEALTH_PAGE_SIZE, AGENT_HEALTH_WINDOW_MS, agentHealthPeriod, openAgentCursor, sealAgentCursor, safeAgentDimension } from "../lib/agent-observability";
 import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import {
   CreateAdminCohortBody, CreateAdminCohortResponse, CreateAdminEnrollmentBody, CreateAdminEnrollmentResponse,
@@ -912,6 +912,7 @@ router.get("/admin/agent-observability", async (req, res): Promise<void> => {
   if (!await authorizeAdmin(req, res)) return;
   const position = req.query.cursor === undefined ? null : openAgentCursor(req.query.cursor);
   if (req.query.cursor !== undefined && !position) { res.status(400).json({ error: "Invalid or expired cursor" }); return; }
+  const period = await agentHealthPeriod();
   const to = position ? new Date(position.to) : new Date();
   const from = position ? new Date(position.from) : new Date(to.getTime() - AGENT_HEALTH_WINDOW_MS);
   const rows = await db.select({
@@ -961,7 +962,7 @@ router.get("/admin/agent-observability", async (req, res): Promise<void> => {
   latencies.sort((a, b) => a - b);
   const p95 = latencies.length ? latencies[Math.ceil(latencies.length * 0.95) - 1]! : null;
   res.json(GetAdminAgentObservabilityResponse.parse({
-    windowDays: 30, from, to, statusCounts, policyCounts,
+    windowDays: 30, from, to, statusCounts, policyCounts, period,
     sampleLimit: AGENT_HEALTH_PAGE_SIZE,
     nextCursor: rows.length > AGENT_HEALTH_PAGE_SIZE ? sealAgentCursor({
       from: from.toISOString(), to: to.toISOString(), createdAt: page.at(-1)!.createdAtExact, id: page.at(-1)!.id,
