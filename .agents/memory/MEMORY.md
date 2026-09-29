@@ -66,3 +66,4 @@
 - [Post-merge timeout diagnosis](post-merge-timeout-diagnosis.md) — a moving stall across test stages is not evidence that a larger global timeout will fix setup.
 - [Immutable incident recovery](immutable-incident-recovery.md) — resolve blocked trainer configuration incidents with linked recovery events, not edits to audit history.
 - [React Query Node polling tests](react-query-node-polling-tests.md) — jsdom added after imports does not enable polling; override server mode and release query timers.
+- [Expired retry-key races](expired-retry-key-races.md) — a committed stale key can make a concurrent insert skip even while cleanup is deleting it; retire it inside the writer transaction.

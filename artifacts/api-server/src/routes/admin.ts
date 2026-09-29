@@ -677,6 +677,14 @@ router.post("/admin/readiness-history/export-trends", async (req, res): Promise<
   }
   const recordGroup = readinessExportRecordGroup(input.recordCount);
   await db.transaction(async tx => {
+    // A current-day outcome may reuse a key whose old protection has expired.
+    // Delete that stale key in the same transaction before inserting; if cleanup
+    // is already deleting it, this waits for its row lock and then proceeds.
+    await tx.delete(readinessAuditExportAttemptsTable)
+      .where(and(
+        eq(readinessAuditExportAttemptsTable.attemptKey, input.attemptKey),
+        lt(readinessAuditExportAttemptsTable.day, readinessExportTrendRetentionCutoff()),
+      ));
     const inserted = await tx.insert(readinessAuditExportAttemptsTable)
       .values({ attemptKey: input.attemptKey, day })
       .onConflictDoNothing()

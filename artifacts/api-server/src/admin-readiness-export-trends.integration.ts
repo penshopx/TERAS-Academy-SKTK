@@ -63,6 +63,8 @@ const rejectExpiredAttemptDelete = sql.identifier(`reject_retention_attempt_${su
 const rejectRacingAttemptDelete = sql.identifier(`reject_racing_attempt_${suffix.replaceAll("-", "")}`);
 const racingFailureSequence = sql.identifier(`racing_failure_${suffix.replaceAll("-", "")}`);
 const racingAttemptKey = `retention-race-${suffix}`;
+const concurrentReuseAttemptKey = crypto.randomUUID();
+const pauseConcurrentReuseDelete = sql.identifier(`pause_reuse_delete_${suffix.replaceAll("-", "")}`);
 const racingAggregateGroup = "1.000–4.999 record";
 const racingLockNamespace = 912469;
 
@@ -130,6 +132,27 @@ async function run() {
         ? { periodProof: proof, ...data } : data),
     });
   };
+  const waitForBlockedQuery = async (stage: string, blockerPid: number) => {
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      const result = await db.execute<{ pid: number }>(sql`
+        SELECT pid::int AS pid FROM pg_stat_activity
+        WHERE pid <> pg_backend_pid()
+          AND wait_event_type = 'Lock'
+          AND ${blockerPid} = ANY(pg_blocking_pids(pid))
+        LIMIT 1
+      `);
+      if (result.rows[0]) return result.rows[0].pid;
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    const activity = await db.execute(sql`
+      SELECT pid, wait_event_type, wait_event, left(query, 150) AS query,
+        pg_blocking_pids(pid) AS blockers
+      FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND state <> 'idle'
+    `);
+    assert.fail(`Query did not wait for the expected ${stage} lock: ${JSON.stringify(activity.rows)}`);
+  };
+  let reuseCycleDay: string | undefined;
 
   try {
     // Isolate this test's current UTC day, then restore it in finally.
@@ -342,21 +365,6 @@ async function run() {
           && (error as Error & { cause?: Error }).cause?.message === "forced racing retention deletion failure",
         "The first cleanup must fail after claiming the UTC cycle",
       );
-      const waitForBlockedQuery = async (stage: string, blockerPid: number) => {
-        const deadline = Date.now() + 5_000;
-        while (Date.now() < deadline) {
-          const result = await db.execute<{ pid: number }>(sql`
-            SELECT pid::int AS pid FROM pg_stat_activity
-            WHERE pid <> pg_backend_pid()
-              AND wait_event_type = 'Lock'
-              AND ${blockerPid} = ANY(pg_blocking_pids(pid))
-            LIMIT 1
-          `);
-          if (result.rows[0]) return result.rows[0].pid;
-          await new Promise(resolve => setTimeout(resolve, 25));
-        }
-        assert.fail(`Cleanup did not wait for the expected ${stage} lock`);
-      };
       const firstPid = await waitForBlockedQuery("first cleanup after cycle claim", holderPid);
       secondCleanup = pruneReadinessExportTrendAggregates(nextRetentionCycle);
       await waitForBlockedQuery("second cleanup on first cycle claim", firstPid);
@@ -584,6 +592,86 @@ async function run() {
 
     const alert = summary.alerts.find((item: any) => item.recordGroup === "5.000–9.999 record");
     assert(alert && alert.sampleSize === 5 && alert.failedCount === 3 && alert.failureRatio === 0.6, "Failure and cancelled outcomes must create the expected alert");
+
+    // Pause cleanup after it locks the expired attempt row, then prove the
+    // incoming POST is waiting on that cleanup rather than arriving afterward.
+    const reuseCycle = new Date(laterRetentionCycle);
+    do {
+      reuseCycle.setUTCDate(reuseCycle.getUTCDate() + 1);
+      reuseCycleDay = reuseCycle.toISOString().slice(0, 10);
+      assert(reuseCycle.getTime() - retentionNow.getTime() < 30 * 86_400_000,
+        "No unclaimed retention cycle was available for concurrent reuse");
+    } while ((await db.select().from(readinessAuditExportRetentionCyclesTable)
+      .where(eq(readinessAuditExportRetentionCyclesTable.day, reuseCycleDay))).length > 0);
+    await db.insert(readinessAuditExportAttemptsTable).values({
+      attemptKey: concurrentReuseAttemptKey, day: expiredRetentionDay,
+    });
+    await db.execute(sql`
+      CREATE FUNCTION ${pauseConcurrentReuseDelete}() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        PERFORM pg_advisory_xact_lock(${sql.raw(String(racingLockNamespace))}, ${sql.raw(String(seed))});
+        RETURN OLD;
+      END
+      $$
+    `);
+    await db.execute(sql`
+      CREATE TRIGGER ${pauseConcurrentReuseDelete}
+      BEFORE DELETE ON teras_readiness_audit_export_attempts
+      FOR EACH ROW WHEN (OLD.attempt_key = '${sql.raw(concurrentReuseAttemptKey)}')
+      EXECUTE FUNCTION ${pauseConcurrentReuseDelete}()
+    `);
+    let releaseReuseLock!: () => void;
+    let reuseLockHeld!: () => void;
+    const releaseReuse = new Promise<void>(resolve => { releaseReuseLock = resolve; });
+    const reuseHeld = new Promise<void>(resolve => { reuseLockHeld = resolve; });
+    let reuseHolderPid: number | undefined;
+    const reuseHolder = db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${racingLockNamespace}, ${seed})`);
+      const result = await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid()::int AS pid`);
+      reuseHolderPid = result.rows[0]?.pid;
+      reuseLockHeld();
+      await releaseReuse;
+    });
+    let reuseCleanup: ReturnType<typeof pruneReadinessExportTrendAggregates> | undefined;
+    let racingPost: ReturnType<typeof post> | undefined;
+    const concurrentOutcome = {
+      attemptKey: concurrentReuseAttemptKey, outcome: "cancelled", recordCount: 10_000,
+    };
+    try {
+      await reuseHeld;
+      assert(reuseHolderPid, "The reuse fixture must identify its held database session");
+      reuseCleanup = pruneReadinessExportTrendAggregates(reuseCycle);
+      const cleanupState = await Promise.race([
+        reuseCleanup.then(result => ({ kind: "finished" as const, result })),
+        waitForBlockedQuery("cleanup deleting the expired UUID", reuseHolderPid)
+          .then(pid => ({ kind: "blocked" as const, pid })),
+      ]);
+      assert.equal(cleanupState.kind, "blocked", `Cleanup finished before deleting expired UUID: ${JSON.stringify(cleanupState)}`);
+      const cleanupPid = cleanupState.pid!;
+      racingPost = post("admin", concurrentOutcome);
+      await waitForBlockedQuery("POST deleting the same expired UUID during cleanup", cleanupPid);
+      releaseReuseLock();
+      await reuseHolder;
+      assert.equal((await reuseCleanup).executed, true, "The paused cleanup must commit");
+      assert.equal((await racingPost).status, 204, "The waiting POST must succeed after cleanup");
+      const attempt = await db.select().from(readinessAuditExportAttemptsTable)
+        .where(eq(readinessAuditExportAttemptsTable.attemptKey, concurrentReuseAttemptKey));
+      assert.equal(attempt.length, 1, "Cleanup must not remove the new retry key");
+      assert.equal(attempt[0]!.day, today, "The new retry key must belong to the POST day");
+      const countConcurrentOutcome = async () => {
+        const rows = await db.select().from(readinessAuditExportAggregatesTable)
+          .where(eq(readinessAuditExportAggregatesTable.day, today));
+        return rows.find(row => row.recordGroup === "10.000+ record" && row.outcome === "cancelled")?.count;
+      };
+      assert.equal(await countConcurrentOutcome(), 1, "The POST during cleanup must count exactly once");
+      assert.equal((await post("admin", concurrentOutcome)).status, 204, "The same UUID must accept a retry");
+      assert.equal(await countConcurrentOutcome(), 1, "Retry must not recount the outcome");
+    } finally {
+      releaseReuseLock();
+      await Promise.allSettled([reuseHolder, reuseCleanup, racingPost].filter(promise => promise !== undefined));
+      await db.execute(sql`DROP TRIGGER IF EXISTS ${pauseConcurrentReuseDelete} ON teras_readiness_audit_export_attempts`);
+      await db.execute(sql`DROP FUNCTION IF EXISTS ${pauseConcurrentReuseDelete}()`);
+    }
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     await db.execute(sql`DROP TRIGGER IF EXISTS ${rejectExpiredAttemptDelete} ON teras_readiness_audit_export_attempts`);
@@ -591,14 +679,18 @@ async function run() {
     await db.execute(sql`DROP TRIGGER IF EXISTS ${rejectRacingAttemptDelete} ON teras_readiness_audit_export_attempts`);
     await db.execute(sql`DROP FUNCTION IF EXISTS ${rejectRacingAttemptDelete}()`);
     await db.execute(sql`DROP SEQUENCE IF EXISTS ${racingFailureSequence}`);
+    await db.execute(sql`DROP TRIGGER IF EXISTS ${pauseConcurrentReuseDelete} ON teras_readiness_audit_export_attempts`);
+    await db.execute(sql`DROP FUNCTION IF EXISTS ${pauseConcurrentReuseDelete}()`);
     await db.delete(readinessAuditExportAttemptsTable)
-      .where(eq(readinessAuditExportAttemptsTable.attemptKey, racingAttemptKey));
+      .where(inArray(readinessAuditExportAttemptsTable.attemptKey, [racingAttemptKey, concurrentReuseAttemptKey]));
     await db.delete(readinessAuditExportAggregatesTable)
       .where(inArray(readinessAuditExportAggregatesTable.day, [today, ...fixtureDays]));
     await db.delete(readinessAuditExportAttemptsTable)
       .where(inArray(readinessAuditExportAttemptsTable.day, [today, ...fixtureDays]));
     await db.delete(readinessAuditExportRetentionCyclesTable)
       .where(inArray(readinessAuditExportRetentionCyclesTable.day, [today, nextRetentionCycleDay, laterRetentionCycleDay]));
+    if (reuseCycleDay) await db.delete(readinessAuditExportRetentionCyclesTable)
+      .where(eq(readinessAuditExportRetentionCyclesTable.day, reuseCycleDay));
     await db.delete(readinessAuditExportRetentionHealthTable);
     if (baselineRows.length) await db.insert(readinessAuditExportAggregatesTable).values(baselineRows);
     if (baselineAttempts.length) await db.insert(readinessAuditExportAttemptsTable).values(baselineAttempts);
