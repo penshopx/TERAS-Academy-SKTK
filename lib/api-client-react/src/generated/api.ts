@@ -100,6 +100,7 @@ import type {
   GetAdminAgentObservabilityParams,
   GetAssessmentParams,
   GetLearnerJourneyPageParams,
+  GetTrainerEvidenceTriageTargetParams,
   GetTrainerReminderPreferenceHistoryParams,
   HealthStatus,
   JourneyPage,
@@ -149,6 +150,7 @@ import type {
   TrainerDashboard,
   TrainerEvidenceReviewInput,
   TrainerEvidenceTriageRun,
+  TrainerEvidenceTriageTarget,
   TrainerIntelligenceRun,
   TrainerPracticeReviewInput,
   TrainerRemediationOpen,
@@ -2889,6 +2891,90 @@ export function useGetTrainerReviewQueue<TData = Awaited<ReturnType<typeof getTr
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetTrainerReviewQueueQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetTrainerEvidenceTriageTargetUrl = (params: GetTrainerEvidenceTriageTargetParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/trainer/evidence-triage/target?${stringifiedParams}` : `/api/trainer/evidence-triage/target`
+}
+
+/**
+ * @summary Resolve a current assigned Path A triage reference without recording a review
+ */
+export const getTrainerEvidenceTriageTarget = async (params: GetTrainerEvidenceTriageTargetParams, options?: Parameters<typeof customFetch>[1]): Promise<TrainerEvidenceTriageTarget> => {
+
+  return customFetch<TrainerEvidenceTriageTarget>(getGetTrainerEvidenceTriageTargetUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTrainerEvidenceTriageTargetQueryKey = (params?: GetTrainerEvidenceTriageTargetParams,) => {
+    return [
+    `/api/trainer/evidence-triage/target`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetTrainerEvidenceTriageTargetQueryOptions = <TData = Awaited<ReturnType<typeof getTrainerEvidenceTriageTarget>>, TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>>(params: GetTrainerEvidenceTriageTargetParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrainerEvidenceTriageTarget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTrainerEvidenceTriageTargetQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTrainerEvidenceTriageTarget>>> = ({ signal }) => getTrainerEvidenceTriageTarget(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTrainerEvidenceTriageTarget>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTrainerEvidenceTriageTargetQueryResult = NonNullable<Awaited<ReturnType<typeof getTrainerEvidenceTriageTarget>>>
+export type GetTrainerEvidenceTriageTargetQueryError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>
+
+
+/**
+ * @summary Resolve a current assigned Path A triage reference without recording a review
+ */
+
+export function useGetTrainerEvidenceTriageTarget<TData = Awaited<ReturnType<typeof getTrainerEvidenceTriageTarget>>, TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>>(
+ params: GetTrainerEvidenceTriageTargetParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrainerEvidenceTriageTarget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTrainerEvidenceTriageTargetQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

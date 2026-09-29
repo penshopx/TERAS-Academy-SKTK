@@ -599,6 +599,26 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ReviewQueueItem"
+  /trainer/evidence-triage/target:
+    get:
+      operationId: getTrainerEvidenceTriageTarget
+      tags: [trainer]
+      summary: Resolve a current assigned Path A triage reference without recording a review
+      parameters:
+        - { in: query, name: learnerId, required: true, schema: { type: string } }
+        - { in: query, name: pathwayId, required: true, schema: { type: string } }
+        - { in: query, name: moduleId, required: true, schema: { type: string } }
+        - { in: query, name: evidenceRef, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Current scoped evidence or missing-submission module
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrainerEvidenceTriageTarget" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /trainer/diagnostic-recommendations/{recommendationId}/follow-ups:
     post:
       operationId: recordDiagnosticRecommendationFollowUp
@@ -5168,6 +5188,16 @@ components:
         moduleId: { type: string }
         evidenceRef: { type: string }
       required: [learnerId, learnerName, pathwayId, moduleId, evidenceRef]
+    TrainerEvidenceTriageTarget:
+      type: object
+      properties:
+        learnerName: { type: string }
+        pathwayName: { type: string }
+        moduleName: { type: string }
+        title: { type: ["string", "null"] }
+        evidenceId: { type: ["string", "null"] }
+        status: { type: ["string", "null"] }
+      required: [learnerName, pathwayName, moduleName, title, evidenceId, status]
     TrainerEvidenceTriageCategory:
       type: object
       properties:

@@ -2452,6 +2452,26 @@ export const GetTrainerReviewQueueResponse = zod.array(GetTrainerReviewQueueResp
 
 
 /**
+ * @summary Resolve a current assigned Path A triage reference without recording a review
+ */
+export const GetTrainerEvidenceTriageTargetQueryParams = zod.object({
+  "learnerId": zod.coerce.string(),
+  "pathwayId": zod.coerce.string(),
+  "moduleId": zod.coerce.string(),
+  "evidenceRef": zod.coerce.string()
+})
+
+export const GetTrainerEvidenceTriageTargetResponse = zod.object({
+  "learnerName": zod.string(),
+  "pathwayName": zod.string(),
+  "moduleName": zod.string(),
+  "title": zod.string().nullable(),
+  "evidenceId": zod.string().nullable(),
+  "status": zod.string().nullable()
+})
+
+
+/**
  * @summary Append a trainer follow-up to a diagnostic recommendation
  */
 

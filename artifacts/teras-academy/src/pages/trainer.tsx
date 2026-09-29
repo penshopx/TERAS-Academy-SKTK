@@ -6,8 +6,11 @@ import { CourseAuthoring } from "@/components/trainer/authoring/course-authoring
 import { AdminReadOnlyDashboard } from "@/components/admin-read-only-dashboard";
 import { TrainerIntelligencePanel } from "@/components/trainer/intelligence-panel";
 import { EvidenceTriagePanel } from "@/components/trainer/evidence-triage-panel";
+import type { TriageReference } from "@/components/trainer/evidence-triage-panel";
+import { useState } from "react";
 
 export default function TrainerDesk() {
+  const [triageTarget, setTriageTarget] = useState<{ reference: TriageReference; requestId: number } | null>(null);
   const session = useGetCurrentSession({ query: { queryKey: getGetCurrentSessionQueryKey(), staleTime: 60_000 } });
   const roles = new Set(session.data?.roles ?? []);
   const adminReadOnly = roles.has("admin") && !roles.has("trainer");
@@ -34,8 +37,11 @@ export default function TrainerDesk() {
         </TabsList>
         <TabsContent value="queue" className="mt-0">
           <TrainerIntelligencePanel />
-          <EvidenceTriagePanel />
-          <ReviewQueue dashboard={dashboard} />
+           <EvidenceTriagePanel onOpen={reference => {
+             setTriageTarget(current => ({ reference, requestId: (current?.requestId ?? 0) + 1 }));
+             document.getElementById("trainer-review-queue")?.scrollIntoView({ behavior: "smooth", block: "start" });
+           }} />
+           <ReviewQueue dashboard={dashboard} triageTarget={triageTarget} />
         </TabsContent>
         <TabsContent value="authoring" className="mt-0 h-[calc(100vh-180px)]">
           <CourseAuthoring />

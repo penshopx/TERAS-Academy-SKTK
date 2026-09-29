@@ -3544,6 +3544,18 @@ export interface TrainerEvidenceTriageItem {
   evidenceRef: string;
 }
 
+export interface TrainerEvidenceTriageTarget {
+  learnerName: string;
+  pathwayName: string;
+  moduleName: string;
+  /** @nullable */
+  title: string | null;
+  /** @nullable */
+  evidenceId: string | null;
+  /** @nullable */
+  status: string | null;
+}
+
 export type TrainerEvidenceTriageCategoryCategory = typeof TrainerEvidenceTriageCategoryCategory[keyof typeof TrainerEvidenceTriageCategoryCategory];
 
 
@@ -3682,6 +3694,13 @@ export type GetTrainerReminderPreferenceHistoryParams = {
  * @maxLength 1024
  */
 cursor?: string;
+};
+
+export type GetTrainerEvidenceTriageTargetParams = {
+learnerId: string;
+pathwayId: string;
+moduleId: string;
+evidenceRef: string;
 };
 
 export type ListAdminReadinessHistoryParams = {

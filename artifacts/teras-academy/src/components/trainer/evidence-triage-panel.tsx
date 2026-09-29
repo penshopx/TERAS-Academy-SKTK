@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type Result = NonNullable<ReturnType<typeof useCreateTrainerEvidenceTriageRun>["data"]>;
+export type TriageReference = Result["categories"][number]["items"][number];
 
-export function EvidenceTriagePanel() {
+export function EvidenceTriagePanel({ onOpen }: { onOpen: (item: TriageReference) => void }) {
   const [result, setResult] = useState<Result>();
   const mutation = useCreateTrainerEvidenceTriageRun({ mutation: { onSuccess: setResult } });
   return (
@@ -33,6 +34,10 @@ export function EvidenceTriagePanel() {
                   {category.items.map((item, index) => (
                     <li key={`${item.learnerId}-${item.pathwayId}-${item.evidenceRef}-${index}`} className="font-mono text-xs">
                       {item.learnerName} · {item.moduleId} · <span className="break-all">{item.evidenceRef}</span>
+                      <Button type="button" variant="link" size="sm" className="ml-2 h-auto p-0 text-xs" onClick={() => onOpen(item)}
+                        aria-label={`Buka ${item.evidenceRef} untuk ${item.learnerName} di antrean review`}>
+                        Buka di antrean review
+                      </Button>
                     </li>
                   ))}
                 </ul>

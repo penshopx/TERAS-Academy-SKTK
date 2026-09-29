@@ -10,13 +10,14 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { trackReadinessDecisionRecorded, trackReadinessQueueOpened } from "@/lib/analytics";
-import { getGetCapabilityPassportQueryKey, getGetLearnerDashboardQueryKey, getGetLearnerReadinessQueryKey, getGetTrainerDashboardQueryKey, getGetTrainerReviewQueueQueryKey, getListEvidenceQueryKey, useReviewEvidenceByTrainer, useReviewPracticeAttempt, TrainerDashboard } from "@workspace/api-client-react";
+import { getGetCapabilityPassportQueryKey, getGetLearnerDashboardQueryKey, getGetLearnerReadinessQueryKey, getGetTrainerDashboardQueryKey, getGetTrainerEvidenceTriageTargetQueryKey, getGetTrainerReviewQueueQueryKey, getListEvidenceQueryKey, getTrainerEvidenceTriageTarget, useGetTrainerEvidenceTriageTarget, useReviewEvidenceByTrainer, useReviewPracticeAttempt, TrainerDashboard } from "@workspace/api-client-react";
 import { DiagnosticFollowUps } from "./diagnostic-follow-ups";
+import type { TriageReference } from "./evidence-triage-panel";
 import { clearDraftIdempotencyKey, getDraftIdempotencyKey } from "@/lib/draft-idempotency";
 
 type QueueItem = { id: string; kind: string; title: string; moduleName: string; learnerName: string; pathwayName: string; priority: string; };
 
-export function ReviewQueue({ dashboard }: { dashboard: TrainerDashboard }) {
+export function ReviewQueue({ dashboard, triageTarget }: { dashboard: TrainerDashboard; triageTarget: { reference: TriageReference; requestId: number } | null }) {
   const evidenceReview = useReviewEvidenceByTrainer();
   const practiceReview = useReviewPracticeAttempt();
   const queryClient = useQueryClient();
@@ -25,6 +26,28 @@ export function ReviewQueue({ dashboard }: { dashboard: TrainerDashboard }) {
   const [status, setStatus] = useState("Valid");
   const [comment, setComment] = useState("");
   const [quality, setQuality] = useState({ valid: true, relevant: true, sufficient: true, traceable: true });
+  const reference = triageTarget?.reference;
+  const targetParams = { learnerId: reference?.learnerId ?? "", pathwayId: reference?.pathwayId ?? "", moduleId: reference?.moduleId ?? "", evidenceRef: reference?.evidenceRef ?? "" };
+  const target = useGetTrainerEvidenceTriageTarget(targetParams, {
+    query: { enabled: !!triageTarget, retry: false, queryKey: [...getGetTrainerEvidenceTriageTargetQueryKey(targetParams), triageTarget?.requestId], staleTime: 0 },
+  });
+  const [targetOpening, setTargetOpening] = useState(false);
+  const openTriageReview = async () => {
+    if (!reference || !target.data?.evidenceId || targetOpening) return;
+    setTargetOpening(true);
+    try {
+      // Refresh before opening a decision form; never trust the old triage snapshot.
+      const current = await getTrainerEvidenceTriageTarget(targetParams);
+      if (current.evidenceId !== target.data.evidenceId) throw new Error("Changed target");
+      openReview({ id: current.evidenceId, kind: "Evidence", title: current.title ?? "", moduleName: current.moduleName,
+        learnerName: current.learnerName, pathwayName: current.pathwayName, priority: "High" });
+    } catch {
+      await target.refetch();
+      toast({ title: "Bukti tidak tersedia", description: "Penugasan atau bukti telah berubah. Jalankan triage lagi.", variant: "destructive" });
+    } finally {
+      setTargetOpening(false);
+    }
+  };
   
   const pending = evidenceReview.isPending || practiceReview.isPending;
 
@@ -116,9 +139,23 @@ export function ReviewQueue({ dashboard }: { dashboard: TrainerDashboard }) {
         </CardContent>
       </Card>
       <DiagnosticFollowUps items={dashboard.diagnosticFollowUps} />
-      <Card className="cockpit-panel mt-6">
+       <Card id="trainer-review-queue" className="cockpit-panel mt-6">
         <CardHeader><CardTitle data-testid="trainer-role-queue-title">Trainer review queue</CardTitle><p className="text-sm text-muted-foreground">Review submitted practice for feedback and evidence for verification. Remediation and readiness counts are handoff context only; this contract does not expose actions for them here.</p></CardHeader>
-        <CardContent className="p-0">
+         <CardContent className="p-0">
+           {triageTarget && <div className="m-4 rounded-md border border-primary/40 bg-primary/5 p-4 text-sm" aria-live="polite" data-testid="trainer-triage-target">
+             {target.isPending && <p>Memeriksa penugasan dan bukti terkini...</p>}
+             {target.isError && <p role="alert">Referensi tidak tersedia atau penugasan berubah. Jalankan triage lagi.</p>}
+             {target.data && !target.isError && <div className="flex flex-wrap items-center justify-between gap-3">
+               <div>
+                 <p className="font-semibold">{target.data.learnerName} · {target.data.moduleName}</p>
+                 <p className="text-muted-foreground">{target.data.pathwayName} · {target.data.title ?? "Belum ada pengajuan bukti untuk modul ini"}</p>
+                 {target.data.status && <p className="text-xs text-muted-foreground">Status: {target.data.status}</p>}
+               </div>
+               {target.data.evidenceId && <Button type="button" size="sm" onClick={openTriageReview} disabled={targetOpening}>
+                 {targetOpening ? "Memeriksa..." : "Buka review bukti"}
+               </Button>}
+             </div>}
+           </div>}
           <div className="hidden md:block">
             <Table>
               <TableHeader className="bg-background/50">

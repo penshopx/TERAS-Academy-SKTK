@@ -1,9 +1,9 @@
 import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
-import { CreateTrainerEvidenceTriageRunResponse, CreateTrainerIntelligenceRunResponse, GetTrainerDashboardResponse, GetTrainerReminderPreferenceHistoryResponse, GetTrainerReminderPreferencesResponse, GetTrainerReviewQueueResponse, OpenTrainerRemediationBody, OpenTrainerRemediationResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse, UpdateTrainerReminderPreferencesBody, UpdateTrainerReminderPreferencesResponse } from "@workspace/api-zod";
-import { adminAuditEventsTable, db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, trainerReminderPreferencesTable } from "@workspace/db";
+import { CreateTrainerEvidenceTriageRunResponse, CreateTrainerIntelligenceRunResponse, GetTrainerDashboardResponse, GetTrainerEvidenceTriageTargetResponse, GetTrainerReminderPreferenceHistoryResponse, GetTrainerReminderPreferencesResponse, GetTrainerReviewQueueResponse, OpenTrainerRemediationBody, OpenTrainerRemediationResponse, RecordDiagnosticRecommendationFollowUpBody, RecordDiagnosticRecommendationFollowUpParams, RecordDiagnosticRecommendationFollowUpResponse, ReviewEvidenceByTrainerBody, ReviewEvidenceByTrainerParams, ReviewEvidenceByTrainerResponse, ReviewPracticeAttemptBody, ReviewPracticeAttemptParams, ReviewPracticeAttemptResponse, UpdateTrainerReminderPreferencesBody, UpdateTrainerReminderPreferencesResponse } from "@workspace/api-zod";
+import { adminAuditEventsTable, db, diagnosticGapsTable, diagnosticProfilesTable, diagnosticRecommendationFollowUpsTable, diagnosticRecommendationsTable, diagnosticSafetyFlagsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningRecordLinksTable, peopleTable, practiceAttemptsTable, practiceReviewsTable, practiceTasksTable, modulesTable, pathwaysTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, trainerReminderPreferencesTable } from "@workspace/db";
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
-import { evidenceRecords, gapRecords, pathwayHasModule, remediationRecords, workspaceAssignmentContexts } from "../lib/teras";
+import { evidenceRecords, evidenceTriageAssignments, evidenceTriageMissingModules, gapRecords, pathwayHasModule, remediationRecords, selectedBaselineModuleIds, workspaceAssignmentContexts } from "../lib/teras";
 import { authorizeWorkspaceRole } from "../lib/authorization";
 import { learningNextAction } from "../lib/learning-transition";
 import { latestPracticeReviewRows, latestPracticeReviews, practiceQueueState, recentPracticeReviewRows, scopedPracticeQueue, trainerBottlenecks } from "../lib/trainer-bottlenecks";
@@ -188,6 +188,41 @@ async function diagnosticFollowUps(contexts: Awaited<ReturnType<typeof workspace
 router.get("/trainer/review-queue", async (req, res): Promise<void> => {
   const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;
   res.json(GetTrainerReviewQueueResponse.parse((await queue(trainerId)).items));
+});
+router.get("/trainer/evidence-triage/target", async (req, res): Promise<void> => {
+  const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;
+  const { learnerId, pathwayId, moduleId, evidenceRef } = req.query;
+  if (![learnerId, pathwayId, moduleId, evidenceRef].every(value => typeof value === "string" && value.length > 0 && value.length <= 256)
+    || (typeof evidenceRef === "string" && !/^(evidence|module):[^:]+$/.test(evidenceRef))) {
+    res.status(400).json({ error: "Invalid triage reference" }); return;
+  }
+  const [context] = (await evidenceTriageAssignments(trainerId))
+    .filter(item => item.learnerId === learnerId && item.pathwayId === pathwayId);
+  if (!context) { res.status(404).json({ error: "Triage target unavailable" }); return; }
+  const selected = await selectedBaselineModuleIds(context.pathwayId, context.baselineVersionId);
+  const [module] = selected.has(moduleId as string)
+    ? await db.select().from(modulesTable).where(and(eq(modulesTable.id, moduleId as string), eq(modulesTable.programId, context.programId))).limit(1)
+    : [];
+  const [pathway] = await db.select().from(pathwaysTable).where(eq(pathwaysTable.id, context.pathwayId)).limit(1);
+  if (!module || !pathway) { res.status(404).json({ error: "Triage target unavailable" }); return; }
+  if ((evidenceRef as string).startsWith("module:")) {
+    if (evidenceRef !== `module:${module.id}` ||
+      !(await evidenceTriageMissingModules(context.learnerId, context.pathwayId, [module.id])).includes(module.id)) {
+      res.status(404).json({ error: "Triage target unavailable" }); return;
+    }
+    res.json(GetTrainerEvidenceTriageTargetResponse.parse({ learnerName: context.learnerName, pathwayName: pathway.name, moduleName: module.name, title: null, evidenceId: null, status: null }));
+    return;
+  }
+  const evidenceId = (evidenceRef as string).slice("evidence:".length);
+  const [evidence] = await db.select().from(evidenceTable).where(and(
+    eq(evidenceTable.id, evidenceId), eq(evidenceTable.learnerId, context.learnerId),
+    eq(evidenceTable.pathwayId, context.pathwayId), eq(evidenceTable.moduleId, module.id),
+  )).limit(1);
+  if (!evidence) { res.status(404).json({ error: "Triage target unavailable" }); return; }
+  const [review] = await db.select({ status: evidenceReviewsTable.status }).from(evidenceReviewsTable)
+    .where(eq(evidenceReviewsTable.evidenceId, evidence.id))
+    .orderBy(desc(evidenceReviewsTable.createdAt), desc(evidenceReviewsTable.id)).limit(1);
+  res.json(GetTrainerEvidenceTriageTargetResponse.parse({ learnerName: context.learnerName, pathwayName: pathway.name, moduleName: module.name, title: evidence.title, evidenceId: evidence.id, status: review?.status ?? "Under review" }));
 });
 router.get("/trainer/dashboard", async (req, res): Promise<void> => {
   const trainerId = await authorizeWorkspaceRole(req, res, "trainer"); if (!trainerId) return;
