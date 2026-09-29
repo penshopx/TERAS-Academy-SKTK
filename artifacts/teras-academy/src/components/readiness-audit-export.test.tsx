@@ -274,15 +274,31 @@ test("cleanup alarm shows the server threshold and timestamps, then clears on re
     failureThreshold: 3,
     lastFailureAt: "2026-09-27T10:00:00.000Z",
     lastSuccessAt: "2026-09-23T08:00:00.000Z",
+    missedCycles: 0,
+    missedCycleThreshold: 1,
+    scheduleDelayed: false,
   };
   const active = renderToStaticMarkup(<ReadinessCleanupStatus status={status} />);
   assert.match(active, /role="alert"/);
-  assert.match(active, /Alarm aktif/);
+  assert.match(active, /Alarm kegagalan aktif/);
   assert.match(active, /3 kegagalan beruntun · Ambang alarm: 3 kegagalan beruntun/);
   assert.match(active, /Keberhasilan terakhir/);
   assert.match(active, /Kegagalan terakhir/);
   assert.match(active, /27 Sep 2026/);
   assert.doesNotMatch(active, /learner|email|personId/);
+
+  const delayed = renderToStaticMarkup(<ReadinessCleanupStatus status={{
+    ...status,
+    alertActive: false,
+    consecutiveFailures: 0,
+    scheduleDelayed: true,
+    missedCycles: 2,
+  }} />);
+  assert.match(delayed, /role="alert"/);
+  assert.match(delayed, /Jadwal terlambat/);
+  assert.match(delayed, /2 siklus UTC terlewat · Ambang keterlambatan: 1 siklus UTC/);
+  assert.match(delayed, /Periksa scheduler/);
+  assert.doesNotMatch(delayed, /learner|email|personId|Alarm kegagalan aktif/);
 
   const recovered = renderToStaticMarkup(<ReadinessCleanupStatus status={{
     ...status,
@@ -298,10 +314,20 @@ test("cleanup alarm shows the server threshold and timestamps, then clears on re
   const neverRun = renderToStaticMarkup(<ReadinessCleanupStatus status={{
     alertActive: false, consecutiveFailures: 0, failureThreshold: 3,
     lastFailureAt: null, lastSuccessAt: null,
+    missedCycles: 0, missedCycleThreshold: 1, scheduleDelayed: false,
   }} />);
   assert.match(neverRun, /Belum tercatat/);
   assert.match(neverRun, /Belum ada hasil/);
   assert.doesNotMatch(neverRun, /Cleanup tren ekspor: Normal/);
+  const delayedFirstRun = renderToStaticMarkup(<ReadinessCleanupStatus status={{
+    alertActive: false, consecutiveFailures: 0, failureThreshold: 3,
+    lastFailureAt: null, lastSuccessAt: null,
+    missedCycles: 2, missedCycleThreshold: 1, scheduleDelayed: true,
+  }} />);
+  assert.match(delayedFirstRun, /role="alert"/);
+  assert.match(delayedFirstRun, /Jadwal terlambat/);
+  assert.match(delayedFirstRun, /Belum tercatat/);
+  assert.doesNotMatch(delayedFirstRun, /learner|email|personId/);
 });
 
 test("export trend mutation cannot send device time to the server", () => {

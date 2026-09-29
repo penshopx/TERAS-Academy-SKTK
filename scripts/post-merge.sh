@@ -155,6 +155,10 @@ if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_people') IS
     -f lib/db/migrations/0054_path_b_regulatory_competency_foundation.sql
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0055_trainer_reminder_preference_lookup_index.sql
+  if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_readiness_audit_export_retention_health') IS NOT NULL")" = "t" ]; then
+    psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+      -f lib/db/migrations/0059_readiness_export_retention_monitoring_baseline.sql
+  fi
 fi
 if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_content_resources') IS NOT NULL")" = "t" ]; then
   TERAS_MIGRATION_ACTOR=post-merge-upgrade \
@@ -224,6 +228,8 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0049_readiness_audit_export_retention_cycles.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0050_readiness_audit_export_retention_health.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f lib/db/migrations/0059_readiness_export_retention_monitoring_baseline.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0046_practice_review_latest_index.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \

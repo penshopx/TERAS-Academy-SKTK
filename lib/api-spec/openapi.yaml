@@ -4986,13 +4986,16 @@ components:
         retentionCleanup:
           type: object
           additionalProperties: false
-          required: [alertActive, consecutiveFailures, failureThreshold, lastFailureAt, lastSuccessAt]
+          required: [alertActive, consecutiveFailures, failureThreshold, lastFailureAt, lastSuccessAt, missedCycles, missedCycleThreshold, scheduleDelayed]
           properties:
-            alertActive: { type: boolean }
+            alertActive: { type: boolean, description: True when the consecutive failure threshold is reached. }
             consecutiveFailures: { type: integer, minimum: 0 }
             failureThreshold: { type: integer, minimum: 1 }
             lastFailureAt: { type: ["string", "null"], format: date-time }
             lastSuccessAt: { type: ["string", "null"], format: date-time }
+            missedCycles: { type: integer, minimum: 0, description: Complete UTC days without a cleanup attempt, excluding the current day. }
+            missedCycleThreshold: { type: integer, minimum: 1, description: Server-owned threshold for missed scheduled UTC cycles. }
+            scheduleDelayed: { type: boolean, description: True when missedCycles reaches missedCycleThreshold; independent of the failure alarm. }
     ReadinessAuditPublicKeySet:
       type: object
       required: [issuer, usage, keys]

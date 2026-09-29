@@ -3936,6 +3936,9 @@ export const getAdminReadinessExportTrendsResponseAlertsItemFailureRatioMax = 1;
 export const getAdminReadinessExportTrendsResponseRetentionCleanupConsecutiveFailuresMin = 0;
 
 
+export const getAdminReadinessExportTrendsResponseRetentionCleanupMissedCyclesMin = 0;
+
+
 
 
 export const GetAdminReadinessExportTrendsResponse = zod.object({
@@ -3964,11 +3967,14 @@ export const GetAdminReadinessExportTrendsResponse = zod.object({
   "explanation": zod.string()
 })),
   "retentionCleanup": zod.object({
-  "alertActive": zod.boolean(),
+  "alertActive": zod.boolean().describe('True when the consecutive failure threshold is reached.'),
   "consecutiveFailures": zod.int().min(getAdminReadinessExportTrendsResponseRetentionCleanupConsecutiveFailuresMin),
   "failureThreshold": zod.int().min(1),
   "lastFailureAt": zod.coerce.date().nullable(),
-  "lastSuccessAt": zod.coerce.date().nullable()
+  "lastSuccessAt": zod.coerce.date().nullable(),
+  "missedCycles": zod.int().min(getAdminReadinessExportTrendsResponseRetentionCleanupMissedCyclesMin).describe('Complete UTC days without a cleanup attempt'),
+  "missedCycleThreshold": zod.int().min(1).describe('Server-owned threshold for missed scheduled UTC cycles.'),
+  "scheduleDelayed": zod.boolean().describe('True when missedCycles reaches missedCycleThreshold; independent of the failure alarm.')
 })
 })
 

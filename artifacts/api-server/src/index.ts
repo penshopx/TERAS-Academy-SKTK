@@ -1,7 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startTrainerFollowUpReminderScheduler } from "./lib/trainer-follow-up-notifications";
-import { startReadinessExportTrendRetentionScheduler } from "./lib/readiness-export-trend-retention";
+import { initializeReadinessExportTrendRetentionMonitoring, startReadinessExportTrendRetentionScheduler } from "./lib/readiness-export-trend-retention";
 
 const rawPort = process.env["PORT"];
 
@@ -25,5 +25,12 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
   startTrainerFollowUpReminderScheduler();
-  startReadinessExportTrendRetentionScheduler();
+  if (process.env.NODE_ENV !== "test") {
+    void initializeReadinessExportTrendRetentionMonitoring()
+      .then(() => startReadinessExportTrendRetentionScheduler())
+      .catch(err => {
+        logger.error({ err }, "Could not initialize readiness retention monitoring");
+        process.exit(1);
+      });
+  }
 });

@@ -12,6 +12,7 @@ import { issueReadinessExportPeriodProof } from "./lib/readiness-export-period";
 import {
   pruneReadinessExportTrendAggregates,
   getReadinessExportTrendRetentionStatus,
+  initializeReadinessExportTrendRetentionMonitoring,
   recordReadinessExportTrendRetentionFailure,
   recordReadinessExportTrendRetentionSuccess,
   runReadinessExportTrendRetentionCleanup,
@@ -139,6 +140,23 @@ async function run() {
     await db.delete(readinessAuditExportRetentionCyclesTable)
       .where(inArray(readinessAuditExportRetentionCyclesTable.day, [today, nextRetentionCycleDay, laterRetentionCycleDay]));
     await db.delete(readinessAuditExportRetentionHealthTable);
+    await initializeReadinessExportTrendRetentionMonitoring();
+    const [firstRunBaseline] = await db.select({
+      monitoringStartedAt: readinessAuditExportRetentionHealthTable.monitoringStartedAt,
+    }).from(readinessAuditExportRetentionHealthTable);
+    assert(firstRunBaseline?.monitoringStartedAt, "Monitoring must persist its baseline before any cleanup attempt");
+    await initializeReadinessExportTrendRetentionMonitoring();
+    const [unchangedBaseline] = await db.select({
+      monitoringStartedAt: readinessAuditExportRetentionHealthTable.monitoringStartedAt,
+    }).from(readinessAuditExportRetentionHealthTable);
+    assert.deepEqual(unchangedBaseline, firstRunBaseline, "Another API instance must not reset the persisted baseline");
+    const afterUnattemptedCycle = new Date(firstRunBaseline.monitoringStartedAt);
+    afterUnattemptedCycle.setUTCHours(0, 0, 0, 0);
+    afterUnattemptedCycle.setUTCDate(afterUnattemptedCycle.getUTCDate() + 2);
+    const firstRunDelayed = await getReadinessExportTrendRetentionStatus(db, afterUnattemptedCycle);
+    assert.equal(firstRunDelayed.scheduleDelayed, true, "The first missed run must warn without success or failure history");
+    assert.equal(firstRunDelayed.missedCycles, 1);
+    assert.equal(firstRunDelayed.alertActive, false);
     await db.insert(readinessAuditExportAggregatesTable).values([
       { day: fixturePastDay, recordGroup: "1.000–4.999 record", outcome: "failed", count: 99 },
       { day: fixtureFutureDay, recordGroup: "1.000–4.999 record", outcome: "succeeded", count: 99 },
@@ -236,6 +254,12 @@ async function run() {
     assert.equal(sharedRecoveryAfterRetry.lastSuccessAt, retentionNow.toISOString());
     assert.equal(sharedRecoveryAfterRetry.lastFailureAt, retentionNow.toISOString(),
       "Recovery must retain the last failure timestamp");
+    const afterMissedDay = new Date(retentionNow);
+    afterMissedDay.setUTCDate(afterMissedDay.getUTCDate() + 2);
+    const delayedStatus = await getReadinessExportTrendRetentionStatus(db, afterMissedDay);
+    assert.equal(delayedStatus.missedCycles, 1, "One complete UTC day without an attempt is missed");
+    assert.equal(delayedStatus.scheduleDelayed, true, "The server flags a stalled scheduler independently of failures");
+    assert.equal(delayedStatus.alertActive, false, "Stalled scheduling must not be mislabeled as failed cleanup");
     const adminRecovery = await request("admin");
     assert.equal(adminRecovery.status, 200);
     assert.deepEqual((await adminRecovery.json() as { retentionCleanup: typeof sharedRecoveryAfterRetry }).retentionCleanup,
@@ -523,7 +547,7 @@ async function run() {
     assert(response.status === 200, "Admin GET must succeed");
     const summary = await response.json() as any;
     assert.deepEqual(Object.keys(summary).sort(), ["aggregates", "alerts", "periodEnd", "periodStart", "retentionCleanup", "thresholds"], "Summary must expose only its contract fields");
-    assert.deepEqual(Object.keys(summary.retentionCleanup).sort(), ["alertActive", "consecutiveFailures", "failureThreshold", "lastFailureAt", "lastSuccessAt"], "Cleanup monitoring must expose only anonymous operational fields");
+    assert.deepEqual(Object.keys(summary.retentionCleanup).sort(), ["alertActive", "consecutiveFailures", "failureThreshold", "lastFailureAt", "lastSuccessAt", "missedCycleThreshold", "missedCycles", "scheduleDelayed"].sort(), "Cleanup monitoring must expose only anonymous operational fields");
     assert.deepEqual(summary.thresholds, {
       minimumRecordCount: 1_000,
       minimumSampleSize: 5,

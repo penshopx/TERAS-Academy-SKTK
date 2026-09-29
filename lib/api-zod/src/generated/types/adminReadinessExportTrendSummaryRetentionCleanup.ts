@@ -7,6 +7,7 @@
  */
 
 export type AdminReadinessExportTrendSummaryRetentionCleanup = {
+  /** True when the consecutive failure threshold is reached. */
   alertActive: boolean;
   /** @minimum 0 */
   consecutiveFailures: number;
@@ -16,4 +17,16 @@ export type AdminReadinessExportTrendSummaryRetentionCleanup = {
   lastFailureAt: Date | null;
   /** @nullable */
   lastSuccessAt: Date | null;
+  /**
+     * Complete UTC days without a cleanup attempt
+     * @minimum 0
+     */
+  missedCycles: number;
+  /**
+     * Server-owned threshold for missed scheduled UTC cycles.
+     * @minimum 1
+     */
+  missedCycleThreshold: number;
+  /** True when missedCycles reaches missedCycleThreshold; independent of the failure alarm. */
+  scheduleDelayed: boolean;
 };

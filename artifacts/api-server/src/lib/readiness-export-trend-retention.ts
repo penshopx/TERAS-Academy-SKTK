@@ -11,6 +11,8 @@ import { logger } from "./logger";
 /** Daily aggregates are kept for 90 complete UTC days; the current day is additional. */
 export const READINESS_EXPORT_TREND_RETENTION_DAYS = 90;
 export const READINESS_EXPORT_TREND_RETENTION_ALERT_THRESHOLD = 3;
+/** One fully elapsed UTC day without a cleanup attempt means a scheduled cycle was missed. */
+export const READINESS_EXPORT_TREND_MISSED_CYCLE_THRESHOLD = 1;
 
 export type RetentionCleanupStatus = {
   alertActive: boolean;
@@ -18,34 +20,60 @@ export type RetentionCleanupStatus = {
   failureThreshold: number;
   lastFailureAt: string | null;
   lastSuccessAt: string | null;
+  missedCycles: number;
+  missedCycleThreshold: number;
+  scheduleDelayed: boolean;
 };
 
 const RETENTION_HEALTH_ID = "global";
 
-function retentionCleanupStatus(row?: {
+export function retentionCleanupStatus(row?: {
   consecutiveFailures: number;
   lastFailureAt: Date | null;
   lastSuccessAt: Date | null;
-}): RetentionCleanupStatus {
+  monitoringStartedAt?: Date;
+}, now = new Date()): RetentionCleanupStatus {
   const consecutiveFailures = row?.consecutiveFailures ?? 0;
+  const lastAttempt = Math.max(
+    row?.lastFailureAt?.getTime() ?? -Infinity,
+    row?.lastSuccessAt?.getTime() ?? -Infinity,
+    row?.monitoringStartedAt?.getTime() ?? -Infinity,
+  );
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const lastAttemptUtc = Number.isFinite(lastAttempt)
+    ? Date.UTC(new Date(lastAttempt).getUTCFullYear(), new Date(lastAttempt).getUTCMonth(), new Date(lastAttempt).getUTCDate())
+    : todayUtc;
+  // Today's cycle may still run; count only complete intervening UTC days.
+  const missedCycles = Math.max(0, Math.round((todayUtc - lastAttemptUtc) / 86_400_000) - 1);
   return {
     alertActive: consecutiveFailures >= READINESS_EXPORT_TREND_RETENTION_ALERT_THRESHOLD,
     consecutiveFailures,
     failureThreshold: READINESS_EXPORT_TREND_RETENTION_ALERT_THRESHOLD,
     lastFailureAt: row?.lastFailureAt?.toISOString() ?? null,
     lastSuccessAt: row?.lastSuccessAt?.toISOString() ?? null,
+    missedCycles,
+    missedCycleThreshold: READINESS_EXPORT_TREND_MISSED_CYCLE_THRESHOLD,
+    scheduleDelayed: missedCycles >= READINESS_EXPORT_TREND_MISSED_CYCLE_THRESHOLD,
   };
 }
 
-export async function getReadinessExportTrendRetentionStatus(executor: any = db): Promise<RetentionCleanupStatus> {
+/** Called at server startup, not by the cleanup timer, so the first missed run is detectable. */
+export async function initializeReadinessExportTrendRetentionMonitoring(executor: any = db) {
+  await executor.insert(readinessAuditExportRetentionHealthTable)
+    .values({ id: RETENTION_HEALTH_ID })
+    .onConflictDoNothing();
+}
+
+export async function getReadinessExportTrendRetentionStatus(executor: any = db, now = new Date()): Promise<RetentionCleanupStatus> {
   const [row] = await executor.select({
+    monitoringStartedAt: readinessAuditExportRetentionHealthTable.monitoringStartedAt,
     consecutiveFailures: readinessAuditExportRetentionHealthTable.consecutiveFailures,
     lastFailureAt: readinessAuditExportRetentionHealthTable.lastFailureAt,
     lastSuccessAt: readinessAuditExportRetentionHealthTable.lastSuccessAt,
   }).from(readinessAuditExportRetentionHealthTable)
     .where(eq(readinessAuditExportRetentionHealthTable.id, RETENTION_HEALTH_ID))
     .limit(1);
-  return retentionCleanupStatus(row);
+  return retentionCleanupStatus(row, now);
 }
 
 export async function recordReadinessExportTrendRetentionFailure(now = new Date(), executor: any = db) {
@@ -70,11 +98,12 @@ export async function recordReadinessExportTrendRetentionFailure(now = new Date(
       },
     })
     .returning({
+      monitoringStartedAt: readinessAuditExportRetentionHealthTable.monitoringStartedAt,
       consecutiveFailures: readinessAuditExportRetentionHealthTable.consecutiveFailures,
       lastFailureAt: readinessAuditExportRetentionHealthTable.lastFailureAt,
       lastSuccessAt: readinessAuditExportRetentionHealthTable.lastSuccessAt,
     });
-  return retentionCleanupStatus(row);
+  return retentionCleanupStatus(row, now);
 }
 
 export async function recordReadinessExportTrendRetentionSuccess(now: Date, executor: any) {
@@ -92,11 +121,12 @@ export async function recordReadinessExportTrendRetentionSuccess(now: Date, exec
       },
     })
     .returning({
+      monitoringStartedAt: readinessAuditExportRetentionHealthTable.monitoringStartedAt,
       consecutiveFailures: readinessAuditExportRetentionHealthTable.consecutiveFailures,
       lastFailureAt: readinessAuditExportRetentionHealthTable.lastFailureAt,
       lastSuccessAt: readinessAuditExportRetentionHealthTable.lastSuccessAt,
     });
-  return retentionCleanupStatus(row);
+  return retentionCleanupStatus(row, now);
 }
 
 export function readinessExportTrendRetentionCutoff(now = new Date()) {

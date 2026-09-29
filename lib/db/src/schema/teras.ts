@@ -304,6 +304,7 @@ export const readinessAuditExportRetentionCyclesTable = pgTable("teras_readiness
 /** Shared anonymous health state for the cross-instance trend retention scheduler. */
 export const readinessAuditExportRetentionHealthTable = pgTable("teras_readiness_audit_export_retention_health", {
   id: text("id").primaryKey(),
+  monitoringStartedAt: timestamp("monitoring_started_at", { withTimezone: true }).notNull().defaultNow(),
   consecutiveFailures: integer("consecutive_failures").notNull().default(0),
   lastFailureCycle: date("last_failure_cycle", { mode: "string" }),
   lastFailureAt: timestamp("last_failure_at", { withTimezone: true }),

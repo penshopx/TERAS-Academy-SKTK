@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   READINESS_EXPORT_TREND_RETENTION_ALERT_THRESHOLD,
+  READINESS_EXPORT_TREND_MISSED_CYCLE_THRESHOLD,
   type RetentionCleanupStatus,
+  retentionCleanupStatus,
   runReadinessExportTrendRetentionCleanup,
 } from "./readiness-export-trend-retention";
 
@@ -17,6 +19,9 @@ function sharedHealthFixture() {
     failureThreshold: READINESS_EXPORT_TREND_RETENTION_ALERT_THRESHOLD,
     lastFailureAt,
     lastSuccessAt,
+    missedCycles: 0,
+    missedCycleThreshold: READINESS_EXPORT_TREND_MISSED_CYCLE_THRESHOLD,
+    scheduleDelayed: false,
   });
   return {
     read,
@@ -69,7 +74,51 @@ test("shared retention health warns across instances and one success recovers ev
     failureThreshold: READINESS_EXPORT_TREND_RETENTION_ALERT_THRESHOLD,
     lastFailureAt: "2026-09-03T01:00:00.000Z",
     lastSuccessAt: recoveredAt.toISOString(),
+    missedCycles: 0,
+    missedCycleThreshold: READINESS_EXPORT_TREND_MISSED_CYCLE_THRESHOLD,
+    scheduleDelayed: false,
   });
+});
+
+test("missed UTC cycles are distinct from failed attempts and clear after a new attempt", () => {
+  const success = new Date("2026-09-26T23:59:59.000Z");
+  const row = { consecutiveFailures: 0, lastSuccessAt: success, lastFailureAt: null };
+  assert.equal(retentionCleanupStatus(row, new Date("2026-09-27T23:59:59.999Z")).missedCycles, 0,
+    "The current UTC cycle is not overdue, even near midnight");
+  const overdue = retentionCleanupStatus(row, new Date("2026-09-28T00:00:00.000Z"));
+  assert.equal(overdue.missedCycles, READINESS_EXPORT_TREND_MISSED_CYCLE_THRESHOLD);
+  assert.equal(overdue.scheduleDelayed, true);
+  assert.equal(overdue.alertActive, false);
+  assert.equal(overdue.consecutiveFailures, 0);
+  assert.equal(retentionCleanupStatus(row, new Date("2026-09-29T10:00:00.000Z")).missedCycles, 2);
+
+  const attempted = retentionCleanupStatus({
+    ...row, consecutiveFailures: 1, lastFailureAt: new Date("2026-09-28T00:01:00.000Z"),
+  }, new Date("2026-09-28T10:00:00.000Z"));
+  assert.equal(attempted.scheduleDelayed, false, "A failure means the scheduler ran; it is not a missed cycle");
+  assert.equal(attempted.consecutiveFailures, 1);
+  const failedOften = retentionCleanupStatus({
+    ...row, consecutiveFailures: READINESS_EXPORT_TREND_RETENTION_ALERT_THRESHOLD,
+    lastFailureAt: new Date("2026-09-28T00:01:00.000Z"),
+  }, new Date("2026-09-28T10:00:00.000Z"));
+  assert.equal(failedOften.alertActive, true);
+  assert.equal(failedOften.scheduleDelayed, false);
+  const neverAttempted = {
+    consecutiveFailures: 0,
+    lastFailureAt: null,
+    lastSuccessAt: null,
+    monitoringStartedAt: new Date("2026-09-26T23:59:59.000Z"),
+  };
+  assert.equal(retentionCleanupStatus(neverAttempted, new Date("2026-09-27T23:59:59.999Z")).scheduleDelayed, false);
+  const delayedFirstRun = retentionCleanupStatus(neverAttempted, new Date("2026-09-28T00:00:00.000Z"));
+  assert.equal(delayedFirstRun.missedCycles, 1);
+  assert.equal(delayedFirstRun.scheduleDelayed, true,
+    "A persisted startup baseline detects missed cycles even without any cleanup attempt");
+  assert.equal(delayedFirstRun.alertActive, false);
+  assert.equal(retentionCleanupStatus({
+    ...row, lastSuccessAt: new Date("2026-09-28T12:00:00.000Z"),
+  }, new Date("2026-09-28T10:00:00.000Z")).missedCycles, 0,
+    "Clock skew must not create negative missed cycles");
 });
 
 test("a skipped claimed cycle does not hide an active warning", async () => {
