@@ -74,7 +74,7 @@ export const evidenceRequirementsTable = pgTable("teras_evidence_requirements", 
   id: text("id").primaryKey(), moduleId: text("module_id").notNull().references(() => modulesTable.id),
   code: text("code").notNull(), name: text("name").notNull(), description: text("description").notNull(),
   allowedTypes: text("allowed_types").array().notNull(), ...audit,
-});
+}, table => [index("teras_evidence_requirements_module_idx").on(table.moduleId)]);
 export const assessmentsTable = pgTable("teras_assessments", {
   id: text("id").primaryKey(), moduleId: text("module_id").notNull().references(() => modulesTable.id),
   name: text("name").notNull(), gateCode: text("gate_code"), ...audit,
@@ -98,6 +98,7 @@ export const enrollmentsTable = pgTable("teras_enrollments", {
   unique("teras_enrollments_id_program_unique").on(table.id, table.programId),
   unique("teras_enrollments_id_learner_unique").on(table.id, table.learnerId),
   index("teras_enrollments_learner_id_idx").on(table.learnerId, table.id),
+  index("teras_enrollments_trainer_active_idx").on(table.trainerId, table.id).where(sql`${table.status} = 'active'`),
 ]);
 /** Immutable administrative history; write an event for every admin mutation. */
 export const adminAuditEventsTable = pgTable("teras_admin_audit_events", {
@@ -166,7 +167,10 @@ export const evidenceTable = pgTable("teras_evidence", {
   id: text("id").primaryKey(), learnerId: text("learner_id").notNull().references(() => peopleTable.id),
   pathwayId: text("pathway_id").notNull().references(() => pathwaysTable.id), moduleId: text("module_id").notNull().references(() => modulesTable.id), taskId: text("task_id").notNull().references(() => practiceTasksTable.id),
   title: text("title").notNull(), type: text("type").notNull(), description: text("description").notNull(), fileName: text("file_name"), ...audit,
-}, table => [index("teras_evidence_timeline_idx").on(table.learnerId, table.pathwayId, table.createdAt, table.id)]);
+}, table => [
+  index("teras_evidence_timeline_idx").on(table.learnerId, table.pathwayId, table.createdAt, table.id),
+  index("teras_evidence_triage_scope_idx").on(table.learnerId, table.pathwayId, table.moduleId, table.id),
+]);
 export const evidenceReviewsTable = pgTable("teras_evidence_reviews", {
   id: text("id").primaryKey(), evidenceId: text("evidence_id").notNull().references(() => evidenceTable.id),
   reviewerId: text("reviewer_id").references(() => peopleTable.id), status: text("status").notNull(),

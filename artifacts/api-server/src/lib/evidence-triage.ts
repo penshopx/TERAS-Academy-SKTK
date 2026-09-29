@@ -1,7 +1,7 @@
 import { inArray } from "drizzle-orm";
-import { agentRunsTable, db, evidenceRequirementsTable, modulesTable } from "@workspace/db";
+import { agentRunsTable, db, modulesTable } from "@workspace/db";
 import { EVIDENCE_TRIAGE_AGENT, policyFor, resultHash, validateProviderSelection, type AgentRunStatus } from "./agentic";
-import { evidenceRecords, selectedBaselineModuleIds, workspaceAssignmentContexts } from "./teras";
+import { evidenceTriageAssignments, evidenceTriageMissingModules, evidenceTriageScope, selectedBaselineModuleIds } from "./teras";
 
 const OBJECTIVE = "Prioritize preparation evidence gaps in assigned Path A contexts.";
 const ADVISORY = "Advisory only. This triage does not decide evidence validity, readiness, competency, certification, or official assessment outcomes.";
@@ -15,61 +15,60 @@ const CATEGORIES = {
 } as const;
 export type TriageCategory = keyof typeof CATEGORIES;
 type Finding = { learnerId: string; learnerName: string; pathwayId: string; moduleId: string; evidenceRef: string };
-export type TriageProjection = { asOf: string; findings: Record<TriageCategory, Finding[]> };
+export type TriageProjection = {
+  asOf: string; findings: Record<TriageCategory, Finding[]>; counts: Record<TriageCategory, number>;
+};
 const emptyFindings = (): TriageProjection["findings"] => ({
   NEEDS_REVISION: [], INCOMPLETE_QUALITY: [], TYPE_MISMATCH: [], MISSING_SUBMISSION: [], AWAITING_REVIEW: [],
 });
+const emptyCounts = (): TriageProjection["counts"] => ({
+  NEEDS_REVISION: 0, INCOMPLETE_QUALITY: 0, TYPE_MISMATCH: 0, MISSING_SUBMISSION: 0, AWAITING_REVIEW: 0,
+});
 
 export async function evidenceTriageProjection(trainerId: string): Promise<TriageProjection> {
-  const contexts = (await workspaceAssignmentContexts(trainerId, "trainer"))
-    .filter(context => context.pathway.purpose === "capability-development");
+  const contexts = await evidenceTriageAssignments(trainerId);
   const findings = emptyFindings();
+  const counts = emptyCounts();
   for (const context of contexts) {
-    const moduleIds = await selectedBaselineModuleIds(context.pathway.id, context.baselineVersionId);
+    const moduleIds = await selectedBaselineModuleIds(context.pathwayId, context.baselineVersionId);
     if (!moduleIds.size) continue;
-    const [requirements, modules, evidence] = await Promise.all([
-      db.select({ moduleId: evidenceRequirementsTable.moduleId, allowedTypes: evidenceRequirementsTable.allowedTypes }).from(evidenceRequirementsTable)
-        .where(inArray(evidenceRequirementsTable.moduleId, [...moduleIds])),
-      db.select({ id: modulesTable.id, programId: modulesTable.programId }).from(modulesTable)
-        .where(inArray(modulesTable.id, [...moduleIds])),
-      evidenceRecords(context.learner.id, context.pathway.id, context.baselineVersionId),
+    const modules = await db.select({ id: modulesTable.id, programId: modulesTable.programId }).from(modulesTable)
+      .where(inArray(modulesTable.id, [...moduleIds]));
+    const allowed = new Set(modules.filter(module => module.programId === context.programId).map(module => module.id));
+    if (!allowed.size) continue;
+    const [evidence, missing] = await Promise.all([
+      evidenceTriageScope(context.learnerId, context.pathwayId, [...allowed]),
+      evidenceTriageMissingModules(context.learnerId, context.pathwayId, [...allowed]),
     ]);
-    const allowed = new Set(modules.filter(module => module.programId === context.program.id).map(module => module.id));
-    const allowedTypes = new Map<string, Set<string>>();
-    for (const requirement of requirements) {
-      const types = allowedTypes.get(requirement.moduleId) ?? new Set<string>();
-      for (const type of requirement.allowedTypes) types.add(type);
-      allowedTypes.set(requirement.moduleId, types);
-    }
     const finding = (moduleId: string, evidenceRef: string): Finding => ({
-      learnerId: context.learner.id, learnerName: context.learner.name,
-      pathwayId: context.pathway.id, moduleId, evidenceRef,
+      learnerId: context.learnerId, learnerName: context.learnerName,
+      pathwayId: context.pathwayId, moduleId, evidenceRef,
     });
-    const submitted = new Set<string>();
+    const counted = new Set<TriageCategory>();
     for (const item of evidence) {
-      if (!allowed.has(item.moduleId)) continue;
-      submitted.add(item.moduleId);
-      const ref = `evidence:${item.id}`;
-      if (item.status === "Needs revision") findings.NEEDS_REVISION.push(finding(item.moduleId, ref));
-      else if (item.status === "Valid" && Object.values(item.quality).some(value => !value))
-        findings.INCOMPLETE_QUALITY.push(finding(item.moduleId, ref));
-      else if (allowedTypes.get(item.moduleId)?.size && !allowedTypes.get(item.moduleId)!.has(item.type))
-        findings.TYPE_MISMATCH.push(finding(item.moduleId, ref));
-      else if (item.status !== "Valid") findings.AWAITING_REVIEW.push(finding(item.moduleId, ref));
+      const category = item.category as TriageCategory;
+      if (!(category in findings) || category === "MISSING_SUBMISSION") throw new Error("Unknown triage category");
+      // Each category row carries its exact scoped total, even though only 20 refs return.
+      if (!counted.has(category)) {
+        counts[category] += Number(item.total);
+        counted.add(category);
+      }
+      if (findings[category].length < 20) findings[category].push(finding(item.moduleId, `evidence:${item.id}`));
     }
-    for (const moduleId of new Set(requirements.map(row => row.moduleId))) {
-      if (allowed.has(moduleId) && !submitted.has(moduleId))
+    counts.MISSING_SUBMISSION += missing.length;
+    for (const moduleId of missing) {
+      if (findings.MISSING_SUBMISSION.length < 20)
         findings.MISSING_SUBMISSION.push(finding(moduleId, `module:${moduleId}`));
     }
   }
-  return { asOf: new Date().toISOString(), findings };
+  return { asOf: new Date().toISOString(), findings, counts };
 }
 
 type Fact = { code: string; kind: TriageCategory; count: number };
 function factsFor(projection: TriageProjection): Fact[] {
   return (Object.keys(CATEGORIES) as TriageCategory[])
-    .filter(kind => projection.findings[kind].length > 0)
-    .map((kind, index) => ({ code: `fact-${index + 1}`, kind, count: projection.findings[kind].length }));
+    .filter(kind => projection.counts[kind] > 0)
+    .map((kind, index) => ({ code: `fact-${index + 1}`, kind, count: projection.counts[kind] }));
 }
 
 export function renderEvidenceTriage(projection: TriageProjection, order: string[] = factsFor(projection).map(fact => fact.code)) {

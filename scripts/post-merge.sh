@@ -155,6 +155,8 @@ if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_people') IS
     -f lib/db/migrations/0054_path_b_regulatory_competency_foundation.sql
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
     -f lib/db/migrations/0055_trainer_reminder_preference_lookup_index.sql
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+    -f lib/db/migrations/0060_evidence_triage_scope_indexes.sql
   if [ "$(psql "$DATABASE_URL" -Atqc "SELECT to_regclass('public.teras_readiness_audit_export_retention_health') IS NOT NULL")" = "t" ]; then
     psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
       -f lib/db/migrations/0059_readiness_export_retention_monitoring_baseline.sql
@@ -264,6 +266,8 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0053_baseline_pathway_scope_projection.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
   -f lib/db/migrations/0054_path_b_regulatory_competency_foundation.sql
+ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+   -f lib/db/migrations/0060_evidence_triage_scope_indexes.sql
 pnpm --filter @workspace/scripts run seed
 if [ "$(pnpm --silent --filter @workspace/scripts run demo:fixtures-enabled)" = "1" ]; then
   pnpm --filter @workspace/scripts run seed:demo

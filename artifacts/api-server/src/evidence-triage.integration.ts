@@ -7,6 +7,8 @@ import {
 } from "@workspace/db";
 import { createIntegrationTestApp } from "./integration-test-app";
 import { createEvidenceTriageRun, evidenceTriageProjection, renderEvidenceTriage } from "./lib/evidence-triage";
+import { evidenceTriageScopeQuery } from "./lib/teras";
+import { assertBoundedIndexPlan, explainQuery } from "./lib/explain-plan";
 
 const suffix = crypto.randomUUID();
 const trainer = `triage-trainer-${suffix}`;
@@ -71,17 +73,52 @@ async function run() {
     { id: id("review-revision"), evidenceId: scoped[0]!.id, reviewerId: trainer, status: "Needs revision", comment: "SECRET NEW REVIEW", quality: { valid: false, relevant: true, sufficient: false, traceable: true }, createdAt: new Date("2021-01-01"), createdBy: trainer },
     { id: id("review-valid"), evidenceId: scoped[1]!.id, reviewerId: trainer, status: "Valid", comment: "not for provider", quality: { valid: true, relevant: false, sufficient: true, traceable: true }, createdBy: trainer },
   ]);
+  // A long review history on a relevant item and much larger unrelated evidence
+  // history must not change the category counts or the indexed access path.
+  await pool.query(`
+    INSERT INTO teras_evidence (id, learner_id, pathway_id, module_id, task_id, title, type, description, created_by)
+    SELECT $1 || '-outside-' || n, $2, 'path-a', 'm02', 'task-m02', 'private', 'Report', 'private', $2
+    FROM generate_series(1, 3000) n
+  `, [suffix, learner]);
+  await pool.query(`
+    INSERT INTO teras_evidence (id, learner_id, pathway_id, module_id, task_id, title, type, description, created_by)
+    SELECT $1 || '-inside-' || n, $2, 'path-a', 'm01', 'task-m01', 'private', 'Report', 'private', $2
+    FROM generate_series(1, 600) n
+  `, [suffix, learner]);
+  await pool.query(`
+    INSERT INTO teras_evidence_reviews (id, evidence_id, reviewer_id, status, quality, created_at, created_by)
+    SELECT $1 || '-old-review-' || n, $2, $3, 'Valid',
+      '{"valid":true,"relevant":true,"sufficient":true,"traceable":true}'::jsonb,
+      '2019-01-01'::timestamptz + n * interval '1 second', $3
+    FROM generate_series(1, 1500) n
+  `, [suffix, scoped[0]!.id, trainer]);
+  await pool.query("ANALYZE teras_evidence");
+  await pool.query("ANALYZE teras_evidence_reviews");
+  await pool.query("ANALYZE teras_enrollments");
+  assertBoundedIndexPlan(await explainQuery(pool, evidenceTriageScopeQuery, [learner, "path-a", ["m01"]]),
+    { indexName: "teras_evidence_triage_scope_idx", maximumRowsRead: 625 });
+  const reviewPlan = await explainQuery(pool, evidenceTriageScopeQuery, [learner, "path-a", ["m01"]]);
+  // Existing installations can retain the older equivalent review timeline index.
+  const reviewIndex = reviewPlan.find(node => [
+    "teras_evidence_reviews_parent_timeline_idx",
+    "teras_evidence_reviews_evidence_id_created_at_id_idx",
+  ].includes(node["Index Name"] ?? ""))?.["Index Name"];
+  assert(reviewIndex, "Expected an indexed latest-review lookup");
+  assertBoundedIndexPlan(reviewPlan, { indexName: reviewIndex, maximumRowsRead: 625 });
+  const boundedRows = await pool.query(evidenceTriageScopeQuery, [learner, "path-a", ["m01"]]);
+  assert(boundedRows.rows.length <= 80, "Only 20 references per evidence category leave the database");
   const projection = await evidenceTriageProjection(trainer);
   assert.equal(projection.findings.NEEDS_REVISION.length, 1);
   assert.equal(projection.findings.INCOMPLETE_QUALITY.length, 1);
   assert.equal(projection.findings.TYPE_MISMATCH.length, 1);
-  assert.equal(projection.findings.AWAITING_REVIEW.length, 21);
+  assert.equal(projection.counts.AWAITING_REVIEW, 621);
+  assert.equal(projection.findings.AWAITING_REVIEW.length, 20);
   assert.equal(projection.findings.MISSING_SUBMISSION.length, 1);
   assert.equal(projection.findings.MISSING_SUBMISSION[0]?.learnerId, missingLearner);
   assert(projection.findings.AWAITING_REVIEW.every(item => item.learnerId === learner && item.pathwayId === "path-a" && item.moduleId === "m01"));
   const other = await evidenceTriageProjection(otherTrainer);
   assert.equal(other.findings.AWAITING_REVIEW.length, 1);
-  assert.equal(renderEvidenceTriage(projection).categories.find(item => item.category === "AWAITING_REVIEW")?.omittedCount, 1);
+  assert.equal(renderEvidenceTriage(projection).categories.find(item => item.category === "AWAITING_REVIEW")?.omittedCount, 601);
   const before = await snapshot();
   const outgoing: string[] = [];
   const selected = await createEvidenceTriageRun(trainer, async payload => {
@@ -90,7 +127,7 @@ async function run() {
   });
   assert.equal(selected.status, "COMPLETED");
   assert.equal(selected.categories[0]?.category, "AWAITING_REVIEW");
-  assert.equal(selected.categories[0]?.count, 21);
+  assert.equal(selected.categories[0]?.count, 621);
   assert.equal(selected.categories[0]?.items.length, 20);
   assert(!outgoing.join("").match(/secret|INJECT|learner-|trainer-|path-a|path-b|pending-|review-|m01|task-/i));
   const fallback = await createEvidenceTriageRun(trainer, async () => ({ factCodes: ["fact-1", "fact-1"], prose: "certified" }));

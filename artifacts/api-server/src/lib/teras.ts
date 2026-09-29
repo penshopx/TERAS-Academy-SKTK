@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { isDeepStrictEqual } from "node:util";
-import { db, assessmentAttemptsTable, assessmentCriteriaTable, assessmentsTable, baselineModulesTable, courseModulesTable, criterionObservationsTable, enrollmentPathwayEventsTable, enrollmentsTable, evidenceRequirementsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningActivitiesTable, learningBaselinesTable, legacyModuleMappingsTable, learningRecordLinksTable, lessonsTable, modulesTable, pathwayBaselineModulesTable, pathwayModuleContractsTable, pathwaysTable, peopleTable, practiceAttemptsTable, practiceTasksTable, programsTable, readinessEventsTable, readinessGatesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, reassessmentLinksTable } from "@workspace/db";
+import { db, pool, assessmentAttemptsTable, assessmentCriteriaTable, assessmentsTable, baselineModulesTable, courseModulesTable, criterionObservationsTable, enrollmentPathwayEventsTable, enrollmentsTable, evidenceRequirementsTable, evidenceReviewsTable, evidenceTable, gapEventsTable, gapsTable, learningActivitiesTable, learningBaselinesTable, legacyModuleMappingsTable, learningRecordLinksTable, lessonsTable, modulesTable, pathwayBaselineModulesTable, pathwayModuleContractsTable, pathwaysTable, peopleTable, practiceAttemptsTable, practiceTasksTable, programsTable, readinessEventsTable, readinessGatesTable, remediationActivitiesTable, remediationEventsTable, remediationPlansTable, reassessmentLinksTable } from "@workspace/db";
 import type { BaselineModule, PathwayModuleContract } from "@workspace/db";
 import { selectedBaselineModuleIdsFromVersion } from "./baseline-authoring";
 export const DEMO_LEARNER = "learner-demo";
@@ -133,6 +133,92 @@ export async function workspaceAssignmentContexts(actorId: string, role: "traine
       ? [{ enrollment, learner, program, pathway, baselineVersionId: latestPathwayEvent.get(enrollment.id)?.baselineVersionId ?? enrollment.baselineVersionId ?? null }]
       : [];
   });
+}
+
+/** Triage needs only the current assigned Path A scope, not the entire workspace catalogue. */
+export const evidenceTriageAssignmentsQuery = `
+  SELECT e.learner_id AS "learnerId", person.name AS "learnerName",
+    pathway.id AS "pathwayId", e.program_id AS "programId",
+    COALESCE(event.baseline_version_id, e.baseline_version_id) AS "baselineVersionId"
+  FROM teras_enrollments e
+  JOIN teras_people person ON person.id = e.learner_id
+  LEFT JOIN LATERAL (
+    SELECT pathway_id, baseline_version_id FROM teras_enrollment_pathway_events
+    WHERE enrollment_id = e.id ORDER BY sequence DESC, created_at DESC, id DESC LIMIT 1
+  ) event ON true
+  JOIN teras_pathways pathway ON pathway.id = COALESCE(event.pathway_id, e.pathway_id)
+    AND pathway.program_id = e.program_id
+    AND pathway.purpose = 'capability-development'
+  JOIN teras_programs program ON program.id = e.program_id
+  WHERE e.trainer_id = $1 AND e.status = 'active'
+`;
+export async function evidenceTriageAssignments(trainerId: string) {
+  const { rows } = await pool.query<{
+    learnerId: string; learnerName: string; pathwayId: string;
+    programId: string; baselineVersionId: string | null;
+  }>(evidenceTriageAssignmentsQuery, [trainerId]);
+  return rows;
+}
+
+/** Exact evidence rows in the pinned module set, with only the latest review per row.
+ * No titles, comments, links, or other learner records cross this boundary. */
+export const evidenceTriageScopeQuery = `
+  WITH classified AS (
+    SELECT evidence.id, evidence.module_id,
+      CASE
+        WHEN review.status = 'Needs revision' THEN 'NEEDS_REVISION'
+        WHEN review.status = 'Valid' AND
+          (NOT COALESCE((review.quality->>'valid')::boolean, false)
+            OR NOT COALESCE((review.quality->>'relevant')::boolean, false)
+            OR NOT COALESCE((review.quality->>'sufficient')::boolean, false)
+            OR NOT COALESCE((review.quality->>'traceable')::boolean, false))
+          THEN 'INCOMPLETE_QUALITY'
+        WHEN requirement.has_types AND NOT requirement.type_matches THEN 'TYPE_MISMATCH'
+        WHEN review.status IS DISTINCT FROM 'Valid' THEN 'AWAITING_REVIEW'
+        ELSE NULL
+      END AS category
+    FROM teras_evidence evidence
+    LEFT JOIN LATERAL (
+      SELECT status, quality FROM teras_evidence_reviews
+      WHERE evidence_id = evidence.id
+      ORDER BY created_at DESC, id DESC LIMIT 1
+    ) review ON true
+    LEFT JOIN LATERAL (
+      SELECT COALESCE(bool_or(cardinality(allowed_types) > 0), false) AS has_types,
+        COALESCE(bool_or(evidence.type = ANY(allowed_types)), false) AS type_matches
+      FROM teras_evidence_requirements WHERE module_id = evidence.module_id
+    ) requirement ON true
+    WHERE evidence.learner_id = $1 AND evidence.pathway_id = $2
+      AND evidence.module_id = ANY($3::text[])
+  ), ranked AS (
+    SELECT id, module_id, category, count(*) OVER (PARTITION BY category) AS total,
+      row_number() OVER (PARTITION BY category ORDER BY id) AS position
+    FROM classified WHERE category IS NOT NULL
+  )
+  SELECT id, module_id AS "moduleId", category, total
+  FROM ranked WHERE position <= 20 ORDER BY category, position
+`;
+export async function evidenceTriageScope(learnerId: string, pathwayId: string, moduleIds: string[]) {
+  if (!moduleIds.length) return [];
+  const { rows } = await pool.query<{
+    id: string; moduleId: string; category: string; total: string;
+  }>(evidenceTriageScopeQuery, [learnerId, pathwayId, moduleIds]);
+  return rows;
+}
+
+export async function evidenceTriageMissingModules(learnerId: string, pathwayId: string, moduleIds: string[]) {
+  if (!moduleIds.length) return [];
+  const { rows } = await pool.query<{ moduleId: string }>(`
+    SELECT DISTINCT requirement.module_id AS "moduleId"
+    FROM teras_evidence_requirements requirement
+    WHERE requirement.module_id = ANY($3::text[])
+      AND NOT EXISTS (
+        SELECT 1 FROM teras_evidence evidence
+        WHERE evidence.learner_id = $1 AND evidence.pathway_id = $2
+          AND evidence.module_id = requirement.module_id
+      )
+  `, [learnerId, pathwayId, moduleIds]);
+  return rows.map(row => row.moduleId);
 }
 /** Resolves a specific active learner/pathway pair without letting the most
  * recently-created enrollment substitute a different pathway. */
