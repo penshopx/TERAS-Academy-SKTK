@@ -16,6 +16,7 @@ import {
   recordReadinessExportTrendRetentionFailure,
   recordReadinessExportTrendRetentionSuccess,
   runReadinessExportTrendRetentionCleanup,
+  READINESS_EXPORT_ATTEMPT_CLEANUP_BATCH_SIZE,
   READINESS_EXPORT_TREND_RETENTION_DAYS,
   readinessExportTrendRetentionCutoff,
 } from "./lib/readiness-export-trend-retention";
@@ -67,6 +68,10 @@ const concurrentReuseAttemptKey = crypto.randomUUID();
 const pauseConcurrentReuseDelete = sql.identifier(`pause_reuse_delete_${suffix.replaceAll("-", "")}`);
 const racingAggregateGroup = "1.000–4.999 record";
 const racingLockNamespace = 912469;
+const backlogKeyPrefix = `retention-backlog-${suffix}-`;
+const backlogSize = READINESS_EXPORT_ATTEMPT_CLEANUP_BATCH_SIZE * 2 + 17;
+const pauseBacklogDelete = sql.identifier(`pause_backlog_delete_${suffix.replaceAll("-", "")}`);
+const failBacklogDelete = sql.identifier(`fail_backlog_delete_${suffix.replaceAll("-", "")}`);
 
 const app = createIntegrationTestApp(request => {
   const role = request.get("x-test-role");
@@ -153,6 +158,8 @@ async function run() {
     assert.fail(`Query did not wait for the expected ${stage} lock: ${JSON.stringify(activity.rows)}`);
   };
   let reuseCycleDay: string | undefined;
+  let backlogCycleDay: string | undefined;
+  let retryBacklogCycleDay: string | undefined;
 
   try {
     // Isolate this test's current UTC day, then restore it in finally.
@@ -367,7 +374,24 @@ async function run() {
       );
       const firstPid = await waitForBlockedQuery("first cleanup after cycle claim", holderPid);
       secondCleanup = pruneReadinessExportTrendAggregates(nextRetentionCycle);
-      await waitForBlockedQuery("second cleanup on first cycle claim", firstPid);
+      // The batch runs on a separate connection; the cycle claim is owned by
+      // its outer transaction, not by the backend waiting on the row trigger.
+      const deadline = Date.now() + 5_000;
+      let claimContender: number | undefined;
+      while (Date.now() < deadline) {
+        const waiting = await db.execute<{ pid: number }>(sql`
+          SELECT pid::int AS pid FROM pg_stat_activity
+          WHERE pid <> pg_backend_pid() AND pid <> ${firstPid}
+            AND wait_event_type = 'Lock'
+            AND cardinality(pg_blocking_pids(pid)) > 0
+            AND NOT (${holderPid} = ANY(pg_blocking_pids(pid)))
+          LIMIT 1
+        `);
+        claimContender = waiting.rows[0]?.pid;
+        if (claimContender) break;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      assert(claimContender, "The second cleanup must wait on the first UTC cycle claim");
       releaseRacingLock();
       await holder;
       await firstCleanup;
@@ -672,6 +696,135 @@ async function run() {
       await db.execute(sql`DROP TRIGGER IF EXISTS ${pauseConcurrentReuseDelete} ON teras_readiness_audit_export_attempts`);
       await db.execute(sql`DROP FUNCTION IF EXISTS ${pauseConcurrentReuseDelete}()`);
     }
+
+    // A large expired backlog must commit bounded batches rather than holding
+    // every deleted row until the UTC cycle is claimed. Pause the second batch
+    // and prove a fresh outcome can commit before the backlog finishes.
+    const backlogCycle = new Date(reuseCycle);
+    backlogCycle.setUTCDate(backlogCycle.getUTCDate() + 1);
+    backlogCycleDay = backlogCycle.toISOString().slice(0, 10);
+    await db.execute(sql`
+      INSERT INTO teras_readiness_audit_export_attempts (attempt_key, day)
+      SELECT ${backlogKeyPrefix} || lpad(n::text, 5, '0'), ${expiredRetentionDay}::date
+      FROM generate_series(0, ${backlogSize - 1}) AS n
+    `);
+    const pauseKey = `${backlogKeyPrefix}${String(READINESS_EXPORT_ATTEMPT_CLEANUP_BATCH_SIZE).padStart(5, "0")}`;
+    await db.execute(sql`
+      CREATE FUNCTION ${pauseBacklogDelete}() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        PERFORM pg_advisory_xact_lock(${sql.raw(String(racingLockNamespace))}, ${sql.raw(String(seed))});
+        RETURN OLD;
+      END
+      $$
+    `);
+    await db.execute(sql`
+      CREATE TRIGGER ${pauseBacklogDelete}
+      BEFORE DELETE ON teras_readiness_audit_export_attempts
+      FOR EACH ROW WHEN (OLD.attempt_key = '${sql.raw(pauseKey)}')
+      EXECUTE FUNCTION ${pauseBacklogDelete}()
+    `);
+    let releaseBacklogLock!: () => void;
+    let backlogLockHeld!: () => void;
+    const releaseBacklog = new Promise<void>(resolve => { releaseBacklogLock = resolve; });
+    const backlogHeld = new Promise<void>(resolve => { backlogLockHeld = resolve; });
+    let backlogHolderPid: number | undefined;
+    const backlogHolder = db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${racingLockNamespace}, ${seed})`);
+      backlogHolderPid = (await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid()::int AS pid`)).rows[0]?.pid;
+      backlogLockHeld();
+      await releaseBacklog;
+    });
+    let backlogCleanup: ReturnType<typeof pruneReadinessExportTrendAggregates> | undefined;
+    try {
+      await backlogHeld;
+      assert(backlogHolderPid);
+      backlogCleanup = pruneReadinessExportTrendAggregates(backlogCycle);
+      await waitForBlockedQuery("second backlog batch", backlogHolderPid);
+      const remainingDuringPause = await db.execute<{ count: number }>(sql`
+        SELECT count(*)::int AS count FROM teras_readiness_audit_export_attempts
+        WHERE attempt_key LIKE ${backlogKeyPrefix + "%"}
+      `);
+      assert.equal(remainingDuringPause.rows[0]?.count,
+        backlogSize - READINESS_EXPORT_ATTEMPT_CLEANUP_BATCH_SIZE,
+        "The first batch must commit before the second batch waits");
+      const concurrentBacklogKey = crypto.randomUUID();
+      const outcomeDuringBacklog = post("admin", {
+        attemptKey: concurrentBacklogKey, outcome: "succeeded", recordCount: 1_000,
+      });
+      const responseDuringBacklog = await Promise.race([
+        outcomeDuringBacklog,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Outcome blocked by backlog cleanup")), 3_000)),
+      ]);
+      assert.equal(responseDuringBacklog.status, 204, "Outcome writes must commit while cleanup is still blocked");
+      assert.equal((await db.select().from(readinessAuditExportAttemptsTable)
+        .where(eq(readinessAuditExportAttemptsTable.attemptKey, concurrentBacklogKey)))[0]?.day,
+      today, "The concurrent outcome must keep its active retry key");
+      releaseBacklogLock();
+      await backlogHolder;
+      const result = await backlogCleanup;
+      assert.equal(result.deletedAttemptKeys, backlogSize, "All backlog batches must finish in this UTC cycle");
+      assert.equal((await db.execute<{ count: number }>(sql`
+        SELECT count(*)::int AS count FROM teras_readiness_audit_export_attempts
+        WHERE attempt_key LIKE ${backlogKeyPrefix + "%"}
+      `)).rows[0]?.count, 0, "No expired backlog keys may remain");
+      assert.equal((await db.select().from(readinessAuditExportAttemptsTable)
+        .where(eq(readinessAuditExportAttemptsTable.attemptKey, concurrentBacklogKey))).length, 1,
+      "Cleanup must not remove a newly written active key");
+      assert.equal((await pruneReadinessExportTrendAggregates(backlogCycle)).executed, false,
+        "A completed backlog must claim the UTC cycle only once");
+    } finally {
+      releaseBacklogLock();
+      await Promise.allSettled([backlogHolder, backlogCleanup].filter(promise => promise !== undefined));
+      await db.execute(sql`DROP TRIGGER IF EXISTS ${pauseBacklogDelete} ON teras_readiness_audit_export_attempts`);
+      await db.execute(sql`DROP FUNCTION IF EXISTS ${pauseBacklogDelete}()`);
+    }
+
+    const retryBacklogCycle = new Date(backlogCycle);
+    retryBacklogCycle.setUTCDate(retryBacklogCycle.getUTCDate() + 1);
+    retryBacklogCycleDay = retryBacklogCycle.toISOString().slice(0, 10);
+    const retryPrefix = `${backlogKeyPrefix}retry-`;
+    await db.execute(sql`
+      INSERT INTO teras_readiness_audit_export_attempts (attempt_key, day)
+      SELECT ${retryPrefix} || lpad(n::text, 5, '0'), ${expiredRetentionDay}::date
+      FROM generate_series(0, ${backlogSize - 1}) AS n
+    `);
+    await db.execute(sql`
+      CREATE FUNCTION ${failBacklogDelete}() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        RAISE EXCEPTION 'forced second backlog batch failure';
+      END
+      $$
+    `);
+    await db.execute(sql`
+      CREATE TRIGGER ${failBacklogDelete}
+      BEFORE DELETE ON teras_readiness_audit_export_attempts
+      FOR EACH ROW WHEN (OLD.attempt_key = '${sql.raw(`${retryPrefix}${String(READINESS_EXPORT_ATTEMPT_CLEANUP_BATCH_SIZE).padStart(5, "0")}`)}')
+      EXECUTE FUNCTION ${failBacklogDelete}()
+    `);
+    try {
+      await assert.rejects(pruneReadinessExportTrendAggregates(retryBacklogCycle),
+        (error: unknown) => error instanceof Error
+          && (error as Error & { cause?: Error }).cause?.message === "forced second backlog batch failure",
+        "An interrupted later batch must fail the UTC cycle");
+    } finally {
+      await db.execute(sql`DROP TRIGGER IF EXISTS ${failBacklogDelete} ON teras_readiness_audit_export_attempts`);
+      await db.execute(sql`DROP FUNCTION IF EXISTS ${failBacklogDelete}()`);
+    }
+    assert.equal((await db.execute<{ count: number }>(sql`
+      SELECT count(*)::int AS count FROM teras_readiness_audit_export_attempts
+      WHERE attempt_key LIKE ${retryPrefix + "%"}
+    `)).rows[0]?.count, backlogSize - READINESS_EXPORT_ATTEMPT_CLEANUP_BATCH_SIZE,
+    "Committed first batch must remain deleted after a later batch fails");
+    assert.equal((await db.select().from(readinessAuditExportRetentionCyclesTable)
+      .where(eq(readinessAuditExportRetentionCyclesTable.day, retryBacklogCycleDay))).length, 0,
+    "A partial backlog must not claim the UTC cycle");
+    assert.equal((await pruneReadinessExportTrendAggregates(retryBacklogCycle)).deletedAttemptKeys,
+      backlogSize - READINESS_EXPORT_ATTEMPT_CLEANUP_BATCH_SIZE,
+      "A same-cycle retry must delete every remaining expired key");
+    assert.equal((await db.execute<{ count: number }>(sql`
+      SELECT count(*)::int AS count FROM teras_readiness_audit_export_attempts
+      WHERE attempt_key LIKE ${retryPrefix + "%"}
+    `)).rows[0]?.count, 0);
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     await db.execute(sql`DROP TRIGGER IF EXISTS ${rejectExpiredAttemptDelete} ON teras_readiness_audit_export_attempts`);
@@ -681,6 +834,11 @@ async function run() {
     await db.execute(sql`DROP SEQUENCE IF EXISTS ${racingFailureSequence}`);
     await db.execute(sql`DROP TRIGGER IF EXISTS ${pauseConcurrentReuseDelete} ON teras_readiness_audit_export_attempts`);
     await db.execute(sql`DROP FUNCTION IF EXISTS ${pauseConcurrentReuseDelete}()`);
+    await db.execute(sql`DROP TRIGGER IF EXISTS ${pauseBacklogDelete} ON teras_readiness_audit_export_attempts`);
+    await db.execute(sql`DROP FUNCTION IF EXISTS ${pauseBacklogDelete}()`);
+    await db.execute(sql`DROP TRIGGER IF EXISTS ${failBacklogDelete} ON teras_readiness_audit_export_attempts`);
+    await db.execute(sql`DROP FUNCTION IF EXISTS ${failBacklogDelete}()`);
+    await db.execute(sql`DELETE FROM teras_readiness_audit_export_attempts WHERE attempt_key LIKE ${backlogKeyPrefix + "%"}`);
     await db.delete(readinessAuditExportAttemptsTable)
       .where(inArray(readinessAuditExportAttemptsTable.attemptKey, [racingAttemptKey, concurrentReuseAttemptKey]));
     await db.delete(readinessAuditExportAggregatesTable)
@@ -691,6 +849,10 @@ async function run() {
       .where(inArray(readinessAuditExportRetentionCyclesTable.day, [today, nextRetentionCycleDay, laterRetentionCycleDay]));
     if (reuseCycleDay) await db.delete(readinessAuditExportRetentionCyclesTable)
       .where(eq(readinessAuditExportRetentionCyclesTable.day, reuseCycleDay));
+    if (backlogCycleDay) await db.delete(readinessAuditExportRetentionCyclesTable)
+      .where(eq(readinessAuditExportRetentionCyclesTable.day, backlogCycleDay));
+    if (retryBacklogCycleDay) await db.delete(readinessAuditExportRetentionCyclesTable)
+      .where(eq(readinessAuditExportRetentionCyclesTable.day, retryBacklogCycleDay));
     await db.delete(readinessAuditExportRetentionHealthTable);
     if (baselineRows.length) await db.insert(readinessAuditExportAggregatesTable).values(baselineRows);
     if (baselineAttempts.length) await db.insert(readinessAuditExportAttemptsTable).values(baselineAttempts);

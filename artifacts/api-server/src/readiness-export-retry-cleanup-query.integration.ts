@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
-import { lt } from "drizzle-orm";
 import pg from "pg";
 import { db, readinessAuditExportAttemptsTable } from "@workspace/db";
 import { assertBoundedIndexPlan, explainQuery } from "./lib/explain-plan";
-import { readinessExportTrendRetentionCutoff } from "./lib/readiness-export-trend-retention";
+import { expiredReadinessExportAttemptBatchDelete, expiredReadinessExportAttemptBatchKeys, readinessExportTrendRetentionCutoff } from "./lib/readiness-export-trend-retention";
 
 const { Client } = pg;
 const indexName = "teras_readiness_audit_export_attempts_day_idx";
@@ -38,20 +37,23 @@ async function run() {
       expired: expiredKeyCount,
     }, "plan fixture must be dominated by active keys with only four expired keys");
 
-    // Mirrors the retry-key deletion in pruneReadinessExportTrendAggregates,
-    // including RETURNING. No enable_seqscan override: the planner must choose
-    // the day index on its own with realistic active-to-expired selectivity.
-    const deletion = db.delete(readinessAuditExportAttemptsTable)
-      .where(lt(readinessAuditExportAttemptsTable.day, cutoffDay))
-      .returning({ day: readinessAuditExportAttemptsTable.day }).toSQL();
-    const plan = await explainQuery(client, deletion.sql, deletion.params);
+    // Mirror both statements in one batch. Selection must use the day index;
+    // deletion must use the selected primary keys, never scan active keys.
+    const selection = expiredReadinessExportAttemptBatchKeys(db, cutoffDay).toSQL();
+    const plan = await explainQuery(client, selection.sql, selection.params);
     assertBoundedIndexPlan(plan, {
       indexName,
       // At most twice the four expired keys may be read, never the 20k active keys.
       maximumRowsRead: expiredKeyCount * 2,
     });
     assert.ok(!plan.some(node => node["Node Type"] === "Seq Scan"),
-      "retry-key cleanup must not scan the full attempt table");
+      "retry-key selection must not scan the full attempt table");
+    const keys = (await client.query<{ attempt_key: string }>(selection.sql, selection.params))
+      .rows.map(row => row.attempt_key);
+    const deletion = expiredReadinessExportAttemptBatchDelete(db, cutoffDay, keys).toSQL();
+    const deletePlan = await explainQuery(client, deletion.sql, deletion.params);
+    assert.ok(!deletePlan.some(node => node["Node Type"] === "Seq Scan"),
+      "retry-key deletion must not scan the full attempt table");
     const remaining = await client.query<{ count: number }>(
       "SELECT count(*)::integer AS count FROM teras_readiness_audit_export_attempts",
     );

@@ -9,6 +9,12 @@ For cleanup jobs that should run once per UTC cycle, atomically persist the cycl
 
 **How to apply:** Test overlapping invocations, a sequential skip in the same cycle, execution in a later cycle, same-cycle failure deduplication, and shared alarm recovery.
 
+For exceptionally large backlogs, the cycle claim may stay uncommitted in an outer transaction while individual deletion batches commit on separate connections. Success and the claim commit only after every batch; if a later batch fails, earlier deletions remain but a same-day retry can resume because the claim rolls back. Keep any work done in the outer transaction small and independent from current-day writers.
+
+**Why:** A single huge DELETE retains retry-key row locks for the whole backlog and delays outcome writes, whereas committing the claim before all batches would incorrectly mark an interrupted cycle as complete.
+
+**How to apply:** Verify the first batch is visible while a later batch is paused, fresh outcome writes commit during the pause, and a failure after a committed batch leaves the claim uncommitted so retry finishes the remaining keys.
+
 In lock-contention integration fixtures, do not depend on `pg_stat_activity.query` to identify the waiting statement: this environment can report it as an empty string even when the session is visibly blocked. Identify the waiter by `pg_blocking_pids(pid)` against the known holder backend, then confirm the second waiter is blocked by the first. If a trigger must fail only the first transaction, a PostgreSQL sequence can count attempts across rollback (unlike a transaction-local marker).
 
 **Why:** Query-text matching timed out despite the expected advisory lock wait, and a trigger that unconditionally raised also rejected the rightful successor after rollback.

@@ -1,4 +1,4 @@
-import { eq, lt, sql } from "drizzle-orm";
+import { asc, and, eq, inArray, lt, sql } from "drizzle-orm";
 import {
   db,
   readinessAuditExportAggregatesTable,
@@ -13,6 +13,8 @@ export const READINESS_EXPORT_TREND_RETENTION_DAYS = 90;
 export const READINESS_EXPORT_TREND_RETENTION_ALERT_THRESHOLD = 3;
 /** One fully elapsed UTC day without a cleanup attempt means a scheduled cycle was missed. */
 export const READINESS_EXPORT_TREND_MISSED_CYCLE_THRESHOLD = 1;
+/** Limit row locks and returned data per committed retry-key deletion. */
+export const READINESS_EXPORT_ATTEMPT_CLEANUP_BATCH_SIZE = 500;
 
 export type RetentionCleanupStatus = {
   alertActive: boolean;
@@ -135,6 +137,23 @@ export function readinessExportTrendRetentionCutoff(now = new Date()) {
   return cutoff.toISOString().slice(0, 10);
 }
 
+export function expiredReadinessExportAttemptBatchKeys(executor: any, cutoffDay: string) {
+  return executor.select({ attemptKey: readinessAuditExportAttemptsTable.attemptKey })
+    .from(readinessAuditExportAttemptsTable)
+    .where(lt(readinessAuditExportAttemptsTable.day, cutoffDay))
+    .orderBy(asc(readinessAuditExportAttemptsTable.day), asc(readinessAuditExportAttemptsTable.attemptKey))
+    .limit(READINESS_EXPORT_ATTEMPT_CLEANUP_BATCH_SIZE);
+}
+
+export function expiredReadinessExportAttemptBatchDelete(executor: any, cutoffDay: string, keys: string[]) {
+  return executor.delete(readinessAuditExportAttemptsTable)
+    .where(and(
+      inArray(readinessAuditExportAttemptsTable.attemptKey, keys),
+      lt(readinessAuditExportAttemptsTable.day, cutoffDay),
+    ))
+    .returning({ attemptKey: readinessAuditExportAttemptsTable.attemptKey });
+}
+
 export async function pruneReadinessExportTrendAggregates(now = new Date()) {
   const cutoffDay = readinessExportTrendRetentionCutoff(now);
   return db.transaction(async tx => {
@@ -155,9 +174,23 @@ export async function pruneReadinessExportTrendAggregates(now = new Date()) {
     const deletedAggregates = await tx.delete(readinessAuditExportAggregatesTable)
       .where(lt(readinessAuditExportAggregatesTable.day, cutoffDay))
       .returning({ day: readinessAuditExportAggregatesTable.day });
-    const deletedAttempts = await tx.delete(readinessAuditExportAttemptsTable)
-      .where(lt(readinessAuditExportAttemptsTable.day, cutoffDay))
-      .returning({ day: readinessAuditExportAttemptsTable.day });
+    // Keep the cycle claim uncommitted until all batches finish. Other schedulers
+    // wait for it; each batch commits independently so its row locks do not
+    // accumulate across the backlog. If interrupted, the claim rolls back and
+    // a same-day retry finishes the remaining keys.
+    let deletedAttemptKeys = 0;
+    while (true) {
+      const { selected, deleted } = await db.transaction(async batchTx => {
+        const keys = await expiredReadinessExportAttemptBatchKeys(batchTx, cutoffDay) as Array<{ attemptKey: string }>;
+        if (keys.length === 0) return { selected: 0, deleted: 0 };
+        const removed = await expiredReadinessExportAttemptBatchDelete(
+          batchTx, cutoffDay, keys.map(row => row.attemptKey),
+        ) as Array<{ attemptKey: string }>;
+        return { selected: keys.length, deleted: removed.length };
+      });
+      deletedAttemptKeys += deleted;
+      if (selected < READINESS_EXPORT_ATTEMPT_CLEANUP_BATCH_SIZE) break;
+    }
     await tx.delete(readinessAuditExportRetentionCyclesTable)
       .where(lt(readinessAuditExportRetentionCyclesTable.day, cutoffDay));
     const previousStatus = await getReadinessExportTrendRetentionStatus(tx);
@@ -167,7 +200,7 @@ export async function pruneReadinessExportTrendAggregates(now = new Date()) {
       cycleDay,
       executed: true as const,
       deletedRows: deletedAggregates.length,
-      deletedAttemptKeys: deletedAttempts.length,
+      deletedAttemptKeys,
       recovered: previousStatus.alertActive,
     };
   });
