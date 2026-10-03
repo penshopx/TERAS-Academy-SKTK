@@ -7,6 +7,7 @@ uri = "file://artifacts/teras-academy-story/public/audio/vo_scene_4.mp3"
 type = "audio"
 title = "TERAS narration scene 4"
 description = "Text-to-speech audio: Assessment menghasilkan evidence, gap, dan rencana remediation yang dapat ditelusuri. Setelah perbaikan, learner dinilai kembali sampai kapabilitas benar-benar terbukti."
+logical_id = "c2730f3c-7914-4482-8557-8845f94e9bbe"
 
 [[outputs]]
 id = "2O6E9D00ajyXqGWeJv83Q"
@@ -14,6 +15,7 @@ uri = "file://artifacts/teras-academy-story/public/audio/vo_scene_1.mp3"
 type = "audio"
 title = "TERAS narration scene 1"
 description = "Text-to-speech audio: TERAS Academy mengubah pembelajaran menjadi kapabilitas yang terlihat, terukur, dan siap dibuktikan."
+logical_id = "5700eb1c-ec7d-4665-9e46-016f8c305df4"
 
 [[outputs]]
 id = "bETtbvi6vmMobPTb6zLKb"
@@ -21,6 +23,7 @@ uri = "file://artifacts/teras-academy-story/public/audio/vo_scene_3.mp3"
 type = "audio"
 title = "TERAS narration scene 3"
 description = "Text-to-speech audio: Keselamatan bukan sekadar nilai rata-rata. Skor nol atau satu pada kriteria kritis tidak dapat dikompensasi. Keputusan tetap: belum kompeten."
+logical_id = "83cbd27a-d3f3-45ce-bdad-5b0ecd44356e"
 
 [[outputs]]
 id = "8NjaVpBfImmu5_g7Orep4"
@@ -28,6 +31,7 @@ uri = "file://artifacts/teras-academy-story/public/audio/vo_scene_2.mp3"
 type = "audio"
 title = "TERAS narration scene 2"
 description = "Text-to-speech audio: Satu profesi, dua jalur yang benar-benar berbeda. Path A untuk instalasi. Path B untuk desain. Setiap jalur menyimpan progres dan evidencenya sendiri."
+logical_id = "a17ad07c-f5f6-4edf-8df9-0f6e97262bda"
 
 [[outputs]]
 id = "FG-tmIyBoawhGrwC8FPjc"
@@ -35,6 +39,7 @@ uri = "file://artifacts/teras-academy-story/public/audio/vo_scene_5.mp3"
 type = "audio"
 title = "TERAS narration scene 5"
 description = "Text-to-speech audio: Hasil akhirnya bukan sekadar sertifikat. Readiness yang dapat dipercaya, dengan Capability Passport sebagai rekam jejak kemampuan sepanjang perjalanan profesional."
+logical_id = "779607d3-c1ec-431b-9f35-cfdfba502b69"
 
 [[outputs]]
 id = "SNz3BOFeiAPEaQkKe5hm_"
@@ -42,3 +47,32 @@ uri = "file://artifacts/teras-academy-story/public/audio/bg_music.mp3"
 type = "audio"
 title = "TERAS cinematic background music"
 description = "Generated music: Driving cinematic electronic instrumental background music scoring a future-facing evidence-based capability platform brand film. Warm analog synth pulse, restrained percussion, subt…"
+logical_id = "af1d9565-6c1e-44a8-8f28-d2f97daef39c"
+
+[[outputs]]
+id = "YuC52BOrVWzopBN27nAMM"
+uri = "file://docs/blueprint-teras-revisi.md"
+type = "text"
+title = "Blueprint TERAS — Markdown untuk Notion"
+description = "Blueprint revisi: cakupan MVP, fondasi Path B, pengembangan lanjutan, batas AI, readiness, dan kriteria rilis."
+logical_id = "13e9cdf1-c44a-4c9d-8d37-1336ab7a6307"
+content_hash = "sha256:9aceb7e50f3878b460fa89b37a92deaaa900a40c438881f33efbfce0e45ccb5f"
+size = 23097
+mtime_ms = 1791066449646
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:ee2fe059-9d1e-4dac-aa83-156c19e0071d/13e9cdf1-c44a-4c9d-8d37-1336ab7a6307/98af6d01-4ad2-4ee8-a5e2-ee8dfa5d8fe4"
+storage_version_token = "1791066493287563"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "C8Cj4Ww0iYmY1Zy2Zive5"
+uri = "file://docs/blueprint-teras-revisi.html"
+type = "html"
+title = "Blueprint TERAS — Versi baca"
+description = "Dokumen HTML mandiri dengan daftar isi, tabel keputusan, dan tombol unduh Markdown untuk impor ke Notion."
+logical_id = "d8b0cf32-8ff8-44f6-b922-d39a1bedbd4c"
+content_hash = "sha256:1fdd9ccc48c37314df60722d5cf3372cefbbc4ed571153b90cb3a6d7582e2bd7"
+size = 61846
+mtime_ms = 1791066479082
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:ee2fe059-9d1e-4dac-aa83-156c19e0071d/d8b0cf32-8ff8-44f6-b922-d39a1bedbd4c/49a60764-5e06-423f-9c2b-45e41a1285df"
+storage_version_token = "1791066494636859"
+content_type = "text/html"
