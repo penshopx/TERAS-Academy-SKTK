@@ -76,3 +76,31 @@ mtime_ms = 1791066479082
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:ee2fe059-9d1e-4dac-aa83-156c19e0071d/d8b0cf32-8ff8-44f6-b922-d39a1bedbd4c/49a60764-5e06-423f-9c2b-45e41a1285df"
 storage_version_token = "1791066494636859"
 content_type = "text/html"
+
+[[outputs]]
+id = "Jl94sEhR1Uk3eT1wfWEXK"
+uri = "file://docs/panduan-trial-teras.html"
+type = "html"
+title = "Panduan Trial TERAS — versi baca dan cetak"
+description = "Panduan mudah dari login hingga Passport, untuk Path A, Path B, trainer, assessor, dan admin. Dilengkapi contoh login, checklist trial, penanganan kendala, dan tombol cetak/simpan PDF."
+logical_id = "f5a4c929-581b-4354-8dfd-1a5cb9fbf21f"
+content_hash = "sha256:9fd68f33d5fbd7c3eafbae2e576d7e8cb51f379f747cde9554d37247ee543abb"
+size = 114214
+mtime_ms = 1791104589904
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:ee2fe059-9d1e-4dac-aa83-156c19e0071d/f5a4c929-581b-4354-8dfd-1a5cb9fbf21f/78507462-0a9a-4e3d-ba73-88529a018172"
+storage_version_token = "1791104620704649"
+content_type = "text/html"
+
+[[outputs]]
+id = "plhnzUxVPKc6GBEPQzdWm"
+uri = "file://docs/panduan-trial-teras.md"
+type = "text"
+title = "Panduan Trial TERAS — Markdown"
+description = "Versi teks untuk disimpan, diedit, atau diimpor ke Notion. Menandai batas fitur yang belum dapat diuji end-to-end."
+logical_id = "d30cba7e-26e6-4ee5-b8a1-51a8f0e5de45"
+content_hash = "sha256:79a7a4f3550241104553708a0cb2eb35495217554fff22334727fcab47e0b4e5"
+size = 26536
+mtime_ms = 1791104553572
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:ee2fe059-9d1e-4dac-aa83-156c19e0071d/d30cba7e-26e6-4ee5-b8a1-51a8f0e5de45/dda3d853-cfb5-4026-88ba-d4f99719778e"
+storage_version_token = "1791104622089837"
+content_type = "text/markdown"
